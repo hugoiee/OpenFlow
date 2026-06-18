@@ -2,7 +2,8 @@
 
 节点式 AI 工作流画布编辑器：支持多个项目，每个项目是一块画布，可在画布上添加节点
 （纯文字 Prompt 节点 / 模型调用节点）并用连线把节点连接起来。模型调用走 OpenAI 兼容的
-第三方中转 API（未配置时回退 mock），数据持久化在浏览器 localStorage。
+多供应商 API（在设置面板选供应商、填 key/BaseURL、动态拉取 /models 选模型；未配置激活供应商时
+回退 mock），数据持久化在浏览器 localStorage。
 
 ## 常用命令
 
@@ -26,17 +27,18 @@ src/
     useFlowStore.ts             Zustand store（含 persist）：projects、activeProjectId、homeView、
                                 画布回调、addNode/updateNodeData；addProject 返回新项目 id；
                                 导出 useActiveProject()
-    useSettingsStore.ts         Zustand store（persist key openflow-settings）：API 设置
-                                （baseURL/apiKey/defaultModel）；导出 hasApiConfig()
+    useSettingsStore.ts         Zustand store（persist key openflow-settings，version 1 + migrate）：
+                                多供应商配置 { activeProviderId, configs }；导出 getActiveConfig() /
+                                hasApiConfig() / emptyProviderConfig()
   lib/
-    types.ts                    Project / 节点数据类型 / ApiSettings / MODEL_OPTIONS（模型名建议）
-    openai.ts                   runOpenAIChat()：调用 OpenAI 兼容中转 API（非流式 + 错误处理）
-    mockModel.ts                runMockModel()：未配置 API 时的占位回退
+    types.ts                    Project / 节点数据类型 / ProviderId / PROVIDER_PRESETS / ProviderConfig
+    openai.ts                   runOpenAIChat()（非流式聊天）+ fetchModels()（GET /models）；入参 ProviderEndpoint
+    mockModel.ts                runMockModel()：未配置激活供应商时的占位回退
     id.ts                       newId() 生成唯一 id
     utils.ts                    cn()（shadcn 生成）
   components/
     ui/                         shadcn/ui 生成的 vendored 组件（不参与 lint/format，勿手改）
-    settings/SettingsDialog.tsx API 设置弹窗（base URL / API key / 默认模型）
+    settings/SettingsDialog.tsx 模型供应商设置面板（选供应商→key/BaseURL→获取模型→选模型→保存）
     home/
       HomePage.tsx             全屏首页：项目总览，宫格/列表切换（读写 store.homeView）+ 新建项目
       ProjectCard.tsx          单个项目卡片：点击进画布、双击/菜单重命名、菜单删除（grid/list 两种样式）
@@ -69,10 +71,12 @@ src/
   `src/hooks/use-mobile.ts`）；`use-mobile.ts` 同 `src/components/ui` 一样是生成代码，已在
   `eslint.config.js` 的 globalIgnores 排除，勿手改。
 - **路径别名**：`@/*` → `src/*`（见 vite.config.ts 与 tsconfig）。
-- **模型调用**：OpenAI 兼容的第三方中转 API（`lib/openai.ts`，浏览器直连，非流式）；
-  base URL / key / 默认模型存 `useSettingsStore`（localStorage `openflow-settings`）。
-  未配置（缺 baseURL 或 apiKey）时回退 `runMockModel`。无后端——key 存浏览器仅适合本地自用，
-  且中转端需允许浏览器 CORS。
+- **模型调用**：OpenAI 兼容协议（`lib/openai.ts`，浏览器直连，非流式）。多供应商：预置
+  OpenAI/DeepSeek/Kimi/Qwen/GLM/自定义（`PROVIDER_PRESETS`），各自存 key/baseURL/选定模型/已拉取模型列表，
+  存 `useSettingsStore`（localStorage `openflow-settings`）。模型列表经 `fetchModels()` 动态拉 `/models`；
+  运行用激活供应商配置（`getActiveConfig`），未配置时回退 `runMockModel`。仅支持 OpenAI 兼容
+  `/chat/completions` + `/models`（Anthropic 原生协议不支持，走「自定义/中转」）。无后端——key 存浏览器
+  仅适合本地自用，且供应商/中转端需允许浏览器 CORS。改 persist 结构时记得升 `version` + `migrate`。
 - **包管理**：pnpm。
 
 ## 编码规范

@@ -32,19 +32,40 @@ export type Project = {
   edges: Edge[]
 }
 
-/** 模型名输入建议（OpenAI 常见模型，用作 datalist 提示，非固定列表）。 */
-export const MODEL_OPTIONS = [
-  'gpt-4o',
-  'gpt-4o-mini',
-  'gpt-4-turbo',
-  'gpt-3.5-turbo',
-] as const
+/** 支持的模型供应商 id（均 OpenAI 兼容 /chat/completions）。 */
+export type ProviderId = 'openai' | 'deepseek' | 'kimi' | 'qwen' | 'glm' | 'custom'
 
-/** 第三方中转 API 配置（OpenAI 兼容）。 */
-export type ApiSettings = {
-  /** 中转端 base URL，OpenAI 兼容，如 https://api.example.com/v1 */
-  baseURL: string
-  apiKey: string
-  /** 新建 Model 节点时的默认模型名。 */
-  defaultModel: string
+/** 供应商预置：名称 + 默认 BaseURL。 */
+export type ProviderPreset = {
+  id: ProviderId
+  name: string
+  /** 预置默认 base URL；custom 为空，由用户填写。 */
+  defaultBaseURL: string
 }
+
+/** 内置供应商列表（OpenAI 兼容）。 */
+export const PROVIDER_PRESETS: ProviderPreset[] = [
+  { id: 'openai', name: 'OpenAI', defaultBaseURL: 'https://api.openai.com/v1' },
+  { id: 'deepseek', name: 'DeepSeek', defaultBaseURL: 'https://api.deepseek.com/v1' },
+  { id: 'kimi', name: '月之暗面 Kimi', defaultBaseURL: 'https://api.moonshot.cn/v1' },
+  {
+    id: 'qwen',
+    name: '通义 Qwen',
+    defaultBaseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  },
+  { id: 'glm', name: '智谱 GLM', defaultBaseURL: 'https://open.bigmodel.cn/api/paas/v4' },
+  { id: 'custom', name: '自定义 / 中转', defaultBaseURL: '' },
+]
+
+/** 单个供应商的配置。 */
+export type ProviderConfig = {
+  apiKey: string
+  baseURL: string
+  /** 选定用于运行的模型名。 */
+  selectedModel: string
+  /** 上次从 /models 拉取到的可用模型列表。 */
+  models: string[]
+}
+
+/** 调用与拉取模型时需要的最小端点信息。 */
+export type ProviderEndpoint = Pick<ProviderConfig, 'baseURL' | 'apiKey'>

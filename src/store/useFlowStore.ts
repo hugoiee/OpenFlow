@@ -9,13 +9,8 @@ import {
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { newId } from '@/lib/id'
-import {
-  MODEL_OPTIONS,
-  type FlowNode,
-  type FlowNodeType,
-  type Project,
-} from '@/lib/types'
-import { useSettingsStore } from '@/store/useSettingsStore'
+import { type FlowNode, type FlowNodeType, type Project } from '@/lib/types'
+import { getActiveConfig, useSettingsStore } from '@/store/useSettingsStore'
 
 type HomeView = 'grid' | 'list'
 
@@ -54,8 +49,7 @@ function createNode(type: FlowNodeType, count: number): FlowNode {
       data: { label: 'Prompt', text: '' },
     }
   }
-  const defaultModel =
-    useSettingsStore.getState().settings.defaultModel || MODEL_OPTIONS[0]
+  const defaultModel = getActiveConfig(useSettingsStore.getState())?.selectedModel ?? ''
   return {
     id: newId('n_'),
     type: 'model',

@@ -11,34 +11,76 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { MODEL_OPTIONS } from '@/lib/types'
-import { useSettingsStore } from '@/store/useSettingsStore'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { fetchModels } from '@/lib/openai'
+import { PROVIDER_PRESETS, type ProviderId } from '@/lib/types'
+import { emptyProviderConfig, useSettingsStore } from '@/store/useSettingsStore'
+
+function presetBaseURL(id: ProviderId): string {
+  return PROVIDER_PRESETS.find((p) => p.id === id)?.defaultBaseURL ?? ''
+}
 
 export function SettingsDialog({ children }: { children: React.ReactNode }) {
-  const settings = useSettingsStore((s) => s.settings)
-  const updateSettings = useSettingsStore((s) => s.updateSettings)
+  const activeProviderId = useSettingsStore((s) => s.activeProviderId)
+  const configs = useSettingsStore((s) => s.configs)
+  const setActiveProvider = useSettingsStore((s) => s.setActiveProvider)
+  const updateProviderConfig = useSettingsStore((s) => s.updateProviderConfig)
 
   const [open, setOpen] = useState(false)
-  const [baseURL, setBaseURL] = useState(settings.baseURL)
-  const [apiKey, setApiKey] = useState(settings.apiKey)
-  const [defaultModel, setDefaultModel] = useState(settings.defaultModel)
+  // 当前正在编辑的供应商及其草稿
+  const [editingId, setEditingId] = useState<ProviderId>(activeProviderId)
+  const [apiKey, setApiKey] = useState('')
+  const [baseURL, setBaseURL] = useState('')
+  const [selectedModel, setSelectedModel] = useState('')
+  const [models, setModels] = useState<string[]>([])
+  const [fetching, setFetching] = useState(false)
+  const [fetchError, setFetchError] = useState('')
 
-  // 打开/关闭弹窗时用当前已保存的值回填草稿，避免编辑后取消又残留草稿
+  // 把某供应商已存配置载入草稿；无配置则用预置默认 BaseURL
+  const loadProvider = (id: ProviderId) => {
+    const config = configs[id] ?? { ...emptyProviderConfig(), baseURL: presetBaseURL(id) }
+    setEditingId(id)
+    setApiKey(config.apiKey)
+    setBaseURL(config.baseURL || presetBaseURL(id))
+    setSelectedModel(config.selectedModel)
+    setModels(config.models)
+    setFetchError('')
+  }
+
   const handleOpenChange = (next: boolean) => {
-    if (next) {
-      setBaseURL(settings.baseURL)
-      setApiKey(settings.apiKey)
-      setDefaultModel(settings.defaultModel)
-    }
+    if (next) loadProvider(activeProviderId)
     setOpen(next)
   }
 
+  const handleFetchModels = async () => {
+    setFetching(true)
+    setFetchError('')
+    try {
+      const list = await fetchModels({ baseURL, apiKey })
+      setModels(list)
+      // 已选模型不在新列表里时，默认选第一个
+      if (!list.includes(selectedModel)) setSelectedModel(list[0] ?? '')
+    } catch (e) {
+      setFetchError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setFetching(false)
+    }
+  }
+
   const handleSave = () => {
-    updateSettings({
-      baseURL: baseURL.trim(),
+    updateProviderConfig(editingId, {
       apiKey: apiKey.trim(),
-      defaultModel: defaultModel.trim() || MODEL_OPTIONS[0],
+      baseURL: baseURL.trim(),
+      selectedModel,
+      models,
     })
+    setActiveProvider(editingId)
     setOpen(false)
   }
 
@@ -47,22 +89,30 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>API 设置</DialogTitle>
+          <DialogTitle>模型供应商设置</DialogTitle>
           <DialogDescription>
-            配置 OpenAI 兼容的第三方中转 API。留空则 Model 节点使用 mock 占位结果。
+            选择供应商，填入 API Key 与 BaseURL，拉取并选定要使用的模型。保存后该供应商即为激活供应商。
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col gap-4 py-2">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="baseURL">Base URL</Label>
-            <Input
-              id="baseURL"
-              value={baseURL}
-              onChange={(e) => setBaseURL(e.target.value)}
-              placeholder="https://api.example.com/v1"
-            />
+            <Label>供应商</Label>
+            <Select value={editingId} onValueChange={(v) => loadProvider(v as ProviderId)}>
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PROVIDER_PRESETS.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.name}
+                    {configs[p.id]?.apiKey ? ' ✓' : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
+
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="apiKey">API Key</Label>
             <Input
@@ -73,20 +123,46 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
               placeholder="sk-…"
             />
           </div>
+
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="defaultModel">默认模型</Label>
+            <Label htmlFor="baseURL">Base URL</Label>
             <Input
-              id="defaultModel"
-              value={defaultModel}
-              onChange={(e) => setDefaultModel(e.target.value)}
-              list="settings-model-options"
-              placeholder="gpt-4o-mini"
+              id="baseURL"
+              value={baseURL}
+              onChange={(e) => setBaseURL(e.target.value)}
+              placeholder="https://api.example.com/v1"
             />
-            <datalist id="settings-model-options">
-              {MODEL_OPTIONS.map((m) => (
-                <option key={m} value={m} />
-              ))}
-            </datalist>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="model">模型</Label>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleFetchModels}
+                disabled={fetching || !baseURL.trim() || !apiKey.trim()}
+              >
+                {fetching ? '获取中…' : '获取模型'}
+              </Button>
+            </div>
+            <Select
+              value={selectedModel}
+              onValueChange={setSelectedModel}
+              disabled={models.length === 0}
+            >
+              <SelectTrigger id="model" className="w-full">
+                <SelectValue placeholder="先获取模型列表" />
+              </SelectTrigger>
+              <SelectContent>
+                {models.map((m) => (
+                  <SelectItem key={m} value={m}>
+                    {m}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {fetchError && <p className="text-xs text-destructive">{fetchError}</p>}
           </div>
         </div>
 

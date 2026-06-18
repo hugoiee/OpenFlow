@@ -1,12 +1,18 @@
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { runMockModel } from '@/lib/mockModel'
 import { runOpenAIChat } from '@/lib/openai'
-import { MODEL_OPTIONS, type ModelNode as ModelNodeType } from '@/lib/types'
+import { type ModelNode as ModelNodeType } from '@/lib/types'
 import { useFlowStore } from '@/store/useFlowStore'
-import { hasApiConfig, useSettingsStore } from '@/store/useSettingsStore'
+import { getActiveConfig, hasApiConfig, useSettingsStore } from '@/store/useSettingsStore'
 
 /** 收集所有指向该模型节点的上游 prompt 节点文本，拼成输入。 */
 function collectUpstreamPrompt(nodeId: string): string {
@@ -23,15 +29,27 @@ function collectUpstreamPrompt(nodeId: string): string {
 
 export function ModelNode({ id, data, selected }: NodeProps<ModelNodeType>) {
   const updateNodeData = useFlowStore((s) => s.updateNodeData)
+  const activeConfig = useSettingsStore((s) => getActiveConfig(s))
+
+  // 下拉选项来自激活供应商已拉取的模型；当前值不在列表时也并入，避免空白
+  const models = activeConfig?.models ?? []
+  const modelOptions =
+    data.model && !models.includes(data.model) ? [data.model, ...models] : models
 
   const handleRun = async () => {
     updateNodeData(id, { running: true, result: '' })
     const prompt = collectUpstreamPrompt(id)
-    const settings = useSettingsStore.getState().settings
+    const state = useSettingsStore.getState()
+    const config = getActiveConfig(state)
     try {
-      const result = hasApiConfig(settings)
-        ? await runOpenAIChat(settings, data.model, prompt)
-        : await runMockModel(data.model, prompt)
+      const result =
+        hasApiConfig(state) && config
+          ? await runOpenAIChat(
+              { baseURL: config.baseURL, apiKey: config.apiKey },
+              data.model,
+              prompt,
+            )
+          : await runMockModel(data.model, prompt)
       updateNodeData(id, { running: false, result })
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
@@ -53,18 +71,22 @@ export function ModelNode({ id, data, selected }: NodeProps<ModelNodeType>) {
         </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-2 px-3">
-        <Input
-          value={data.model}
-          onChange={(e) => updateNodeData(id, { model: e.target.value })}
-          list={`model-options-${id}`}
-          placeholder="模型名，如 gpt-4o-mini"
-          className="nodrag w-full text-xs"
-        />
-        <datalist id={`model-options-${id}`}>
-          {MODEL_OPTIONS.map((m) => (
-            <option key={m} value={m} />
-          ))}
-        </datalist>
+        <Select
+          value={data.model || undefined}
+          onValueChange={(v) => updateNodeData(id, { model: v })}
+          disabled={modelOptions.length === 0}
+        >
+          <SelectTrigger className="nodrag w-full text-xs">
+            <SelectValue placeholder="先在设置里获取模型" />
+          </SelectTrigger>
+          <SelectContent>
+            {modelOptions.map((m) => (
+              <SelectItem key={m} value={m} className="text-xs">
+                {m}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
         <Button
           size="sm"
