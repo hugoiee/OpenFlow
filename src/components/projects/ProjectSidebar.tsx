@@ -7,6 +7,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
+import { SettingsDialog } from '@/components/settings/SettingsDialog'
 import { useFlowStore } from '@/store/useFlowStore'
 
 export function ProjectSidebar() {
@@ -34,6 +35,11 @@ export function ProjectSidebar() {
     <aside className="flex h-full w-60 shrink-0 flex-col border-r bg-sidebar">
       <div className="flex items-center justify-between px-4 py-3">
         <span className="text-lg font-semibold">OpenFlow</span>
+        <SettingsDialog>
+          <Button size="sm" variant="ghost" title="API 设置">
+            设置
+          </Button>
+        </SettingsDialog>
       </div>
 
       <div className="px-3 pb-2">

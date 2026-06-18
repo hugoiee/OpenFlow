@@ -1,16 +1,12 @@
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Input } from '@/components/ui/input'
 import { runMockModel } from '@/lib/mockModel'
+import { runOpenAIChat } from '@/lib/openai'
 import { MODEL_OPTIONS, type ModelNode as ModelNodeType } from '@/lib/types'
 import { useFlowStore } from '@/store/useFlowStore'
+import { hasApiConfig, useSettingsStore } from '@/store/useSettingsStore'
 
 /** 收集所有指向该模型节点的上游 prompt 节点文本，拼成输入。 */
 function collectUpstreamPrompt(nodeId: string): string {
@@ -31,8 +27,16 @@ export function ModelNode({ id, data, selected }: NodeProps<ModelNodeType>) {
   const handleRun = async () => {
     updateNodeData(id, { running: true, result: '' })
     const prompt = collectUpstreamPrompt(id)
-    const result = await runMockModel(data.model, prompt)
-    updateNodeData(id, { running: false, result })
+    const settings = useSettingsStore.getState().settings
+    try {
+      const result = hasApiConfig(settings)
+        ? await runOpenAIChat(settings, data.model, prompt)
+        : await runMockModel(data.model, prompt)
+      updateNodeData(id, { running: false, result })
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e)
+      updateNodeData(id, { running: false, result: `调用失败：${message}` })
+    }
   }
 
   return (
@@ -49,21 +53,18 @@ export function ModelNode({ id, data, selected }: NodeProps<ModelNodeType>) {
         </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-2 px-3">
-        <Select
+        <Input
           value={data.model}
-          onValueChange={(value) => updateNodeData(id, { model: value })}
-        >
-          <SelectTrigger className="nodrag w-full text-xs">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {MODEL_OPTIONS.map((m) => (
-              <SelectItem key={m} value={m} className="text-xs">
-                {m}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          onChange={(e) => updateNodeData(id, { model: e.target.value })}
+          list={`model-options-${id}`}
+          placeholder="模型名，如 gpt-4o-mini"
+          className="nodrag w-full text-xs"
+        />
+        <datalist id={`model-options-${id}`}>
+          {MODEL_OPTIONS.map((m) => (
+            <option key={m} value={m} />
+          ))}
+        </datalist>
 
         <Button
           size="sm"

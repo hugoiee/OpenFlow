@@ -15,6 +15,7 @@ import {
   type FlowNodeType,
   type Project,
 } from '@/lib/types'
+import { useSettingsStore } from '@/store/useSettingsStore'
 
 type FlowState = {
   projects: Project[]
@@ -49,11 +50,13 @@ function createNode(type: FlowNodeType, count: number): FlowNode {
       data: { label: 'Prompt', text: '' },
     }
   }
+  const defaultModel =
+    useSettingsStore.getState().settings.defaultModel || MODEL_OPTIONS[0]
   return {
     id: newId('n_'),
     type: 'model',
     position,
-    data: { label: 'Model', model: MODEL_OPTIONS[0], result: '', running: false },
+    data: { label: 'Model', model: defaultModel, result: '', running: false },
   }
 }
 

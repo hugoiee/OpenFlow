@@ -32,9 +32,19 @@ export type Project = {
   edges: Edge[]
 }
 
-/** 可选的模型列表（mock 用）。 */
+/** 模型名输入建议（OpenAI 常见模型，用作 datalist 提示，非固定列表）。 */
 export const MODEL_OPTIONS = [
-  'claude-opus-4-8',
-  'claude-sonnet-4-6',
-  'claude-haiku-4-5',
+  'gpt-4o',
+  'gpt-4o-mini',
+  'gpt-4-turbo',
+  'gpt-3.5-turbo',
 ] as const
+
+/** 第三方中转 API 配置（OpenAI 兼容）。 */
+export type ApiSettings = {
+  /** 中转端 base URL，OpenAI 兼容，如 https://api.example.com/v1 */
+  baseURL: string
+  apiKey: string
+  /** 新建 Model 节点时的默认模型名。 */
+  defaultModel: string
+}

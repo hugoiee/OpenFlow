@@ -1,8 +1,8 @@
 # OpenFlow
 
 节点式 AI 工作流画布编辑器：支持多个项目，每个项目是一块画布，可在画布上添加节点
-（纯文字 Prompt 节点 / 模型调用节点）并用连线把节点连接起来。当前模型调用为 mock，
-数据持久化在浏览器 localStorage。
+（纯文字 Prompt 节点 / 模型调用节点）并用连线把节点连接起来。模型调用走 OpenAI 兼容的
+第三方中转 API（未配置时回退 mock），数据持久化在浏览器 localStorage。
 
 ## 常用命令
 
@@ -25,20 +25,25 @@ src/
   store/
     useFlowStore.ts             Zustand store（含 persist）：projects、activeProjectId、
                                 画布回调、addNode/updateNodeData；导出 useActiveProject()
+    useSettingsStore.ts         Zustand store（persist key openflow-settings）：API 设置
+                                （baseURL/apiKey/defaultModel）；导出 hasApiConfig()
   lib/
-    types.ts                    Project / 节点数据类型 / MODEL_OPTIONS
-    mockModel.ts                runMockModel()：模拟模型调用（接真实 API 的预留点）
+    types.ts                    Project / 节点数据类型 / ApiSettings / MODEL_OPTIONS（模型名建议）
+    openai.ts                   runOpenAIChat()：调用 OpenAI 兼容中转 API（非流式 + 错误处理）
+    mockModel.ts                runMockModel()：未配置 API 时的占位回退
     id.ts                       newId() 生成唯一 id
     utils.ts                    cn()（shadcn 生成）
   components/
     ui/                         shadcn/ui 生成的 vendored 组件（不参与 lint/format，勿手改）
-    projects/ProjectSidebar.tsx 项目增删改 / 切换
+    settings/SettingsDialog.tsx API 设置弹窗（base URL / API key / 默认模型）
+    projects/ProjectSidebar.tsx 项目增删改 / 切换（顶部含「设置」入口）
     canvas/
       FlowCanvas.tsx            React Flow 画布封装（含 Provider 包装导出）
       Toolbar.tsx               添加 Prompt / Model 节点
       nodes/
         PromptNode.tsx          Prompt 节点（Card + Textarea + source Handle）
-        ModelNode.tsx           Model 节点（Select + 运行 + 结果，target/source Handle）
+        ModelNode.tsx           Model 节点（模型名 Input + 运行 + 结果，target/source Handle）；
+                                handleRun 按是否配置 API 分发到 runOpenAIChat / runMockModel
         index.ts                nodeTypes 注册表
 ```
 
@@ -50,7 +55,10 @@ src/
   画布的 nodes/edges 始终作用于「当前激活项目」，统一通过 store 的 `patchActive` 修改。
 - **UI**：shadcn/ui（基于 Tailwind v4）。新增组件用 `pnpm dlx shadcn@latest add <name>`。
 - **路径别名**：`@/*` → `src/*`（见 vite.config.ts 与 tsconfig）。
-- **模型调用**：仅 mock（`lib/mockModel.ts`），无后端、无真实 API key。
+- **模型调用**：OpenAI 兼容的第三方中转 API（`lib/openai.ts`，浏览器直连，非流式）；
+  base URL / key / 默认模型存 `useSettingsStore`（localStorage `openflow-settings`）。
+  未配置（缺 baseURL 或 apiKey）时回退 `runMockModel`。无后端——key 存浏览器仅适合本地自用，
+  且中转端需允许浏览器 CORS。
 - **包管理**：pnpm。
 
 ## 编码规范
@@ -63,6 +71,6 @@ src/
 - 提交前确保 `pnpm lint`、`pnpm typecheck`、`pnpm build` 通过。
 
 ## 后续可扩展（当前未做）
-- 接真实模型 API（替换 `runMockModel`，前端直连或后端代理）。
+- 流式输出（SSE，增量更新结果）；后端代理以隐藏 key / 绕过 CORS。
 - 按连线拓扑顺序自动编排执行（把上游输出喂给下游）。
 - 导入 / 导出工作流 JSON、撤销重做、暗色模式切换、更多节点类型。
