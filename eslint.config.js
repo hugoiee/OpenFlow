@@ -6,8 +6,8 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  // dist 为构建产物；src/components/ui 为 shadcn/ui 生成的 vendored 组件，保持原样不参与 lint
-  globalIgnores(['dist', 'src/components/ui']),
+  // dist 为构建产物；src/components/ui 与 src/hooks/use-mobile.ts 为 shadcn/ui 生成的 vendored 代码，保持原样不参与 lint
+  globalIgnores(['dist', 'src/components/ui', 'src/hooks/use-mobile.ts']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [

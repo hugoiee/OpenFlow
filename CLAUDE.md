@@ -19,12 +19,13 @@ pnpm format        # Prettier 格式化 src（不含 src/components/ui）
 
 ```
 src/
-  main.tsx                      入口
-  App.tsx                       两栏布局：左侧项目栏 + 右侧画布 / 空状态
+  main.tsx                      入口（用 HashRouter 包裹 App）
+  App.tsx                       路由出口：/ → 首页，/project/:id → 工作区，* → 重定向回首页
   index.css                     Tailwind + shadcn 主题变量（勿手改主题块）
   store/
-    useFlowStore.ts             Zustand store（含 persist）：projects、activeProjectId、
-                                画布回调、addNode/updateNodeData；导出 useActiveProject()
+    useFlowStore.ts             Zustand store（含 persist）：projects、activeProjectId、homeView、
+                                画布回调、addNode/updateNodeData；addProject 返回新项目 id；
+                                导出 useActiveProject()
     useSettingsStore.ts         Zustand store（persist key openflow-settings）：API 设置
                                 （baseURL/apiKey/defaultModel）；导出 hasApiConfig()
   lib/
@@ -36,7 +37,13 @@ src/
   components/
     ui/                         shadcn/ui 生成的 vendored 组件（不参与 lint/format，勿手改）
     settings/SettingsDialog.tsx API 设置弹窗（base URL / API key / 默认模型）
-    projects/ProjectSidebar.tsx 项目增删改 / 切换（顶部含「设置」入口）
+    home/
+      HomePage.tsx             全屏首页：项目总览，宫格/列表切换（读写 store.homeView）+ 新建项目
+      ProjectCard.tsx          单个项目卡片：点击进画布、双击/菜单重命名、菜单删除（grid/list 两种样式）
+    workspace/ProjectWorkspace.tsx 工作区：SidebarProvider 包裹 ProjectSidebar + SidebarInset（含
+                                SidebarTrigger 折叠按钮 + 画布）；useParams 取 :id 同步进 store.activeProjectId
+    projects/ProjectSidebar.tsx 基于 shadcn Sidebar 的项目栏（增删改 / 切换走路由 navigate）；
+                                顶部「OpenFlow」与「返回首页」回 /
     canvas/
       FlowCanvas.tsx            React Flow 画布封装（含 Provider 包装导出）
       Toolbar.tsx               添加 Prompt / Model 节点
@@ -50,10 +57,17 @@ src/
 ## 技术约束
 
 - **框架 / 构建**：React 19 + Vite + TypeScript（strict）。
+- **路由**：`react-router-dom`（用 `HashRouter`，纯前端无后端，刷新不 404）。路由表：
+  `/` → 首页 `HomePage`，`/project/:id` → 工作区 `ProjectWorkspace`。`ProjectWorkspace` 通过
+  `useParams` 把 `:id` 同步进 store 的 `activeProjectId`（画布编辑依赖它）；id 不存在时重定向回 `/`。
 - **画布**：React Flow（`@xyflow/react`）。节点是普通 React 组件，样式完全可调。
 - **状态**：Zustand（`zustand/middleware` 的 `persist`，localStorage key 为 `openflow-store`）。
   画布的 nodes/edges 始终作用于「当前激活项目」，统一通过 store 的 `patchActive` 修改。
+  `addProject` 返回新项目 id（便于新建后 `navigate`）；首页宫格/列表偏好存 `homeView`（已持久化）。
 - **UI**：shadcn/ui（基于 Tailwind v4）。新增组件用 `pnpm dlx shadcn@latest add <name>`。
+  侧栏用 shadcn `sidebar`（连带 vendored 的 `sheet`/`tooltip`/`separator`/`skeleton` 与
+  `src/hooks/use-mobile.ts`）；`use-mobile.ts` 同 `src/components/ui` 一样是生成代码，已在
+  `eslint.config.js` 的 globalIgnores 排除，勿手改。
 - **路径别名**：`@/*` → `src/*`（见 vite.config.ts 与 tsconfig）。
 - **模型调用**：OpenAI 兼容的第三方中转 API（`lib/openai.ts`，浏览器直连，非流式）；
   base URL / key / 默认模型存 `useSettingsStore`（localStorage `openflow-settings`）。

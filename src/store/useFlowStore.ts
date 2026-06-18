@@ -17,15 +17,19 @@ import {
 } from '@/lib/types'
 import { useSettingsStore } from '@/store/useSettingsStore'
 
+type HomeView = 'grid' | 'list'
+
 type FlowState = {
   projects: Project[]
   activeProjectId: string | null
+  homeView: HomeView
 
   // 项目管理
-  addProject: (name?: string) => void
+  addProject: (name?: string) => string
   renameProject: (id: string, name: string) => void
   deleteProject: (id: string) => void
   setActiveProject: (id: string) => void
+  setHomeView: (view: HomeView) => void
 
   // 画布操作（作用于当前项目）
   onNodesChange: (changes: NodeChange<FlowNode>[]) => void
@@ -77,6 +81,7 @@ export const useFlowStore = create<FlowState>()(
       return {
         projects: [],
         activeProjectId: null,
+        homeView: 'grid',
 
         addProject: (name) => {
           const project = createProject(name?.trim() || '未命名项目')
@@ -84,6 +89,7 @@ export const useFlowStore = create<FlowState>()(
             projects: [...state.projects, project],
             activeProjectId: project.id,
           }))
+          return project.id
         },
 
         renameProject: (id, name) =>
@@ -104,6 +110,8 @@ export const useFlowStore = create<FlowState>()(
           }),
 
         setActiveProject: (id) => set({ activeProjectId: id }),
+
+        setHomeView: (view) => set({ homeView: view }),
 
         onNodesChange: (changes) =>
           patchActive((p) => ({
@@ -144,6 +152,7 @@ export const useFlowStore = create<FlowState>()(
       partialize: (state) => ({
         projects: state.projects,
         activeProjectId: state.activeProjectId,
+        homeView: state.homeView,
       }),
     },
   ),
