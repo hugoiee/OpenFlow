@@ -18,17 +18,21 @@ export function FlowCanvas() {
 
   if (!project) return null
 
+  // 用 smoothstep 让连线横平竖直（直角折线）；兼容已存的旧连线
+  const edges = project.edges.map((e) => (e.type ? e : { ...e, type: 'smoothstep' }))
+
   return (
     <div className="relative h-full w-full">
       <ReactFlow
         // key 让切换项目时画布完全重挂载，避免残留视图状态
         key={project.id}
         nodes={project.nodes}
-        edges={project.edges}
+        edges={edges}
         nodeTypes={nodeTypes}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        defaultEdgeOptions={{ type: 'smoothstep' }}
         fitView
         proOptions={{ hideAttribution: true }}
       >

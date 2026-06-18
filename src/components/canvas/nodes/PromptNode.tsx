@@ -27,7 +27,7 @@ export function PromptNode({ id, data, selected }: NodeProps<PromptNodeType>) {
           className="nodrag min-h-24 resize-none text-sm"
         />
       </CardContent>
-      <Handle type="source" position={Position.Bottom} className="!size-3 !bg-sky-500" />
+      <Handle type="source" position={Position.Right} className="!size-3 !bg-sky-500" />
     </Card>
   )
 }

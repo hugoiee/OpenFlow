@@ -63,7 +63,7 @@ export function ModelNode({ id, data, selected }: NodeProps<ModelNodeType>) {
         selected ? 'ring-2 ring-primary' : ''
       }`}
     >
-      <Handle type="target" position={Position.Top} className="!size-3 !bg-violet-500" />
+      <Handle type="target" position={Position.Left} className="!size-3 !bg-violet-500" />
       <CardHeader className="px-3">
         <CardTitle className="flex items-center gap-2 text-sm">
           <span className="size-2 rounded-full bg-violet-500" />
@@ -105,7 +105,7 @@ export function ModelNode({ id, data, selected }: NodeProps<ModelNodeType>) {
       </CardContent>
       <Handle
         type="source"
-        position={Position.Bottom}
+        position={Position.Right}
         className="!size-3 !bg-violet-500"
       />
     </Card>
