@@ -8,11 +8,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { runMockModel } from '@/lib/mockModel'
-import { runOpenAIChat } from '@/lib/openai'
+import { runModelApi } from '@/lib/api'
 import { type ModelNode as ModelNodeType } from '@/lib/types'
 import { useFlowStore } from '@/store/useFlowStore'
-import { getActiveConfig, hasApiConfig, useSettingsStore } from '@/store/useSettingsStore'
+import { getActiveConfig, useSettingsStore } from '@/store/useSettingsStore'
 
 /** 收集所有指向该模型节点的上游 prompt 节点文本，拼成输入。 */
 function collectUpstreamPrompt(nodeId: string): string {
@@ -39,17 +38,9 @@ export function ModelNode({ id, data, selected }: NodeProps<ModelNodeType>) {
   const handleRun = async () => {
     updateNodeData(id, { running: true, result: '' })
     const prompt = collectUpstreamPrompt(id)
-    const state = useSettingsStore.getState()
-    const config = getActiveConfig(state)
     try {
-      const result =
-        hasApiConfig(state) && config
-          ? await runOpenAIChat(
-              { baseURL: config.baseURL, apiKey: config.apiKey },
-              data.model,
-              prompt,
-            )
-          : await runMockModel(data.model, prompt)
+      // 模型调用经后端代理：后端用激活供应商的存储 key 调供应商
+      const result = await runModelApi({ model: data.model, prompt })
       updateNodeData(id, { running: false, result })
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
