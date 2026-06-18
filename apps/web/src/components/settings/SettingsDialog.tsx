@@ -18,9 +18,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { fetchModels } from '@/lib/openai'
+import { fetchModelsApi } from '@/lib/api'
 import { PROVIDER_PRESETS, type ProviderId } from '@/lib/types'
-import { emptyProviderConfig, useSettingsStore } from '@/store/useSettingsStore'
+import { useSettingsStore } from '@/store/useSettingsStore'
 
 function presetBaseURL(id: ProviderId): string {
   return PROVIDER_PRESETS.find((p) => p.id === id)?.defaultBaseURL ?? ''
@@ -29,28 +29,30 @@ function presetBaseURL(id: ProviderId): string {
 export function SettingsDialog({ children }: { children: React.ReactNode }) {
   const activeProviderId = useSettingsStore((s) => s.activeProviderId)
   const configs = useSettingsStore((s) => s.configs)
-  const setActiveProvider = useSettingsStore((s) => s.setActiveProvider)
-  const updateProviderConfig = useSettingsStore((s) => s.updateProviderConfig)
+  const saveProvider = useSettingsStore((s) => s.saveProvider)
 
   const [open, setOpen] = useState(false)
   // 当前正在编辑的供应商及其草稿
   const [editingId, setEditingId] = useState<ProviderId>(activeProviderId)
-  const [apiKey, setApiKey] = useState('')
+  const [apiKey, setApiKey] = useState('') // 仅写入：留空表示不修改已存 key
+  const [hasKey, setHasKey] = useState(false)
   const [baseURL, setBaseURL] = useState('')
   const [selectedModel, setSelectedModel] = useState('')
   const [models, setModels] = useState<string[]>([])
   const [fetching, setFetching] = useState(false)
-  const [fetchError, setFetchError] = useState('')
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
 
-  // 把某供应商已存配置载入草稿；无配置则用预置默认 BaseURL
+  // 把某供应商已存配置载入草稿（不含 key，只知道 hasKey）；无配置则用预置默认 BaseURL
   const loadProvider = (id: ProviderId) => {
-    const config = configs[id] ?? { ...emptyProviderConfig(), baseURL: presetBaseURL(id) }
+    const config = configs[id]
     setEditingId(id)
-    setApiKey(config.apiKey)
-    setBaseURL(config.baseURL || presetBaseURL(id))
-    setSelectedModel(config.selectedModel)
-    setModels(config.models)
-    setFetchError('')
+    setApiKey('')
+    setHasKey(Boolean(config?.hasKey))
+    setBaseURL(config?.baseURL || presetBaseURL(id))
+    setSelectedModel(config?.selectedModel ?? '')
+    setModels(config?.models ?? [])
+    setError('')
   }
 
   const handleOpenChange = (next: boolean) => {
@@ -60,28 +62,40 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
 
   const handleFetchModels = async () => {
     setFetching(true)
-    setFetchError('')
+    setError('')
     try {
-      const list = await fetchModels({ baseURL, apiKey })
+      const list = await fetchModelsApi({
+        providerId: editingId,
+        baseURL,
+        apiKey: apiKey.trim() || undefined,
+      })
       setModels(list)
       // 已选模型不在新列表里时，默认选第一个
       if (!list.includes(selectedModel)) setSelectedModel(list[0] ?? '')
     } catch (e) {
-      setFetchError(e instanceof Error ? e.message : String(e))
+      setError(e instanceof Error ? e.message : String(e))
     } finally {
       setFetching(false)
     }
   }
 
-  const handleSave = () => {
-    updateProviderConfig(editingId, {
-      apiKey: apiKey.trim(),
-      baseURL: baseURL.trim(),
-      selectedModel,
-      models,
-    })
-    setActiveProvider(editingId)
-    setOpen(false)
+  const handleSave = async () => {
+    setSaving(true)
+    setError('')
+    try {
+      await saveProvider({
+        providerId: editingId,
+        apiKey: apiKey.trim() || undefined,
+        baseURL: baseURL.trim(),
+        selectedModel,
+        models,
+      })
+      setOpen(false)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -91,7 +105,7 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
         <DialogHeader>
           <DialogTitle>模型供应商设置</DialogTitle>
           <DialogDescription>
-            选择供应商，填入 API Key 与 BaseURL，拉取并选定要使用的模型。保存后该供应商即为激活供应商。
+            选择供应商，填入 API Key 与 BaseURL，拉取并选定模型。Key 只存后端，不会回传浏览器。
           </DialogDescription>
         </DialogHeader>
 
@@ -106,7 +120,7 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
                 {PROVIDER_PRESETS.map((p) => (
                   <SelectItem key={p.id} value={p.id}>
                     {p.name}
-                    {configs[p.id]?.apiKey ? ' ✓' : ''}
+                    {configs[p.id]?.hasKey ? ' ✓' : ''}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -120,7 +134,7 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
               type="password"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              placeholder="sk-…"
+              placeholder={hasKey ? '已保存（留空则不修改）' : 'sk-…'}
             />
           </div>
 
@@ -141,7 +155,7 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
                 size="sm"
                 variant="outline"
                 onClick={handleFetchModels}
-                disabled={fetching || !baseURL.trim() || !apiKey.trim()}
+                disabled={fetching || !baseURL.trim() || (!apiKey.trim() && !hasKey)}
               >
                 {fetching ? '获取中…' : '获取模型'}
               </Button>
@@ -162,7 +176,7 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
                 ))}
               </SelectContent>
             </Select>
-            {fetchError && <p className="text-xs text-destructive">{fetchError}</p>}
+            {error && <p className="text-xs text-destructive">{error}</p>}
           </div>
         </div>
 
@@ -170,7 +184,9 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
           <Button variant="outline" onClick={() => setOpen(false)}>
             取消
           </Button>
-          <Button onClick={handleSave}>保存</Button>
+          <Button onClick={handleSave} disabled={saving}>
+            {saving ? '保存中…' : '保存'}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

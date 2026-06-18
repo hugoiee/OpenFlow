@@ -75,7 +75,9 @@ export function ProjectSidebar() {
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
-                <SidebarMenuButton onClick={() => navigate(`/project/${addProject()}`)}>
+                <SidebarMenuButton
+                  onClick={async () => navigate(`/project/${await addProject()}`)}
+                >
                   <Plus className="size-4" />
                   <span>新建项目</span>
                 </SidebarMenuButton>

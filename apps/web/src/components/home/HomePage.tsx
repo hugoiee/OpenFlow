@@ -11,8 +11,8 @@ export function HomePage() {
   const setHomeView = useFlowStore((s) => s.setHomeView)
   const addProject = useFlowStore((s) => s.addProject)
 
-  const createProject = () => {
-    const id = addProject()
+  const createProject = async () => {
+    const id = await addProject()
     navigate(`/project/${id}`)
   }
 

@@ -7,6 +7,7 @@ import { useFlowStore } from '@/store/useFlowStore'
 
 export function ProjectWorkspace() {
   const { id } = useParams<{ id: string }>()
+  const loaded = useFlowStore((s) => s.loaded)
   const exists = useFlowStore((s) => s.projects.some((p) => p.id === id))
   const setActiveProject = useFlowStore((s) => s.setActiveProject)
 
@@ -14,6 +15,9 @@ export function ProjectWorkspace() {
   useEffect(() => {
     if (id && exists) setActiveProject(id)
   }, [id, exists, setActiveProject])
+
+  // 项目还没从后端加载完成前，先不要判定「不存在」而误跳首页。
+  if (!loaded) return null
 
   // 无效或已删除的项目 id：回首页。
   if (!id || !exists) return <Navigate to="/" replace />
