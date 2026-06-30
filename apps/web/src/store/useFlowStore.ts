@@ -21,9 +21,9 @@ import {
   NANO_VERSION_DEFAULT,
   IMAGE_SIZE_DEFAULT,
   SEEDANCE_DURATION_DEFAULT,
-  SEEDANCE_MODE_DEFAULT,
   SEEDANCE_RESOLUTION_DEFAULT,
   SEEDANCE_VERSION_DEFAULT,
+  VIDEO_TASK_DEFAULT,
 } from '@/lib/nodeCatalog'
 import { type FlowNode, type FlowNodeType, type Project } from '@/lib/types'
 
@@ -102,7 +102,7 @@ function createNode(type: FlowNodeType, count: number, model = ''): FlowNode {
       model,
       imagesText: '',
       version: SEEDANCE_VERSION_DEFAULT,
-      mode: SEEDANCE_MODE_DEFAULT,
+      videoTask: VIDEO_TASK_DEFAULT,
       resolution: SEEDANCE_RESOLUTION_DEFAULT,
       duration: SEEDANCE_DURATION_DEFAULT,
       running: false,
