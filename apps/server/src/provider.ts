@@ -110,16 +110,25 @@ function extractError(data: unknown): string | undefined {
 
 /** POST AIGC 接口生成图像 → 图片 URL 列表。出错抛带可读信息的 Error。 */
 export async function runImageGen(input: GenImageBody): Promise<string[]> {
+  // 公共字段两套模型一致；version 与 config 按 model_name 分支构造，互不污染
+  const isNano = input.model === 'nano-banana'
+  const version = isNano
+    ? input.version?.trim() || 'gemini-3-pro-image-preview'
+    : input.model
+  const config = isNano
+    ? { aspect_ratio: input.aspectRatio, image_size: input.imageSize }
+    : { size: input.size, n: input.n, quality: input.quality }
+
   const res = await fetch(AIGC_ENDPOINT, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       req_from: input.reqFrom?.trim() || AIGC_REQ_FROM,
       model_name: input.model,
-      version: input.model,
+      version,
       prompt: input.prompt,
       image_list: input.images,
-      config: { size: input.size, n: input.n, quality: input.quality },
+      config,
     }),
   })
   const data = (await res.json().catch(() => null)) as unknown

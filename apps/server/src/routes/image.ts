@@ -19,6 +19,9 @@ image.post('/aigc', async (c) => {
       size: body.size || 'auto',
       n: typeof body.n === 'number' ? body.n : 1,
       quality: body.quality || 'auto',
+      version: typeof body.version === 'string' ? body.version : '',
+      aspectRatio: typeof body.aspectRatio === 'string' ? body.aspectRatio : '',
+      imageSize: typeof body.imageSize === 'string' ? body.imageSize : '',
     })
     return c.json({ images })
   } catch (e) {

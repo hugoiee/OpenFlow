@@ -30,6 +30,13 @@ export type ImageNodeData = {
   n: number
   /** 出图质量，如 auto / low / medium / high。 */
   quality: string
+  // ↓ Nano Banana 专用（Image 2 节点不设；旧数据缺失 → 组件给默认值兜底）：
+  /** version：gemini-3-pro-image-preview 等。 */
+  version?: string
+  /** config.aspect_ratio，如 16:9。 */
+  aspectRatio?: string
+  /** config.image_size，1K / 2K / 4K。 */
+  imageSize?: string
   /** 是否正在生成。 */
   running: boolean
   /** 生成结果的图片 URL 列表，未运行时为空。 */

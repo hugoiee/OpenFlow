@@ -18,6 +18,12 @@ import {
   IMAGE_SIZE_DEFAULT,
   IMAGE_SIZE_LABELS,
   IMAGE_SIZE_OPTIONS,
+  NANO_ASPECT_DEFAULT,
+  NANO_ASPECT_OPTIONS,
+  NANO_IMAGE_SIZE_DEFAULT,
+  NANO_IMAGE_SIZE_OPTIONS,
+  NANO_VERSION_DEFAULT,
+  NANO_VERSION_OPTIONS,
   imageApiModel,
 } from '@/lib/nodeCatalog'
 import { type ImageNode as ImageNodeType } from '@/lib/types'
@@ -44,6 +50,8 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
   // 兼容旧数据：早期 image 节点只有 {label, model}，缺失字段给默认值，避免崩
   const imagesText = data.imagesText ?? ''
   const reqFrom = data.reqFrom ?? ''
+  // 按模型区分两套可调项：nano-banana 走 version/aspect_ratio/image_size，其它走 size/quality/n
+  const isNano = imageApiModel(data.model) === 'nano-banana'
   // 旧数据可能存了已不再支持的尺寸（如 1024x1024），回退到默认受支持尺寸
   const storedSize = data.size ?? IMAGE_SIZE_DEFAULT
   const size = (IMAGE_SIZE_OPTIONS as readonly string[]).includes(storedSize)
@@ -51,6 +59,9 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
     : IMAGE_SIZE_DEFAULT
   const quality = data.quality ?? 'auto'
   const n = data.n ?? 1
+  const version = data.version ?? NANO_VERSION_DEFAULT
+  const aspectRatio = data.aspectRatio ?? NANO_ASPECT_DEFAULT
+  const imageSize = data.imageSize ?? NANO_IMAGE_SIZE_DEFAULT
   const result = data.result ?? []
   const running = data.running ?? false
 
@@ -77,9 +88,10 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
         model: imageApiModel(data.model),
         prompt,
         images,
-        size,
-        n,
-        quality,
+        // 按模型分组传参，未用到的一组留默认值/空（后端按 model 取舍）
+        ...(isNano
+          ? { version, aspectRatio, imageSize, size: '', n: 1, quality: '' }
+          : { size, n, quality }),
       })
       updateNodeData(id, { running: false, result: urls })
     } catch (e) {
@@ -119,58 +131,116 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
           className="nodrag min-h-16 resize-none text-xs"
         />
 
-        <div className="grid grid-cols-2 gap-2">
-          <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
-            尺寸
-            <Select value={size} onValueChange={(v) => updateNodeData(id, { size: v })}>
-              <SelectTrigger className="nodrag w-full text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {IMAGE_SIZE_OPTIONS.map((s) => (
-                  <SelectItem key={s} value={s} className="text-xs">
-                    {IMAGE_SIZE_LABELS[s] ?? s}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </label>
+        {isNano ? (
+          <div className="grid grid-cols-2 gap-2">
+            <label className="col-span-2 flex flex-col gap-1 text-[11px] text-muted-foreground">
+              version
+              <Select value={version} onValueChange={(v) => updateNodeData(id, { version: v })}>
+                <SelectTrigger className="nodrag w-full text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {NANO_VERSION_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value} className="text-xs">
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
 
-          <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
-            质量
-            <Select value={quality} onValueChange={(v) => updateNodeData(id, { quality: v })}>
-              <SelectTrigger className="nodrag w-full text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {IMAGE_QUALITY_OPTIONS.map((q) => (
-                  <SelectItem key={q} value={q} className="text-xs">
-                    {q}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </label>
+            <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
+              宽高比
+              <Select
+                value={aspectRatio}
+                onValueChange={(v) => updateNodeData(id, { aspectRatio: v })}
+              >
+                <SelectTrigger className="nodrag w-full text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {NANO_ASPECT_OPTIONS.map((a) => (
+                    <SelectItem key={a} value={a} className="text-xs">
+                      {a}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
 
-          <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
-            张数
-            <Select
-              value={String(n)}
-              onValueChange={(v) => updateNodeData(id, { n: Number(v) })}
-            >
-              <SelectTrigger className="nodrag w-full text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {IMAGE_N_OPTIONS.map((n) => (
-                  <SelectItem key={n} value={String(n)} className="text-xs">
-                    {n}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </label>
-        </div>
+            <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
+              尺寸
+              <Select
+                value={imageSize}
+                onValueChange={(v) => updateNodeData(id, { imageSize: v })}
+              >
+                <SelectTrigger className="nodrag w-full text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {NANO_IMAGE_SIZE_OPTIONS.map((s) => (
+                    <SelectItem key={s} value={s} className="text-xs">
+                      {s}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-2">
+            <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
+              尺寸
+              <Select value={size} onValueChange={(v) => updateNodeData(id, { size: v })}>
+                <SelectTrigger className="nodrag w-full text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {IMAGE_SIZE_OPTIONS.map((s) => (
+                    <SelectItem key={s} value={s} className="text-xs">
+                      {IMAGE_SIZE_LABELS[s] ?? s}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+
+            <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
+              质量
+              <Select value={quality} onValueChange={(v) => updateNodeData(id, { quality: v })}>
+                <SelectTrigger className="nodrag w-full text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {IMAGE_QUALITY_OPTIONS.map((q) => (
+                    <SelectItem key={q} value={q} className="text-xs">
+                      {q}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+
+            <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
+              张数
+              <Select
+                value={String(n)}
+                onValueChange={(v) => updateNodeData(id, { n: Number(v) })}
+              >
+                <SelectTrigger className="nodrag w-full text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {IMAGE_N_OPTIONS.map((n) => (
+                    <SelectItem key={n} value={String(n)} className="text-xs">
+                      {n}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+          </div>
+        )}
 
         <Button
           size="sm"

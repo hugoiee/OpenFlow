@@ -85,16 +85,24 @@ export type RunModelBody = {
 export type GenImageBody = {
   /** 调用方署名（req_from），由前端填写；为空时后端回退默认值。 */
   reqFrom: string
-  /** AIGC 接口的 model_name（如 gpt-image-2）。 */
+  /** AIGC 接口的 model_name（如 gpt-image-2 / nano-banana）。 */
   model: string
   /** 生成 / 编辑指令。 */
   prompt: string
   /** 待编辑的输入图片 URL 列表（纯文生图时为空）。 */
   images: string[]
-  /** 出图尺寸，如 1024x1024 / auto。 */
+  // ↓ Image 2(gpt-image-2) 专用：
+  /** 出图尺寸，如 1920x1080 / auto。 */
   size: string
   /** 出图张数。 */
   n: number
   /** 出图质量，如 auto / low / medium / high。 */
   quality: string
+  // ↓ Nano Banana(nano-banana) 专用（后端按 model 取舍，Image 2 不读）：
+  /** version：gemini-3-pro-image-preview(banana) / gemini-3.1-flash-image-preview(banana2)。 */
+  version?: string
+  /** config.aspect_ratio，如 16:9。 */
+  aspectRatio?: string
+  /** config.image_size，1K / 2K / 4K。 */
+  imageSize?: string
 }

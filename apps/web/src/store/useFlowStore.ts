@@ -15,6 +15,12 @@ import {
   updateProjectApi,
 } from '@/lib/api'
 import { newId } from '@/lib/id'
+import {
+  NANO_ASPECT_DEFAULT,
+  NANO_IMAGE_SIZE_DEFAULT,
+  NANO_VERSION_DEFAULT,
+  IMAGE_SIZE_DEFAULT,
+} from '@/lib/nodeCatalog'
 import { type FlowNode, type FlowNodeType, type Project } from '@/lib/types'
 
 type HomeView = 'grid' | 'list'
@@ -61,7 +67,8 @@ function createNode(type: FlowNodeType, count: number, model = ''): FlowNode {
     }
   }
   if (type === 'image') {
-    // 图像生成节点：带具名模型 + 可调选项默认值；运行状态/结果初始为空
+    // 图像生成节点：带具名模型 + 可调选项默认值；运行状态/结果初始为空。
+    // 统一带上 Image 2 与 Nano Banana 两套字段默认值，后端按 model 取舍。
     return {
       id: newId('n_'),
       type: 'image',
@@ -71,9 +78,12 @@ function createNode(type: FlowNodeType, count: number, model = ''): FlowNode {
         model,
         reqFrom: '',
         imagesText: '',
-        size: '1024x1024',
+        size: IMAGE_SIZE_DEFAULT,
         n: 1,
         quality: 'auto',
+        version: NANO_VERSION_DEFAULT,
+        aspectRatio: NANO_ASPECT_DEFAULT,
+        imageSize: NANO_IMAGE_SIZE_DEFAULT,
         running: false,
         result: [],
       },

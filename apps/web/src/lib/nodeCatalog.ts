@@ -49,6 +49,32 @@ export const IMAGE_SIZE_DEFAULT = IMAGE_SIZE_OPTIONS[0]
 export const IMAGE_QUALITY_OPTIONS = ['auto', 'low', 'medium', 'high'] as const
 export const IMAGE_N_OPTIONS = [1, 2, 3, 4] as const
 
+// ---- Nano Banana(nano-banana) 专用选项 ----
+
+/** Nano Banana 的 version 选项（展示名 → AIGC version 值）。 */
+export const NANO_VERSION_OPTIONS = [
+  { value: 'gemini-3-pro-image-preview', label: 'banana（Pro）' },
+  { value: 'gemini-3.1-flash-image-preview', label: 'banana2（Flash）' },
+] as const
+export const NANO_VERSION_DEFAULT = NANO_VERSION_OPTIONS[0].value
+
+/** Nano Banana config.aspect_ratio 选项。 */
+export const NANO_ASPECT_OPTIONS = [
+  '1:1',
+  '2:3',
+  '3:2',
+  '3:4',
+  '4:3',
+  '9:16',
+  '16:9',
+  '21:9',
+] as const
+export const NANO_ASPECT_DEFAULT = '16:9'
+
+/** Nano Banana config.image_size 选项。 */
+export const NANO_IMAGE_SIZE_OPTIONS = ['1K', '2K', '4K'] as const
+export const NANO_IMAGE_SIZE_DEFAULT = '2K'
+
 /** 生成类节点（image/video）的展示元信息。 */
 export const GEN_NODE_META: Record<
   'image' | 'video',
