@@ -58,7 +58,7 @@ apps/web/src/
   components/canvas/
     FlowCanvas.tsx             React Flow 封装；连线默认 smoothstep（横平竖直）
     nodes/PromptNode.tsx       Prompt 节点（Card + Textarea，source Handle 在右）
-    nodes/GenerationNode.tsx   图像/视频生成节点（image/video 共用）：具名模型下拉来自 nodeCatalog；运行按钮占位置灰（生成待接入）；Handle 左进右出
+    nodes/GenerationNode.tsx   图像/视频生成节点（image/video 共用）：模型在添加时固定、画布上只读展示不可切换；运行按钮占位置灰（生成待接入）；Handle 左进右出
     nodes/index.ts             nodeTypes 注册表（prompt / image / video）
 ```
 
