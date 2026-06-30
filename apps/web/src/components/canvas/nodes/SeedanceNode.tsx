@@ -1,26 +1,14 @@
 import { Handle, Position, type NodeProps } from '@xyflow/react'
-import { useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { Textarea } from '@/components/ui/textarea'
-import { generateVideoApi, uploadImagesApi } from '@/lib/api'
+import { Skeleton } from '@/components/ui/skeleton'
+import { generateVideoApi } from '@/lib/api'
 import {
   GEN_NODE_META,
   SEEDANCE_DURATION_DEFAULT,
-  SEEDANCE_DURATION_OPTIONS,
   SEEDANCE_MODE_DEFAULT,
-  SEEDANCE_MODE_OPTIONS,
   SEEDANCE_RESOLUTION_DEFAULT,
-  SEEDANCE_RESOLUTION_OPTIONS,
   SEEDANCE_VERSION_DEFAULT,
-  SEEDANCE_VERSION_OPTIONS,
   videoApiModel,
 } from '@/lib/nodeCatalog'
 import { type VideoNode as VideoNodeType } from '@/lib/types'
@@ -41,13 +29,14 @@ function collectUpstreamPrompt(nodeId: string): string {
     .join('\n\n')
 }
 
-/** Seedance 视频生成节点：上游 Prompt + 输入图 → 经后端 /api/video 代理生成视频。 */
+/**
+ * Seedance 视频生成节点：卡片只展示生成结果（运行态 / 结果视频 / 空占位）。
+ * 输入图、version/mode/分辨率/时长等参数都在右侧 Inspector（NodeInspector）里编辑。
+ */
 export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
   const updateNodeData = useFlowStore((s) => s.updateNodeData)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const [uploading, setUploading] = useState(false)
 
-  // 兼容旧 video 节点（早期只有 {label, model}）：缺失字段给默认值
+  // 兼容旧 video 节点（早期只有 {label, model}）：缺失字段给默认值；以下派生供 handleRun 取参。
   const imagesText = data.imagesText ?? ''
   const version = data.version ?? SEEDANCE_VERSION_DEFAULT
   const mode = data.mode ?? SEEDANCE_MODE_DEFAULT
@@ -88,30 +77,16 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
     }
   }
 
-  // 选择本地图片 → 上传 → 把返回 URL 按行追加进输入图文本框（保留已填内容）
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? [])
-    e.target.value = ''
-    if (files.length === 0) return
-    setUploading(true)
-    try {
-      const urls = await uploadImagesApi(files)
-      const next = [imagesText.trim(), ...urls].filter(Boolean).join('\n')
-      updateNodeData(id, { imagesText: next })
-    } catch (err) {
-      window.alert(`图片上传失败：${err instanceof Error ? err.message : String(err)}`)
-    } finally {
-      setUploading(false)
-    }
-  }
-
   return (
     <Card
-      className={`w-72 gap-2 py-3 shadow-sm transition-shadow ${
+      className={`relative w-72 gap-2 py-3 shadow-sm transition-shadow ${
         selected ? 'ring-2 ring-primary' : ''
       }`}
     >
       <Handle type="target" position={Position.Left} className={`!size-3 ${meta.handle}`} />
+      <span className="pointer-events-none absolute right-full top-1/2 mr-2 -translate-y-1/2 whitespace-nowrap text-[11px] text-muted-foreground">
+        Prompt*
+      </span>
       <CardHeader className="px-3">
         <CardTitle className="flex items-center gap-2 text-sm">
           <span className={`size-2 rounded-full ${meta.dot}`} />
@@ -120,114 +95,33 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
         </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-2 px-3">
-        <Textarea
-          value={imagesText}
-          onChange={(e) => updateNodeData(id, { imagesText: e.target.value })}
-          placeholder="输入图片 URL（每行一个；0=文生视频 / 1=首帧 / 2=首尾帧）"
-          className="nodrag min-h-16 resize-none text-xs"
-        />
-
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          multiple
-          className="hidden"
-          onChange={handleUpload}
-        />
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={uploading}
-          className="nodrag w-full"
-        >
-          {uploading ? '上传中…' : '上传图片'}
-        </Button>
-
-        <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
-          version
-          <Select value={version} onValueChange={(v) => updateNodeData(id, { version: v })}>
-            <SelectTrigger className="nodrag w-full text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {SEEDANCE_VERSION_OPTIONS.map((o) => (
-                <SelectItem key={o.value} value={o.value} className="text-xs">
-                  {o.label}
-                </SelectItem>
+        {/* 结果展示区 */}
+        <div className="nodrag overflow-hidden rounded-md border">
+          {running ? (
+            <Skeleton className="aspect-video w-full" />
+          ) : result.length > 0 ? (
+            <div className="flex flex-col gap-1">
+              {result.map((url) => (
+                <video key={url} src={url} controls className="w-full bg-muted" />
               ))}
-            </SelectContent>
-          </Select>
-        </label>
-
-        <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
-          mode
-          <Select value={mode} onValueChange={(v) => updateNodeData(id, { mode: v })}>
-            <SelectTrigger className="nodrag w-full text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {SEEDANCE_MODE_OPTIONS.map((o) => (
-                <SelectItem key={o.value} value={o.value} className="text-xs">
-                  {o.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </label>
-
-        <div className="grid grid-cols-2 gap-2">
-          <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
-            分辨率
-            <Select
-              value={resolution}
-              onValueChange={(v) => updateNodeData(id, { resolution: v })}
+            </div>
+          ) : (
+            <div
+              className="flex aspect-video w-full items-center justify-center bg-muted text-[11px] text-muted-foreground"
+              style={{
+                backgroundImage:
+                  'repeating-conic-gradient(var(--border) 0% 25%, transparent 0% 50%)',
+                backgroundSize: '16px 16px',
+              }}
             >
-              <SelectTrigger className="nodrag w-full text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {SEEDANCE_RESOLUTION_OPTIONS.map((r) => (
-                  <SelectItem key={r} value={r} className="text-xs">
-                    {r}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </label>
-
-          <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
-            时长（秒）
-            <Select
-              value={String(duration)}
-              onValueChange={(v) => updateNodeData(id, { duration: Number(v) })}
-            >
-              <SelectTrigger className="nodrag w-full text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {SEEDANCE_DURATION_OPTIONS.map((d) => (
-                  <SelectItem key={d} value={String(d)} className="text-xs">
-                    {d}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </label>
+              暂无结果
+            </div>
+          )}
         </div>
 
         <Button size="sm" onClick={handleRun} disabled={running} className="nodrag w-full">
           {running ? '生成中…' : '生成'}
         </Button>
-
-        {result.length > 0 && (
-          <div className="nodrag flex flex-col gap-2">
-            {result.map((url) => (
-              <video key={url} src={url} controls className="w-full rounded-md border" />
-            ))}
-          </div>
-        )}
 
         {data.error && (
           <p className="nodrag rounded-md bg-destructive/10 p-2 text-[11px] text-destructive">
@@ -236,6 +130,9 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
         )}
       </CardContent>
       <Handle type="source" position={Position.Right} className={`!size-3 ${meta.handle}`} />
+      <span className="pointer-events-none absolute left-full top-1/2 ml-2 -translate-y-1/2 whitespace-nowrap text-[11px] text-muted-foreground">
+        Video
+      </span>
     </Card>
   )
 }

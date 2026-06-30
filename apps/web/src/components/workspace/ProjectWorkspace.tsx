@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { Navigate, useParams } from 'react-router-dom'
 import { FlowCanvasWithProvider } from '@/components/canvas/FlowCanvas'
+import { NodeInspector } from '@/components/inspector/NodeInspector'
 import { ProjectSidebar } from '@/components/projects/ProjectSidebar'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { useFlowStore } from '@/store/useFlowStore'
@@ -28,6 +29,7 @@ export function ProjectWorkspace() {
       <SidebarInset className="relative min-h-0">
         <SidebarTrigger className="absolute left-2 top-2 z-20" />
         <FlowCanvasWithProvider />
+        <NodeInspector />
       </SidebarInset>
     </SidebarProvider>
   )

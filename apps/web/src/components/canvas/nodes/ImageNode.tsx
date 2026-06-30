@@ -1,29 +1,15 @@
 import { Handle, Position, type NodeProps } from '@xyflow/react'
-import { useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { Textarea } from '@/components/ui/textarea'
-import { generateImageApi, uploadImagesApi } from '@/lib/api'
+import { Skeleton } from '@/components/ui/skeleton'
+import { generateImageApi } from '@/lib/api'
 import {
   GEN_NODE_META,
-  IMAGE_N_OPTIONS,
-  IMAGE_QUALITY_OPTIONS,
   IMAGE_SIZE_DEFAULT,
-  IMAGE_SIZE_LABELS,
   IMAGE_SIZE_OPTIONS,
   NANO_ASPECT_DEFAULT,
-  NANO_ASPECT_OPTIONS,
   NANO_IMAGE_SIZE_DEFAULT,
-  NANO_IMAGE_SIZE_OPTIONS,
   NANO_VERSION_DEFAULT,
-  NANO_VERSION_OPTIONS,
   imageApiModel,
 } from '@/lib/nodeCatalog'
 import { type ImageNode as ImageNodeType } from '@/lib/types'
@@ -44,16 +30,17 @@ function collectUpstreamPrompt(nodeId: string): string {
     .join('\n\n')
 }
 
+/**
+ * 图像生成节点：卡片只展示生成结果（运行态 / 结果图 / 空占位）。
+ * 输入图、尺寸/质量/张数等参数都在右侧 Inspector（NodeInspector）里编辑。
+ */
 export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
   const updateNodeData = useFlowStore((s) => s.updateNodeData)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const [uploading, setUploading] = useState(false)
 
-  // 兼容旧数据：早期 image 节点只有 {label, model}，缺失字段给默认值，避免崩
+  // 兼容旧数据：早期 image 节点只有 {label, model}，缺失字段给默认值，避免崩。
+  // 以下派生供 handleRun 取参（参数 UI 已移到 Inspector，但运行时仍从 data 读取）。
   const imagesText = data.imagesText ?? ''
-  // 按模型区分两套可调项：nano-banana 走 version/aspect_ratio/image_size，其它走 size/quality/n
   const isNano = imageApiModel(data.model) === 'nano-banana'
-  // 旧数据可能存了已不再支持的尺寸（如 1024x1024），回退到默认受支持尺寸
   const storedSize = data.size ?? IMAGE_SIZE_DEFAULT
   const size = (IMAGE_SIZE_OPTIONS as readonly string[]).includes(storedSize)
     ? storedSize
@@ -99,30 +86,16 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
     }
   }
 
-  // 选择本地图片 → 上传 → 把返回 URL 按行追加进输入图文本框（保留已填内容）
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? [])
-    e.target.value = '' // 清空，便于重复选同名文件
-    if (files.length === 0) return
-    setUploading(true)
-    try {
-      const urls = await uploadImagesApi(files)
-      const next = [imagesText.trim(), ...urls].filter(Boolean).join('\n')
-      updateNodeData(id, { imagesText: next })
-    } catch (err) {
-      window.alert(`图片上传失败：${err instanceof Error ? err.message : String(err)}`)
-    } finally {
-      setUploading(false)
-    }
-  }
-
   return (
     <Card
-      className={`w-72 gap-2 py-3 shadow-sm transition-shadow ${
+      className={`relative w-72 gap-2 py-3 shadow-sm transition-shadow ${
         selected ? 'ring-2 ring-primary' : ''
       }`}
     >
       <Handle type="target" position={Position.Left} className={`!size-3 ${meta.handle}`} />
+      <span className="pointer-events-none absolute right-full top-1/2 mr-2 -translate-y-1/2 whitespace-nowrap text-[11px] text-muted-foreground">
+        Prompt*
+      </span>
       <CardHeader className="px-3">
         <CardTitle className="flex items-center gap-2 text-sm">
           <span className={`size-2 rounded-full ${meta.dot}`} />
@@ -131,164 +104,39 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
         </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-2 px-3">
-        <Textarea
-          value={imagesText}
-          onChange={(e) => updateNodeData(id, { imagesText: e.target.value })}
-          placeholder="输入图片 URL（每行一个，可留空做文生图）"
-          className="nodrag min-h-16 resize-none text-xs"
-        />
+        {/* 结果展示区 */}
+        <div className="nodrag overflow-hidden rounded-md border">
+          {running ? (
+            <Skeleton className="aspect-square w-full" />
+          ) : result.length > 0 ? (
+            <div className={`grid gap-1 ${result.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+              {result.map((url) => (
+                <a key={url} href={url} target="_blank" rel="noreferrer" className="block">
+                  <img
+                    src={url}
+                    alt="生成结果"
+                    className="max-h-64 w-full bg-muted object-contain"
+                  />
+                </a>
+              ))}
+            </div>
+          ) : (
+            <div
+              className="flex aspect-square w-full items-center justify-center bg-muted text-[11px] text-muted-foreground"
+              style={{
+                backgroundImage:
+                  'repeating-conic-gradient(var(--border) 0% 25%, transparent 0% 50%)',
+                backgroundSize: '16px 16px',
+              }}
+            >
+              暂无结果
+            </div>
+          )}
+        </div>
 
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          multiple
-          className="hidden"
-          onChange={handleUpload}
-        />
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={uploading}
-          className="nodrag w-full"
-        >
-          {uploading ? '上传中…' : '上传图片'}
-        </Button>
-
-        {isNano ? (
-          <div className="grid grid-cols-2 gap-2">
-            <label className="col-span-2 flex flex-col gap-1 text-[11px] text-muted-foreground">
-              version
-              <Select value={version} onValueChange={(v) => updateNodeData(id, { version: v })}>
-                <SelectTrigger className="nodrag w-full text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {NANO_VERSION_OPTIONS.map((o) => (
-                    <SelectItem key={o.value} value={o.value} className="text-xs">
-                      {o.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </label>
-
-            <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
-              宽高比
-              <Select
-                value={aspectRatio}
-                onValueChange={(v) => updateNodeData(id, { aspectRatio: v })}
-              >
-                <SelectTrigger className="nodrag w-full text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {NANO_ASPECT_OPTIONS.map((a) => (
-                    <SelectItem key={a} value={a} className="text-xs">
-                      {a}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </label>
-
-            <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
-              尺寸
-              <Select
-                value={imageSize}
-                onValueChange={(v) => updateNodeData(id, { imageSize: v })}
-              >
-                <SelectTrigger className="nodrag w-full text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {NANO_IMAGE_SIZE_OPTIONS.map((s) => (
-                    <SelectItem key={s} value={s} className="text-xs">
-                      {s}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </label>
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 gap-2">
-            <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
-              尺寸
-              <Select value={size} onValueChange={(v) => updateNodeData(id, { size: v })}>
-                <SelectTrigger className="nodrag w-full text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {IMAGE_SIZE_OPTIONS.map((s) => (
-                    <SelectItem key={s} value={s} className="text-xs">
-                      {IMAGE_SIZE_LABELS[s] ?? s}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </label>
-
-            <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
-              质量
-              <Select value={quality} onValueChange={(v) => updateNodeData(id, { quality: v })}>
-                <SelectTrigger className="nodrag w-full text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {IMAGE_QUALITY_OPTIONS.map((q) => (
-                    <SelectItem key={q} value={q} className="text-xs">
-                      {q}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </label>
-
-            <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
-              张数
-              <Select
-                value={String(n)}
-                onValueChange={(v) => updateNodeData(id, { n: Number(v) })}
-              >
-                <SelectTrigger className="nodrag w-full text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {IMAGE_N_OPTIONS.map((n) => (
-                    <SelectItem key={n} value={String(n)} className="text-xs">
-                      {n}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </label>
-          </div>
-        )}
-
-        <Button
-          size="sm"
-          onClick={handleRun}
-          disabled={running}
-          className="nodrag w-full"
-        >
+        <Button size="sm" onClick={handleRun} disabled={running} className="nodrag w-full">
           {running ? '生成中…' : '生成'}
         </Button>
-
-        {result.length > 0 && (
-          <div className="nodrag grid grid-cols-2 gap-2">
-            {result.map((url) => (
-              <a key={url} href={url} target="_blank" rel="noreferrer">
-                <img
-                  src={url}
-                  alt="生成结果"
-                  className="aspect-square w-full rounded-md border object-cover"
-                />
-              </a>
-            ))}
-          </div>
-        )}
 
         {/* 生成失败信息：固定在节点最下方 */}
         {data.error && (
@@ -298,6 +146,9 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
         )}
       </CardContent>
       <Handle type="source" position={Position.Right} className={`!size-3 ${meta.handle}`} />
+      <span className="pointer-events-none absolute left-full top-1/2 ml-2 -translate-y-1/2 whitespace-nowrap text-[11px] text-muted-foreground">
+        Image
+      </span>
     </Card>
   )
 }
