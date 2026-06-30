@@ -20,6 +20,10 @@ import {
   NANO_IMAGE_SIZE_DEFAULT,
   NANO_VERSION_DEFAULT,
   IMAGE_SIZE_DEFAULT,
+  SEEDANCE_DURATION_DEFAULT,
+  SEEDANCE_MODE_DEFAULT,
+  SEEDANCE_RESOLUTION_DEFAULT,
+  SEEDANCE_VERSION_DEFAULT,
 } from '@/lib/nodeCatalog'
 import { type FlowNode, type FlowNodeType, type Project } from '@/lib/types'
 
@@ -89,8 +93,24 @@ function createNode(type: FlowNodeType, count: number, model = ''): FlowNode {
       },
     }
   }
-  // 视频生成节点：占位待接入
-  return { id: newId('n_'), type: 'video', position, data: { label: '视频', model } }
+  // 视频生成节点（seedance）：带具名模型 + 可调选项默认值；运行状态/结果初始为空
+  return {
+    id: newId('n_'),
+    type: 'video',
+    position,
+    data: {
+      label: '视频',
+      model,
+      reqFrom: '',
+      imagesText: '',
+      version: SEEDANCE_VERSION_DEFAULT,
+      mode: SEEDANCE_MODE_DEFAULT,
+      resolution: SEEDANCE_RESOLUTION_DEFAULT,
+      duration: SEEDANCE_DURATION_DEFAULT,
+      running: false,
+      result: [],
+    },
+  }
 }
 
 // 画布高频编辑 → 防抖把激活项目整体 PUT 回后端
@@ -130,13 +150,17 @@ export const useFlowStore = create<FlowState>()((set) => {
       const projects: Project[] = dtos.map((d) => ({
         id: d.id,
         name: d.name,
-        // image 节点的 running/error 是瞬时态：运行中刷新会被防抖 PUT 存成 running:true，
-        // 载入时复位，避免节点永远卡在「生成中…」（result 保留，刷新后仍能看到上次出图）。
-        nodes: (d.nodes as FlowNode[]).map((node) =>
-          node.type === 'image'
-            ? { ...node, data: { ...node.data, running: false, error: undefined } }
-            : node,
-        ),
+        // image/video 节点的 running/error 是瞬时态：运行中刷新会被防抖 PUT 存成 running:true，
+        // 载入时复位，避免节点永远卡在「生成中…」（result 保留，刷新后仍能看到上次结果）。
+        nodes: (d.nodes as FlowNode[]).map((node) => {
+          if (node.type === 'image') {
+            return { ...node, data: { ...node.data, running: false, error: undefined } }
+          }
+          if (node.type === 'video') {
+            return { ...node, data: { ...node.data, running: false, error: undefined } }
+          }
+          return node
+        }),
         edges: d.edges as Edge[],
       }))
       set({ projects, loaded: true })

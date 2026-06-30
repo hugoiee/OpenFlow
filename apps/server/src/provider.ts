@@ -1,4 +1,4 @@
-import type { GenImageBody, ProviderEndpoint } from '@openflow/shared'
+import type { GenImageBody, GenVideoBody, ProviderEndpoint } from '@openflow/shared'
 
 // AIGC 图像生成接口（当前无鉴权）；地址/req_from 可用环境变量覆盖
 const AIGC_ENDPOINT = process.env.AIGC_ENDPOINT ?? 'http://10.75.202.161:8204/aigc'
@@ -172,6 +172,39 @@ export async function uploadImages(form: FormData): Promise<string[]> {
   if (urls.length === 0) {
     throw new Error(
       extractError(data) ?? `未从响应解析到上传 URL：${JSON.stringify(data).slice(0, 300)}`,
+    )
+  }
+  return urls
+}
+
+/** POST AIGC 接口生成视频（seedance）→ 视频 URL 列表。出错抛带可读信息的 Error。 */
+export async function runVideoGen(input: GenVideoBody): Promise<string[]> {
+  const res = await fetch(AIGC_ENDPOINT, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      req_from: input.reqFrom?.trim() || AIGC_REQ_FROM,
+      model_name: input.model,
+      version: input.version,
+      mode: input.mode,
+      prompt: input.prompt,
+      image_list: input.images,
+      video_list: [],
+      audio_list: [],
+      config: { resolution: input.resolution, duration: input.duration },
+    }),
+  })
+  const data = (await res.json().catch(() => null)) as unknown
+  if (!res.ok) {
+    throw new Error(
+      `HTTP ${res.status}：${extractError(data) ?? JSON.stringify(data).slice(0, 300)}`,
+    )
+  }
+  // collectUrls 抓任意 http(s) URL，对视频 mp4 同样适用
+  const urls = extractImageUrls(data)
+  if (urls.length === 0) {
+    throw new Error(
+      extractError(data) ?? `未从响应解析到视频 URL：${JSON.stringify(data).slice(0, 300)}`,
     )
   }
   return urls

@@ -1,6 +1,7 @@
 import type {
   FetchModelsBody,
   GenImageBody,
+  GenVideoBody,
   ProjectDTO,
   RunModelBody,
   SaveSettingsBody,
@@ -91,6 +92,15 @@ export async function generateImageApi(body: GenImageBody): Promise<string[]> {
     body: JSON.stringify(body),
   })
   return images
+}
+
+// ---- 视频生成 ----
+export async function generateVideoApi(body: GenVideoBody): Promise<string[]> {
+  const { videos } = await request<{ videos: string[] }>('/video', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+  return videos
 }
 
 // ---- 图片上传 ----

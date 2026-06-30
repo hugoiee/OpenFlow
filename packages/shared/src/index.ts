@@ -106,3 +106,23 @@ export type GenImageBody = {
   /** config.image_size，1K / 2K / 4K。 */
   imageSize?: string
 }
+
+/** POST /api/video 视频生成请求体（seedance，经后端代理到 AIGC /aigc 接口）。 */
+export type GenVideoBody = {
+  /** 调用方署名（req_from），为空时后端回退默认值。 */
+  reqFrom: string
+  /** model_name，如 seedance。 */
+  model: string
+  /** version：seedance-1.5-pro / seedance-2.0 等。 */
+  version: string
+  /** mode：first_last_frame / reference_image。 */
+  mode: string
+  /** 生成指令。 */
+  prompt: string
+  /** 输入图 URL 列表（0=t2v / 1=首帧 / 2=首尾帧）。 */
+  images: string[]
+  /** config.resolution，如 720p。 */
+  resolution: string
+  /** config.duration，秒。 */
+  duration: number
+}

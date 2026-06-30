@@ -6,6 +6,7 @@ import { settings } from './routes/settings'
 import { model } from './routes/model'
 import { image } from './routes/image'
 import { upload } from './routes/upload'
+import { video } from './routes/video'
 
 const app = new Hono()
 
@@ -15,6 +16,7 @@ app.route('/api/settings', settings)
 app.route('/api', model)
 app.route('/api', image)
 app.route('/api', upload)
+app.route('/api', video)
 
 const port = Number(process.env.PORT ?? 8787)
 serve({ fetch: app.fetch, port })

@@ -9,10 +9,29 @@ export type PromptNodeData = {
   text: string
 }
 
-/** 生成节点的基础数据（视频节点用，占位待接入）。model 为具名模型预置。 */
+/** 视频生成节点（seedance）的数据：具名模型 + 可调选项 + 运行状态与结果。 */
 export type GenerationNodeData = {
   label: string
+  /** 具名模型展示名（如 Seedance）。 */
   model: string
+  /** 调用方署名（req_from），由用户填写。 */
+  reqFrom?: string
+  /** 输入图片 URL，每行一个（0=文生视频 / 1=首帧 / 2=首尾帧）。 */
+  imagesText?: string
+  /** version：seedance-1.5-pro 等。 */
+  version?: string
+  /** mode：first_last_frame / reference_image。 */
+  mode?: string
+  /** config.resolution，如 720p。 */
+  resolution?: string
+  /** config.duration，秒。 */
+  duration?: number
+  /** 是否正在生成。 */
+  running?: boolean
+  /** 生成结果的视频 URL 列表，未运行时为空。 */
+  result?: string[]
+  /** 上次运行的错误信息（成功则清空）。 */
+  error?: string
 }
 
 /** 图像生成节点的数据：具名模型 + 可调选项 + 运行状态与结果。 */

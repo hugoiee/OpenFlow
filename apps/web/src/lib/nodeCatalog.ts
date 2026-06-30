@@ -5,7 +5,17 @@
 export const IMAGE_MODELS = ['Image 2', 'Nano Banana'] as const
 
 /** 视频类可选的具名模型（固定预置）。 */
-export const VIDEO_MODELS = ['Seedance 2.0'] as const
+export const VIDEO_MODELS = ['Seedance'] as const
+
+/** 视频具名模型（展示名）→ AIGC 接口的 model_name。 */
+export const VIDEO_API_MODEL: Record<string, string> = {
+  Seedance: 'seedance',
+}
+
+/** 取某视频模型对应的 AIGC model_name（无映射时回退展示名）。 */
+export function videoApiModel(model: string): string {
+  return VIDEO_API_MODEL[model] ?? model
+}
 
 /**
  * 图像具名模型（展示名）→ AIGC 接口的 model_name。
@@ -74,6 +84,33 @@ export const NANO_ASPECT_DEFAULT = '16:9'
 /** Nano Banana config.image_size 选项。 */
 export const NANO_IMAGE_SIZE_OPTIONS = ['1K', '2K', '4K'] as const
 export const NANO_IMAGE_SIZE_DEFAULT = '2K'
+
+// ---- Seedance(seedance) 视频专用选项 ----
+
+/** Seedance 的 version 选项。 */
+export const SEEDANCE_VERSION_OPTIONS = [
+  { value: 'nami-seedance-2.0', label: 'nami-seedance-2.0（akool，风控低）' },
+  { value: 'seedance-2.0', label: 'seedance-2.0' },
+  { value: 'seedance-1.5-pro', label: 'seedance-1.5-pro' },
+  { value: 'seedance-1.0-pro', label: 'seedance-1.0-pro' },
+  { value: 'seedance-1.0-lite', label: 'seedance-1.0-lite' },
+] as const
+export const SEEDANCE_VERSION_DEFAULT = 'seedance-1.5-pro'
+
+/** Seedance 的 mode 选项。 */
+export const SEEDANCE_MODE_OPTIONS = [
+  { value: 'first_last_frame', label: '首/尾帧（0=文生视频 / 1=首帧 / 2=首尾帧）' },
+  { value: 'reference_image', label: '参考图生成' },
+] as const
+export const SEEDANCE_MODE_DEFAULT = 'first_last_frame'
+
+/** Seedance config.resolution 选项。 */
+export const SEEDANCE_RESOLUTION_OPTIONS = ['480p', '720p', '1080p'] as const
+export const SEEDANCE_RESOLUTION_DEFAULT = '720p'
+
+/** Seedance config.duration（秒）选项。 */
+export const SEEDANCE_DURATION_OPTIONS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] as const
+export const SEEDANCE_DURATION_DEFAULT = 6
 
 /** 生成类节点（image/video）的展示元信息。 */
 export const GEN_NODE_META: Record<
