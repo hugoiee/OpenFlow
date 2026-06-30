@@ -35,14 +35,14 @@ packages/shared/src/index.ts   ProviderId/PROVIDER_PRESETS/ProviderConfig(含 ke
 apps/server/src/
   index.ts                     Hono 起服务(8787)，挂 /api 路由
   db.ts                        better-sqlite3 建库建表（projects / settings），库文件 apps/server/data/openflow.db（gitignore）
-  settings-store.ts            读写 settings 单行（getActiveConfig 含 key）
-  provider.ts                  fetchModels()/runChat()：OpenAI 兼容 /models 与 /chat/completions（非流式）；runImageGen()/runVideoGen()：POST AIGC 接口生成图像/视频（按 model 分支构造 payload）+ 从任意响应稳健解析 URL；uploadImages()：转发 multipart 到上传接口
+  settings-store.ts            读写 settings 单行（含全局 default_req_from；getActiveConfig 含 key）
+  provider.ts                  fetchModels()/runChat()：OpenAI 兼容 /models 与 /chat/completions（非流式）；runImageGen()/runVideoGen()：POST AIGC 接口生成图像/视频（按 model 分支构造 payload）+ 从任意响应稳健解析 URL；uploadImages()：转发 multipart 到上传接口；resolveReqFrom()：把全局署名解析成最终 req_from（空回退 env AIGC_REQ_FROM，再回退 'openflow'）
   routes/projects.ts           /api/projects CRUD（nodes/edges 以 JSON 存）
-  routes/settings.ts           GET /api/settings(不回 key,只回 hasKey) / PUT(写入,key 留空则保留)
+  routes/settings.ts           GET /api/settings(不回 key,只回 hasKey；含全局 defaultReqFrom) / PUT(写入,key 留空则保留；可一并更新 defaultReqFrom)
   routes/model.ts              POST /api/models(代理拉模型) / POST /api/run(用激活供应商 key 代理聊天)
-  routes/image.ts              POST /api/aigc(图像生成代理：Image 2/Nano Banana，按 model 补 version/config 转发 AIGC；地址用 env AIGC_ENDPOINT 覆盖)
-  routes/video.ts              POST /api/video(视频生成代理：seedance，补 version/mode/config 转发 AIGC /aigc)
-  routes/upload.ts             POST /api/upload(图片上传代理：转发 multipart 到上传接口，地址用 env UPLOAD_ENDPOINT 覆盖)
+  routes/image.ts              POST /api/aigc(图像生成代理：Image 2/Nano Banana，按 model 补 version/config 转发 AIGC；地址用 env AIGC_ENDPOINT 覆盖；req_from 从全局设置注入)
+  routes/video.ts              POST /api/video(视频生成代理：seedance，补 version/mode/config 转发 AIGC /aigc；req_from 从全局设置注入)
+  routes/upload.ts             POST /api/upload(图片上传代理：转发 multipart 到上传接口，地址用 env UPLOAD_ENDPOINT 覆盖；req_from 从全局设置注入)
 apps/web/src/
   main.tsx                     入口：先 migrateLocalStorage() 迁移旧数据，再 load store，最后渲染（HashRouter）
   App.tsx                      路由：/ → 首页，/project/:id → 工作区，* → 回首页
@@ -55,15 +55,15 @@ apps/web/src/
   lib/types.ts                 React Flow 强类型节点（FlowNode = Prompt/Image/Video；Project）；供应商类型从 @openflow/shared 再导出
   lib/nodeCatalog.ts           图像/视频预置模型 + 模型→AIGC model_name 映射(IMAGE_API_MODEL/imageApiModel、VIDEO_API_MODEL/videoApiModel) + 各模型可调项选项(图像尺寸/质量/张数、Nano version/宽高比/尺寸、Seedance version/mode/分辨率/时长) + 配色文案（侧栏与节点共用）
   components/ui/               shadcn/ui vendored（不参与 lint/format，勿手改）
-  components/settings/SettingsDialog.tsx 供应商面板（选商→key/BaseURL→获取模型→选模型→保存；key 写入不回显，用 hasKey 占位）
+  components/settings/SettingsDialog.tsx 供应商面板（选商→key/BaseURL→获取模型→选模型→保存；key 写入不回显，用 hasKey 占位）+ 全局 req_from（署名）输入
   components/home/             HomePage（宫格/列表 + 新建）、ProjectCard
   components/workspace/ProjectWorkspace.tsx  Sidebar + 画布；未 loaded 前不跳首页
   components/projects/ProjectSidebar.tsx     工作区 Sidebar：返回首页 + 节点列表（按文本/图像/视频三类分组，点按添加对应节点并预设模型；不再显示项目列表）
   components/canvas/
     FlowCanvas.tsx             React Flow 封装；连线默认 smoothstep（横平竖直）
     nodes/PromptNode.tsx       Prompt 节点（Card + Textarea，source Handle 在右）
-    nodes/ImageNode.tsx        图像生成节点：req_from/输入图(可上传)/按模型(Image 2 走尺寸/质量/张数；Nano Banana 走 version/宽高比/尺寸)；运行收集上游 Prompt 文本→generateImageApi→展示结果图；Handle 左进右出
-    nodes/SeedanceNode.tsx     视频生成节点（seedance）：req_from/输入图(可上传)/version/mode/分辨率/时长；运行→generateVideoApi→<video> 展示；Handle 左进右出
+    nodes/ImageNode.tsx        图像生成节点：输入图(可上传)/按模型(Image 2 走尺寸/质量/张数；Nano Banana 走 version/宽高比/尺寸)；运行收集上游 Prompt 文本→generateImageApi→展示结果图；Handle 左进右出（req_from 署名走全局设置，节点不再单设）
+    nodes/SeedanceNode.tsx     视频生成节点（seedance）：输入图(可上传)/version/mode/分辨率/时长；运行→generateVideoApi→<video> 展示；Handle 左进右出（req_from 署名走全局设置，节点不再单设）
     nodes/index.ts             nodeTypes 注册表（prompt → PromptNode / image → ImageNode / video → SeedanceNode）
 ```
 
@@ -71,7 +71,7 @@ apps/web/src/
 
 - **框架 / 构建**：React 19 + Vite + TypeScript（strict）；pnpm workspaces。
 - **后端**：Hono + `@hono/node-server`，`tsx watch` 跑（免构建）；端口 8787。Vite dev 代理 `/api` → 8787（`apps/web/vite.config.ts`）。
-- **数据库**：SQLite（`better-sqlite3`，单文件 `apps/server/data/openflow.db`）。`projects` 表 nodes/edges 存 JSON；`settings` 单行存 `activeProviderId` + `configs`(含各供应商 key)。原生模块装不上时回退 Node 内置 `node:sqlite`。
+- **数据库**：SQLite（`better-sqlite3`，单文件 `apps/server/data/openflow.db`）。`projects` 表 nodes/edges 存 JSON；`settings` 单行存 `activeProviderId` + `configs`(含各供应商 key) + `default_req_from`(全局署名)。原生模块装不上时回退 Node 内置 `node:sqlite`。
 - **数据流**：前端无 localStorage 持久化（仅 homeView + 迁移标记用 localStorage）。项目数据走 `/api/projects`；画布高频编辑防抖 PUT。设置走 `/api/settings`，**key 只存后端、GET 不回传**。
 - **模型调用**：经后端 `/api/run`、`/api/models` 代理；后端用激活供应商存储 key 调 OpenAI 兼容 `/chat/completions`、`/models`（非流式）。仅支持 OpenAI 兼容协议（Anthropic 原生不支持，走「自定义/中转」）。前端不再直连供应商，**无 CORS、key 不暴露**。
 - **路由**：`react-router-dom` `HashRouter`。

@@ -2,7 +2,6 @@ import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
@@ -52,7 +51,6 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
 
   // 兼容旧数据：早期 image 节点只有 {label, model}，缺失字段给默认值，避免崩
   const imagesText = data.imagesText ?? ''
-  const reqFrom = data.reqFrom ?? ''
   // 按模型区分两套可调项：nano-banana 走 version/aspect_ratio/image_size，其它走 size/quality/n
   const isNano = imageApiModel(data.model) === 'nano-banana'
   // 旧数据可能存了已不再支持的尺寸（如 1024x1024），回退到默认受支持尺寸
@@ -87,7 +85,6 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
     updateNodeData(id, { running: true, error: undefined, result: [] })
     try {
       const urls = await generateImageApi({
-        reqFrom,
         model: imageApiModel(data.model),
         prompt,
         images,
@@ -109,7 +106,7 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
     if (files.length === 0) return
     setUploading(true)
     try {
-      const urls = await uploadImagesApi(files, reqFrom.trim() || 'openflow')
+      const urls = await uploadImagesApi(files)
       const next = [imagesText.trim(), ...urls].filter(Boolean).join('\n')
       updateNodeData(id, { imagesText: next })
     } catch (err) {
@@ -134,16 +131,6 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
         </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-2 px-3">
-        <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
-          req_from（署名）
-          <Input
-            value={reqFrom}
-            onChange={(e) => updateNodeData(id, { reqFrom: e.target.value })}
-            placeholder="改自己名字哦，不要冒用他/她人。"
-            className="nodrag h-8 text-xs"
-          />
-        </label>
-
         <Textarea
           value={imagesText}
           onChange={(e) => updateNodeData(id, { imagesText: e.target.value })}

@@ -80,7 +80,6 @@ function createNode(type: FlowNodeType, count: number, model = ''): FlowNode {
       data: {
         label: '图像',
         model,
-        reqFrom: '',
         imagesText: '',
         size: IMAGE_SIZE_DEFAULT,
         n: 1,
@@ -101,7 +100,6 @@ function createNode(type: FlowNodeType, count: number, model = ''): FlowNode {
     data: {
       label: '视频',
       model,
-      reqFrom: '',
       imagesText: '',
       version: SEEDANCE_VERSION_DEFAULT,
       mode: SEEDANCE_MODE_DEFAULT,

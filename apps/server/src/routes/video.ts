@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { GenVideoBody } from '@openflow/shared'
 import { runVideoGen } from '../provider'
+import { readSettings } from '../settings-store'
 
 export const video = new Hono()
 
@@ -12,7 +13,8 @@ video.post('/video', async (c) => {
   }
   try {
     const videos = await runVideoGen({
-      reqFrom: typeof body.reqFrom === 'string' ? body.reqFrom : '',
+      // req_from 取全局设置（前端不再传）；为空时由 provider 回退默认值
+      reqFrom: readSettings().defaultReqFrom,
       model: body.model,
       version: typeof body.version === 'string' ? body.version : '',
       mode: typeof body.mode === 'string' ? body.mode : '',

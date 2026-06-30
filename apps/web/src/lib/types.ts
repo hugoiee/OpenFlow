@@ -14,8 +14,6 @@ export type GenerationNodeData = {
   label: string
   /** 具名模型展示名（如 Seedance）。 */
   model: string
-  /** 调用方署名（req_from），由用户填写。 */
-  reqFrom?: string
   /** 输入图片 URL，每行一个（0=文生视频 / 1=首帧 / 2=首尾帧）。 */
   imagesText?: string
   /** version：seedance-1.5-pro 等。 */
@@ -39,8 +37,6 @@ export type ImageNodeData = {
   label: string
   /** 具名模型展示名（如 Image 2）。 */
   model: string
-  /** 调用方署名（req_from），由用户填写。 */
-  reqFrom: string
   /** 输入图片 URL，每行一个（纯文生图时为空）。 */
   imagesText: string
   /** 出图尺寸，如 1024x1024 / auto。 */

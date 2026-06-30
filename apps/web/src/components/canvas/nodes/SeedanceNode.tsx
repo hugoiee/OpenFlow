@@ -2,7 +2,6 @@ import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
@@ -49,7 +48,6 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
   const [uploading, setUploading] = useState(false)
 
   // 兼容旧 video 节点（早期只有 {label, model}）：缺失字段给默认值
-  const reqFrom = data.reqFrom ?? ''
   const imagesText = data.imagesText ?? ''
   const version = data.version ?? SEEDANCE_VERSION_DEFAULT
   const mode = data.mode ?? SEEDANCE_MODE_DEFAULT
@@ -76,7 +74,6 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
     updateNodeData(id, { running: true, error: undefined, result: [] })
     try {
       const urls = await generateVideoApi({
-        reqFrom,
         model: videoApiModel(data.model),
         version,
         mode,
@@ -98,7 +95,7 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
     if (files.length === 0) return
     setUploading(true)
     try {
-      const urls = await uploadImagesApi(files, reqFrom.trim() || 'openflow')
+      const urls = await uploadImagesApi(files)
       const next = [imagesText.trim(), ...urls].filter(Boolean).join('\n')
       updateNodeData(id, { imagesText: next })
     } catch (err) {
@@ -123,16 +120,6 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
         </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-2 px-3">
-        <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
-          req_from（署名）
-          <Input
-            value={reqFrom}
-            onChange={(e) => updateNodeData(id, { reqFrom: e.target.value })}
-            placeholder="改自己名字哦，不要冒用他/她人。"
-            className="nodrag h-8 text-xs"
-          />
-        </label>
-
         <Textarea
           value={imagesText}
           onChange={(e) => updateNodeData(id, { imagesText: e.target.value })}

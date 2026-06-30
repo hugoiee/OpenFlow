@@ -105,11 +105,10 @@ export async function generateVideoApi(body: GenVideoBody): Promise<string[]> {
 
 // ---- 图片上传 ----
 // 走 multipart，不能复用 request()（它写死了 application/json）；让浏览器自带 boundary。
-// 上传接口要求带用户标识 req_from（与图像生成署名一致）。
-export async function uploadImagesApi(files: File[], reqFrom: string): Promise<string[]> {
+// req_from（用户标识）由后端从全局设置注入，前端不再传。
+export async function uploadImagesApi(files: File[]): Promise<string[]> {
   const form = new FormData()
   files.forEach((f) => form.append('files', f))
-  form.append('req_from', reqFrom)
   let res: Response
   try {
     res = await fetch('/api/upload', { method: 'POST', body: form })

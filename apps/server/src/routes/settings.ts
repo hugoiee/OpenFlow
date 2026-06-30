@@ -9,9 +9,9 @@ import { readSettings, writeSettings } from '../settings-store'
 
 export const settings = new Hono()
 
-// 读取：不回传 key，只回 hasKey
+// 读取：不回传 key，只回 hasKey；附全局 req_from 署名
 settings.get('/', (c) => {
-  const { activeProviderId, configs } = readSettings()
+  const { activeProviderId, configs, defaultReqFrom } = readSettings()
   const publicConfigs: SettingsDTO['configs'] = {}
   for (const [id, cfg] of Object.entries(configs)) {
     if (!cfg) continue
@@ -22,15 +22,20 @@ settings.get('/', (c) => {
       hasKey: Boolean(cfg.apiKey),
     } satisfies ProviderConfigPublic
   }
-  return c.json({ activeProviderId, configs: publicConfigs } satisfies SettingsDTO)
+  return c.json({
+    activeProviderId,
+    configs: publicConfigs,
+    defaultReqFrom,
+  } satisfies SettingsDTO)
 })
 
-// 写入某供应商配置并设为激活；apiKey 省略/为空时保留原有 key
+// 写入某供应商配置并设为激活；apiKey 省略/为空时保留原有 key；defaultReqFrom 提供时一并更新
 settings.put('/', async (c) => {
   const body = await c.req.json<SaveSettingsBody>().catch(() => null)
   if (!body?.providerId) return c.json({ error: '缺少 providerId' }, 400)
 
-  const { configs } = readSettings()
+  const current = readSettings()
+  const configs = current.configs
   const prev = configs[body.providerId]
   configs[body.providerId] = {
     apiKey: body.apiKey?.trim() ? body.apiKey.trim() : (prev?.apiKey ?? ''),
@@ -38,6 +43,9 @@ settings.put('/', async (c) => {
     selectedModel: body.selectedModel,
     models: body.models,
   }
-  writeSettings(body.providerId, configs)
+  // defaultReqFrom 未提供时保留原值（全局署名，独立于供应商）
+  const defaultReqFrom =
+    typeof body.defaultReqFrom === 'string' ? body.defaultReqFrom.trim() : current.defaultReqFrom
+  writeSettings(body.providerId, configs, defaultReqFrom)
   return c.json({ ok: true })
 })

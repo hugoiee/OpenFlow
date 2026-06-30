@@ -3,6 +3,15 @@ import type { GenImageBody, GenVideoBody, ProviderEndpoint } from '@openflow/sha
 // AIGC 图像生成接口（当前无鉴权）；地址/req_from 可用环境变量覆盖
 const AIGC_ENDPOINT = process.env.AIGC_ENDPOINT ?? 'http://10.75.202.161:8204/aigc'
 const AIGC_REQ_FROM = process.env.AIGC_REQ_FROM ?? 'openflow'
+
+// 生成请求的内部输入：在请求体基础上补全局署名 req_from（由路由从设置注入）
+type ImageGenInput = GenImageBody & { reqFrom: string }
+type VideoGenInput = GenVideoBody & { reqFrom: string }
+
+/** 把（可能为空的）全局署名解析成最终 req_from：空则回退环境变量，再回退 'openflow'。 */
+export function resolveReqFrom(value: string | undefined): string {
+  return value?.trim() || AIGC_REQ_FROM
+}
 // 图片上传接口（当前无鉴权）；地址可用环境变量覆盖
 const UPLOAD_ENDPOINT =
   process.env.UPLOAD_ENDPOINT ?? 'http://10.75.202.161:8511/api/upload'
@@ -121,7 +130,7 @@ function extractError(data: unknown): string | undefined {
 }
 
 /** POST AIGC 接口生成图像 → 图片 URL 列表。出错抛带可读信息的 Error。 */
-export async function runImageGen(input: GenImageBody): Promise<string[]> {
+export async function runImageGen(input: ImageGenInput): Promise<string[]> {
   // 公共字段两套模型一致；version 与 config 按 model_name 分支构造，互不污染
   const isNano = input.model === 'nano-banana'
   const version = isNano
@@ -135,7 +144,7 @@ export async function runImageGen(input: GenImageBody): Promise<string[]> {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      req_from: input.reqFrom?.trim() || AIGC_REQ_FROM,
+      req_from: resolveReqFrom(input.reqFrom),
       model_name: input.model,
       version,
       prompt: input.prompt,
@@ -178,12 +187,12 @@ export async function uploadImages(form: FormData): Promise<string[]> {
 }
 
 /** POST AIGC 接口生成视频（seedance）→ 视频 URL 列表。出错抛带可读信息的 Error。 */
-export async function runVideoGen(input: GenVideoBody): Promise<string[]> {
+export async function runVideoGen(input: VideoGenInput): Promise<string[]> {
   const res = await fetch(AIGC_ENDPOINT, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      req_from: input.reqFrom?.trim() || AIGC_REQ_FROM,
+      req_from: resolveReqFrom(input.reqFrom),
       model_name: input.model,
       version: input.version,
       mode: input.mode,

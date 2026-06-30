@@ -56,6 +56,8 @@ export type ProjectDTO = {
 export type SettingsDTO = {
   activeProviderId: ProviderId
   configs: Partial<Record<ProviderId, ProviderConfigPublic>>
+  /** 全局调用方署名（req_from）；为空时后端回退默认值。 */
+  defaultReqFrom: string
 }
 
 /** PUT /api/settings 请求体：写入某供应商配置（含 key）+ 设为激活。 */
@@ -65,6 +67,8 @@ export type SaveSettingsBody = {
   baseURL: string
   selectedModel: string
   models: string[]
+  /** 全局调用方署名（req_from）；提供时一并更新（独立于供应商）。 */
+  defaultReqFrom?: string
 }
 
 /** POST /api/models 请求体（用某供应商已存或临时传入的凭据拉模型）。 */
@@ -81,10 +85,8 @@ export type RunModelBody = {
   prompt: string
 }
 
-/** POST /api/aigc 请求体（图像生成，经后端代理到 AIGC 接口）。 */
+/** POST /api/aigc 请求体（图像生成，经后端代理到 AIGC 接口）。req_from 由后端从全局设置注入。 */
 export type GenImageBody = {
-  /** 调用方署名（req_from），由前端填写；为空时后端回退默认值。 */
-  reqFrom: string
   /** AIGC 接口的 model_name（如 gpt-image-2 / nano-banana）。 */
   model: string
   /** 生成 / 编辑指令。 */
@@ -107,10 +109,8 @@ export type GenImageBody = {
   imageSize?: string
 }
 
-/** POST /api/video 视频生成请求体（seedance，经后端代理到 AIGC /aigc 接口）。 */
+/** POST /api/video 视频生成请求体（seedance，经后端代理到 AIGC /aigc 接口）。req_from 由后端从全局设置注入。 */
 export type GenVideoBody = {
-  /** 调用方署名（req_from），为空时后端回退默认值。 */
-  reqFrom: string
   /** model_name，如 seedance。 */
   model: string
   /** version：seedance-1.5-pro / seedance-2.0 等。 */

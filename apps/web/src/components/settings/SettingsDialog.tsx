@@ -29,6 +29,7 @@ function presetBaseURL(id: ProviderId): string {
 export function SettingsDialog({ children }: { children: React.ReactNode }) {
   const activeProviderId = useSettingsStore((s) => s.activeProviderId)
   const configs = useSettingsStore((s) => s.configs)
+  const defaultReqFrom = useSettingsStore((s) => s.defaultReqFrom)
   const saveProvider = useSettingsStore((s) => s.saveProvider)
 
   const [open, setOpen] = useState(false)
@@ -39,6 +40,8 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
   const [baseURL, setBaseURL] = useState('')
   const [selectedModel, setSelectedModel] = useState('')
   const [models, setModels] = useState<string[]>([])
+  // 全局调用方署名（req_from），与具体供应商无关
+  const [reqFrom, setReqFrom] = useState('')
   const [fetching, setFetching] = useState(false)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -56,7 +59,10 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
   }
 
   const handleOpenChange = (next: boolean) => {
-    if (next) loadProvider(activeProviderId)
+    if (next) {
+      loadProvider(activeProviderId)
+      setReqFrom(defaultReqFrom)
+    }
     setOpen(next)
   }
 
@@ -89,6 +95,7 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
         baseURL: baseURL.trim(),
         selectedModel,
         models,
+        defaultReqFrom: reqFrom.trim(),
       })
       setOpen(false)
     } catch (e) {
@@ -177,6 +184,19 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
               </SelectContent>
             </Select>
             {error && <p className="text-xs text-destructive">{error}</p>}
+          </div>
+
+          <div className="flex flex-col gap-1.5 border-t pt-4">
+            <Label htmlFor="reqFrom">req_from（全局署名）</Label>
+            <Input
+              id="reqFrom"
+              value={reqFrom}
+              onChange={(e) => setReqFrom(e.target.value)}
+              placeholder="改自己名字哦，不要冒用他/她人。"
+            />
+            <p className="text-xs text-muted-foreground">
+              图像 / 视频生成与图片上传统一使用此署名；留空则后端用默认值。
+            </p>
           </div>
         </div>
 

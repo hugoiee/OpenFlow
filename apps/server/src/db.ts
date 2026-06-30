@@ -23,6 +23,13 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS settings (
     id TEXT PRIMARY KEY,
     active_provider_id TEXT NOT NULL DEFAULT 'openai',
-    configs TEXT NOT NULL DEFAULT '{}'
+    configs TEXT NOT NULL DEFAULT '{}',
+    default_req_from TEXT NOT NULL DEFAULT ''
   );
 `)
+
+// 旧库迁移：settings 表补 default_req_from 列（全局署名 req_from）
+const settingsCols = db.prepare('PRAGMA table_info(settings)').all() as { name: string }[]
+if (!settingsCols.some((col) => col.name === 'default_req_from')) {
+  db.exec("ALTER TABLE settings ADD COLUMN default_req_from TEXT NOT NULL DEFAULT ''")
+}
