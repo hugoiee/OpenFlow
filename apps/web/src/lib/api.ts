@@ -92,3 +92,24 @@ export async function generateImageApi(body: GenImageBody): Promise<string[]> {
   })
   return images
 }
+
+// ---- 图片上传 ----
+// 走 multipart，不能复用 request()（它写死了 application/json）；让浏览器自带 boundary。
+// 上传接口要求带用户标识 req_from（与图像生成署名一致）。
+export async function uploadImagesApi(files: File[], reqFrom: string): Promise<string[]> {
+  const form = new FormData()
+  files.forEach((f) => form.append('files', f))
+  form.append('req_from', reqFrom)
+  let res: Response
+  try {
+    res = await fetch('/api/upload', { method: 'POST', body: form })
+  } catch (e) {
+    throw new Error(`后端不可用：${e instanceof Error ? e.message : String(e)}`, { cause: e })
+  }
+  const data = (await res.json().catch(() => null)) as {
+    urls?: string[]
+    error?: string
+  } | null
+  if (!res.ok) throw new Error(data?.error ?? `HTTP ${res.status}`)
+  return data?.urls ?? []
+}

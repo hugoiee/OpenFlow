@@ -3,6 +3,9 @@ import type { GenImageBody, ProviderEndpoint } from '@openflow/shared'
 // AIGC 图像生成接口（当前无鉴权）；地址/req_from 可用环境变量覆盖
 const AIGC_ENDPOINT = process.env.AIGC_ENDPOINT ?? 'http://10.75.202.161:8204/aigc'
 const AIGC_REQ_FROM = process.env.AIGC_REQ_FROM ?? 'openflow'
+// 图片上传接口（当前无鉴权）；地址可用环境变量覆盖
+const UPLOAD_ENDPOINT =
+  process.env.UPLOAD_ENDPOINT ?? 'http://10.75.202.161:8511/api/upload'
 
 type ChatCompletionResponse = {
   choices?: { message?: { content?: string } }[]
@@ -85,7 +88,16 @@ function collectUrls(v: unknown): string[] {
 function extractImageUrls(data: unknown): string[] {
   if (data && typeof data === 'object') {
     const o = data as Record<string, unknown>
-    for (const key of ['data', 'images', 'image_urls', 'output', 'result', 'urls', 'image_list']) {
+    for (const key of [
+      'data',
+      'images',
+      'image_urls',
+      'output',
+      'result',
+      'urls',
+      'files', // 上传接口的输出键（files[].url）
+      'image_list',
+    ]) {
       const urls = collectUrls(o[key])
       if (urls.length) return urls
     }
@@ -140,6 +152,26 @@ export async function runImageGen(input: GenImageBody): Promise<string[]> {
   if (urls.length === 0) {
     throw new Error(
       extractError(data) ?? `未从响应解析到图片 URL：${JSON.stringify(data).slice(0, 300)}`,
+    )
+  }
+  return urls
+}
+
+/** 转发 multipart 文件到上传接口 → 图片 URL 列表。出错抛带可读信息的 Error。 */
+export async function uploadImages(form: FormData): Promise<string[]> {
+  // 不手动设 Content-Type，让 fetch 自带 multipart boundary
+  const res = await fetch(UPLOAD_ENDPOINT, { method: 'POST', body: form })
+  const data = (await res.json().catch(() => null)) as unknown
+  if (!res.ok) {
+    throw new Error(
+      `HTTP ${res.status}：${extractError(data) ?? JSON.stringify(data).slice(0, 300)}`,
+    )
+  }
+  // 优先取已知结构 files[].url，取不到再全量深挖兜底
+  const urls = extractImageUrls(data)
+  if (urls.length === 0) {
+    throw new Error(
+      extractError(data) ?? `未从响应解析到上传 URL：${JSON.stringify(data).slice(0, 300)}`,
     )
   }
   return urls

@@ -1,4 +1,5 @@
 import { Handle, Position, type NodeProps } from '@xyflow/react'
+import { useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -10,7 +11,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { generateImageApi } from '@/lib/api'
+import { generateImageApi, uploadImagesApi } from '@/lib/api'
 import {
   GEN_NODE_META,
   IMAGE_N_OPTIONS,
@@ -46,6 +47,8 @@ function collectUpstreamPrompt(nodeId: string): string {
 
 export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
   const updateNodeData = useFlowStore((s) => s.updateNodeData)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false)
 
   // 兼容旧数据：早期 image 节点只有 {label, model}，缺失字段给默认值，避免崩
   const imagesText = data.imagesText ?? ''
@@ -99,6 +102,23 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
     }
   }
 
+  // 选择本地图片 → 上传 → 把返回 URL 按行追加进输入图文本框（保留已填内容）
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? [])
+    e.target.value = '' // 清空，便于重复选同名文件
+    if (files.length === 0) return
+    setUploading(true)
+    try {
+      const urls = await uploadImagesApi(files, reqFrom.trim() || 'openflow')
+      const next = [imagesText.trim(), ...urls].filter(Boolean).join('\n')
+      updateNodeData(id, { imagesText: next })
+    } catch (err) {
+      window.alert(`图片上传失败：${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setUploading(false)
+    }
+  }
+
   return (
     <Card
       className={`w-72 gap-2 py-3 shadow-sm transition-shadow ${
@@ -130,6 +150,24 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
           placeholder="输入图片 URL（每行一个，可留空做文生图）"
           className="nodrag min-h-16 resize-none text-xs"
         />
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={handleUpload}
+        />
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploading}
+          className="nodrag w-full"
+        >
+          {uploading ? '上传中…' : '上传图片'}
+        </Button>
 
         {isNano ? (
           <div className="grid grid-cols-2 gap-2">
