@@ -16,7 +16,6 @@ import {
 } from '@/lib/api'
 import { newId } from '@/lib/id'
 import { type FlowNode, type FlowNodeType, type Project } from '@/lib/types'
-import { getActiveConfig, useSettingsStore } from '@/store/useSettingsStore'
 
 type HomeView = 'grid' | 'list'
 
@@ -46,11 +45,11 @@ type FlowState = {
   onNodesChange: (changes: NodeChange<FlowNode>[]) => void
   onEdgesChange: (changes: EdgeChange[]) => void
   onConnect: (connection: Connection) => void
-  addNode: (type: FlowNodeType) => void
+  addNode: (type: FlowNodeType, model?: string) => void
   updateNodeData: (nodeId: string, data: Partial<FlowNode['data']>) => void
 }
 
-function createNode(type: FlowNodeType, count: number): FlowNode {
+function createNode(type: FlowNodeType, count: number, model = ''): FlowNode {
   // 让新节点错落排布，避免完全重叠
   const position = { x: 80 + (count % 4) * 60, y: 80 + count * 50 }
   if (type === 'prompt') {
@@ -61,12 +60,12 @@ function createNode(type: FlowNodeType, count: number): FlowNode {
       data: { label: 'Prompt', text: '' },
     }
   }
-  const defaultModel = getActiveConfig(useSettingsStore.getState())?.selectedModel ?? ''
+  // 图像 / 视频生成节点：带固定预置模型；生成功能待接入
   return {
     id: newId('n_'),
-    type: 'model',
+    type,
     position,
-    data: { label: 'Model', model: defaultModel, result: '', running: false },
+    data: { label: type === 'image' ? '图像' : '视频', model },
   }
 }
 
@@ -108,13 +107,7 @@ export const useFlowStore = create<FlowState>()((set) => {
         id: d.id,
         name: d.name,
         nodes: d.nodes as FlowNode[],
-        // model 节点上次运行中刷新可能停在 running:true，载入时复位
         edges: d.edges as Edge[],
-      })).map((p) => ({
-        ...p,
-        nodes: p.nodes.map((n) =>
-          n.type === 'model' ? { ...n, data: { ...n.data, running: false } } : n,
-        ),
       }))
       set({ projects, loaded: true })
     },
@@ -173,10 +166,10 @@ export const useFlowStore = create<FlowState>()((set) => {
     onConnect: (connection) =>
       patchActive((p) => ({ ...p, edges: addEdge(connection, p.edges) })),
 
-    addNode: (type) =>
+    addNode: (type, model) =>
       patchActive((p) => ({
         ...p,
-        nodes: [...p.nodes, createNode(type, p.nodes.length)],
+        nodes: [...p.nodes, createNode(type, p.nodes.length, model)],
       })),
 
     updateNodeData: (nodeId, data) =>

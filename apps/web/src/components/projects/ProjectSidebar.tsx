@@ -13,13 +13,24 @@ import {
   SidebarMenuItem,
 } from '@/components/ui/sidebar'
 import { SettingsDialog } from '@/components/settings/SettingsDialog'
+import { IMAGE_MODELS, VIDEO_MODELS } from '@/lib/nodeCatalog'
 import { type FlowNodeType } from '@/lib/types'
 import { useFlowStore } from '@/store/useFlowStore'
 
-// 画布可添加的节点类型；颜色点沿用画布节点的配色
-const NODE_TYPES: { type: FlowNodeType; label: string; dot: string }[] = [
-  { type: 'prompt', label: 'Prompt 节点', dot: 'bg-sky-500' },
-  { type: 'model', label: 'Model 节点', dot: 'bg-violet-500' },
+type NodeItem = { type: FlowNodeType; label: string; dot: string; model?: string }
+
+// 节点列表按输出形态分三类：文本 / 图像 / 视频。
+// 图像、视频项各对应一个具名预置模型，点按即添加对应节点并预设该模型。
+const NODE_GROUPS: { label: string; items: NodeItem[] }[] = [
+  { label: '文本', items: [{ type: 'prompt', label: 'Prompt 节点', dot: 'bg-sky-500' }] },
+  {
+    label: '图像',
+    items: IMAGE_MODELS.map((m) => ({ type: 'image', label: m, dot: 'bg-amber-500', model: m })),
+  },
+  {
+    label: '视频',
+    items: VIDEO_MODELS.map((m) => ({ type: 'video', label: m, dot: 'bg-rose-500', model: m })),
+  },
 ]
 
 export function ProjectSidebar() {
@@ -59,21 +70,23 @@ export function ProjectSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        <SidebarGroup>
-          <SidebarGroupLabel>节点</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {NODE_TYPES.map((n) => (
-                <SidebarMenuItem key={n.type}>
-                  <SidebarMenuButton onClick={() => addNode(n.type)}>
-                    <span className={`size-2 shrink-0 rounded-full ${n.dot}`} />
-                    <span>{n.label}</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {NODE_GROUPS.map((group) => (
+          <SidebarGroup key={group.label}>
+            <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {group.items.map((item) => (
+                  <SidebarMenuItem key={item.label}>
+                    <SidebarMenuButton onClick={() => addNode(item.type, item.model)}>
+                      <span className={`size-2 shrink-0 rounded-full ${item.dot}`} />
+                      <span>{item.label}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ))}
       </SidebarContent>
     </Sidebar>
   )

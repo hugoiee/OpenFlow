@@ -1,7 +1,7 @@
 import type { Edge, Node } from '@xyflow/react'
 
-/** 节点种类。 */
-export type FlowNodeType = 'prompt' | 'model'
+/** 节点种类：文本 prompt / 图像生成 / 视频生成。 */
+export type FlowNodeType = 'prompt' | 'image' | 'video'
 
 /** 纯文字 prompt 节点的数据。 */
 export type PromptNodeData = {
@@ -9,20 +9,17 @@ export type PromptNodeData = {
   text: string
 }
 
-/** 模型调用节点的数据。 */
-export type ModelNodeData = {
+/** 图像 / 视频生成节点的数据（共用结构）。model 为具名模型预置。 */
+export type GenerationNodeData = {
   label: string
   model: string
-  /** 上一次运行返回的（mock）结果，未运行时为空。 */
-  result: string
-  /** 是否正在运行。 */
-  running: boolean
 }
 
 /** React Flow 节点类型（带上各自的 data）。 */
 export type PromptNode = Node<PromptNodeData, 'prompt'>
-export type ModelNode = Node<ModelNodeData, 'model'>
-export type FlowNode = PromptNode | ModelNode
+export type ImageNode = Node<GenerationNodeData, 'image'>
+export type VideoNode = Node<GenerationNodeData, 'video'>
+export type FlowNode = PromptNode | ImageNode | VideoNode
 
 /** 一个项目 = 一块画布。 */
 export type Project = {
