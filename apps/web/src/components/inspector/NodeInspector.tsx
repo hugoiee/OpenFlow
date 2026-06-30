@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { uploadImagesApi } from '@/lib/api'
-import { collectUpstreamImages } from '@/lib/graph'
+import { collectUpstreamImages, collectUpstreamPrompt } from '@/lib/graph'
 import { type ImageNode as ImageNodeT, type Project, type VideoNode as VideoNodeT } from '@/lib/types'
 import { useActiveProject, useFlowStore } from '@/store/useFlowStore'
 import { ImageParams } from './ImageParams'
@@ -45,6 +45,9 @@ function NodeInspectorPanel({
     .filter(Boolean)
   // 上游 image 节点经连线传入的结果图（只读，排在手动图之前 = 图片1…）
   const connected = collectUpstreamImages(project, id)
+  // 运行时实际发送的 prompt（= 所有上游 Prompt 节点文本按连线拼接），只读预览
+  const promptPreview = collectUpstreamPrompt(project, id)
+  const hasPrompt = promptPreview.trim().length > 0
 
   // 删除第 idx 张输入图：按位置移除（兼容重复 URL），重写回文本框
   const removeImage = (idx: number) => {
@@ -83,6 +86,18 @@ function NodeInspectorPanel({
       <div className="flex flex-col gap-0.5">
         <span className="text-xs text-muted-foreground">{node.data.label}</span>
         <h2 className="text-sm font-semibold">{node.data.model}</h2>
+      </div>
+
+      {/* 最终 Prompt 预览（只读）：运行时发送的 prompt 即上游 Prompt 节点文本按连线拼接，此处仅查看 */}
+      <div className="flex flex-col gap-2">
+        <span className="text-[11px] text-muted-foreground">最终 Prompt（只读预览）</span>
+        <div className="max-h-40 overflow-y-auto whitespace-pre-wrap rounded-md border bg-muted/40 p-2 text-xs">
+          {hasPrompt ? (
+            promptPreview
+          ) : (
+            <span className="text-muted-foreground">未连接含内容的 Prompt 节点</span>
+          )}
+        </div>
       </div>
 
       {/* 共享：输入图 URL + 上传 */}
