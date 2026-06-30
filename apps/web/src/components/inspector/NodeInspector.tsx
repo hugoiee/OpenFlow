@@ -88,18 +88,6 @@ function NodeInspectorPanel({
         <h2 className="text-sm font-semibold">{node.data.model}</h2>
       </div>
 
-      {/* 最终 Prompt 预览（只读）：运行时发送的 prompt 即上游 Prompt 节点文本按连线拼接，此处仅查看 */}
-      <div className="flex flex-col gap-2">
-        <span className="text-[11px] text-muted-foreground">最终 Prompt（只读预览）</span>
-        <div className="max-h-40 overflow-y-auto whitespace-pre-wrap rounded-md border bg-muted/40 p-2 text-xs">
-          {hasPrompt ? (
-            promptPreview
-          ) : (
-            <span className="text-muted-foreground">未连接含内容的 Prompt 节点</span>
-          )}
-        </div>
-      </div>
-
       {/* 共享：输入图 URL + 上传 */}
       <div className="flex flex-col gap-2">
         <span className="text-[11px] text-muted-foreground">输入图（每行一个 URL）</span>
@@ -225,6 +213,20 @@ function NodeInspectorPanel({
       ) : (
         <VideoParams id={id} data={node.data} />
       )}
+
+      {/* 最终 Prompt 预览（置底）：运行时发送的 prompt（上游 Prompt 节点文本按连线拼接）。
+          readOnly = 只读不可改，可查看/复制；resize-y 让用户拖拽调高。 */}
+      <div className="flex flex-col gap-2">
+        <span className="text-[11px] text-muted-foreground">最终 Prompt（只读预览）</span>
+        <Textarea
+          value={hasPrompt ? promptPreview : ''}
+          readOnly
+          placeholder="未连接含内容的 Prompt 节点"
+          // field-sizing-fixed 固定起始高度 + 内部滚动；resize-y 可拖拽调高；
+          // cursor-default + bg-muted 弱化「可编辑」暗示，配合 readOnly 表明仅供查看。
+          className="field-sizing-fixed h-24 max-h-96 resize-y cursor-default bg-muted/40 text-xs"
+        />
+      </div>
     </aside>
   )
 }
