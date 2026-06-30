@@ -52,10 +52,9 @@ apps/web/src/
   components/settings/SettingsDialog.tsx 供应商面板（选商→key/BaseURL→获取模型→选模型→保存；key 写入不回显，用 hasKey 占位）
   components/home/             HomePage（宫格/列表 + 新建）、ProjectCard
   components/workspace/ProjectWorkspace.tsx  Sidebar + 画布；未 loaded 前不跳首页
-  components/projects/ProjectSidebar.tsx     shadcn Sidebar 项目栏（增删改 / 路由切换）
+  components/projects/ProjectSidebar.tsx     工作区 Sidebar：返回首页 + 节点列表（点按添加 Prompt / Model 节点，不再显示项目列表）
   components/canvas/
     FlowCanvas.tsx             React Flow 封装；连线默认 smoothstep（横平竖直）
-    Toolbar.tsx                添加 Prompt / Model 节点
     nodes/PromptNode.tsx       Prompt 节点（Card + Textarea，source Handle 在右）
     nodes/ModelNode.tsx        Model 节点（模型下拉来自激活供应商 models；运行调 /api/run；Handle 左进右出）
     nodes/index.ts             nodeTypes 注册表
@@ -77,7 +76,7 @@ apps/web/src/
 ## 编码规范
 
 - 组件文件 PascalCase，函数组件具名导出。
-- 新增节点类型需同步更新 `apps/web/src/lib/types.ts`、`nodes/index.ts`、`createNode()`(store)、`Toolbar`。
+- 新增节点类型需同步更新 `apps/web/src/lib/types.ts`、`nodes/index.ts`、`createNode()`(store)、`ProjectSidebar` 的 `NODE_TYPES`。
 - 节点内可交互元素加 `nodrag` class。
 - 不手改 `apps/web/src/components/ui/*`、`src/hooks/use-mobile.ts` 与 `index.css` 的 shadcn 主题块（生成内容，已在 eslint globalIgnores 排除）。
 - 改后端 SQLite 表结构时注意已有数据兼容。

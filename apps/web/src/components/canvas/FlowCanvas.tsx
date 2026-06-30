@@ -6,7 +6,6 @@ import {
   ReactFlowProvider,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { Toolbar } from './Toolbar'
 import { nodeTypes } from './nodes'
 import { useActiveProject, useFlowStore } from '@/store/useFlowStore'
 
@@ -40,7 +39,6 @@ export function FlowCanvas() {
         <Controls />
         <MiniMap pannable zoomable />
       </ReactFlow>
-      <Toolbar />
     </div>
   )
 }
