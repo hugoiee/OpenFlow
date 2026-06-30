@@ -4,8 +4,8 @@
 （节点列表按输出形态分三类：**文本** Prompt 节点 / **图像** 生成节点 / **视频** 生成节点）并用连线把
 节点连接起来。图像类的 **Image 2(gpt-image-2)** 与 **Nano Banana(nano-banana)**、视频类的 **Seedance(seedance)** 均已接入真实生成
 （经后端代理调 AIGC 接口；prompt 取自上游 Prompt 节点，节点上可调各自参数，输入图可手填 URL 或经 /api/upload 上传，运行后展示结果图/视频）。
-供应商体系走 OpenAI 兼容的多供应商 API（设置面板选供应商、填 key/BaseURL、动态拉 /models；后端 /api/run 聊天代理保留待接入）。**前后端架构**：
-数据存后端 SQLite，API key 只存后端，模型调用经后端代理（key 不进浏览器、绕开 CORS）。单用户、无鉴权。
+调用方署名 **req_from** 为全局设置（首次打开网站若未填则强制填写，存后端单例 settings；图像/视频生成与图片上传统一由后端注入）。设置面板仅此一项。**前后端架构**：
+数据存后端 SQLite，AIGC 调用经后端代理（绕开 CORS）。单用户、无鉴权。
 
 ## 仓库结构（pnpm workspaces monorepo）
 
@@ -30,32 +30,30 @@ pnpm format        # Prettier 格式化 apps/*/src 与 packages/*/src（不含 c
 ## 目录结构
 
 ```
-packages/shared/src/index.ts   ProviderId/PROVIDER_PRESETS/ProviderConfig(含 key,仅后端用) /
-                               ProviderConfigPublic(hasKey,无 key) / ProjectDTO / SettingsDTO / 各请求体类型
+packages/shared/src/index.ts   ProjectDTO / SettingsDTO(defaultReqFrom) / SaveSettingsBody(defaultReqFrom) / GenImageBody / GenVideoBody
 apps/server/src/
   index.ts                     Hono 起服务(8787)，挂 /api 路由
-  db.ts                        better-sqlite3 建库建表（projects / settings），库文件 apps/server/data/openflow.db（gitignore）
-  settings-store.ts            读写 settings 单行（含全局 default_req_from；getActiveConfig 含 key）
-  provider.ts                  fetchModels()/runChat()：OpenAI 兼容 /models 与 /chat/completions（非流式）；runImageGen()/runVideoGen()：POST AIGC 接口生成图像/视频（按 model 分支构造 payload）+ 从任意响应稳健解析 URL；uploadImages()：转发 multipart 到上传接口；resolveReqFrom()：把全局署名解析成最终 req_from（空回退 env AIGC_REQ_FROM，再回退 'openflow'）
+  db.ts                        better-sqlite3 建库建表（projects / settings），库文件 apps/server/data/openflow.db（gitignore）；settings 表只存 default_req_from（旧库 provider 列留存不读）
+  settings-store.ts            读写 settings 单行的全局 default_req_from
+  provider.ts                  runImageGen()/runVideoGen()：POST AIGC 接口生成图像/视频（按 model 分支构造 payload）+ 从任意响应稳健解析 URL；uploadImages()：转发 multipart 到上传接口；resolveReqFrom()：把全局署名解析成最终 req_from（空回退 env AIGC_REQ_FROM，再回退 'openflow'）
   routes/projects.ts           /api/projects CRUD（nodes/edges 以 JSON 存）
-  routes/settings.ts           GET /api/settings(不回 key,只回 hasKey；含全局 defaultReqFrom) / PUT(写入,key 留空则保留；可一并更新 defaultReqFrom)
-  routes/model.ts              POST /api/models(代理拉模型) / POST /api/run(用激活供应商 key 代理聊天)
+  routes/settings.ts           GET /api/settings(回全局 defaultReqFrom) / PUT(写入 defaultReqFrom)
   routes/image.ts              POST /api/aigc(图像生成代理：Image 2/Nano Banana，按 model 补 version/config 转发 AIGC；地址用 env AIGC_ENDPOINT 覆盖；req_from 从全局设置注入)
   routes/video.ts              POST /api/video(视频生成代理：seedance，补 version/mode/config 转发 AIGC /aigc；req_from 从全局设置注入)
   routes/upload.ts             POST /api/upload(图片上传代理：转发 multipart 到上传接口，地址用 env UPLOAD_ENDPOINT 覆盖；req_from 从全局设置注入)
 apps/web/src/
   main.tsx                     入口：先 migrateLocalStorage() 迁移旧数据，再 load store，最后渲染（HashRouter）
-  App.tsx                      路由：/ → 首页，/project/:id → 工作区，* → 回首页
+  App.tsx                      用 ReqFromGate 包裹路由（/ → 首页，/project/:id → 工作区，* → 回首页）
   store/useFlowStore.ts        Zustand（无 persist）：启动 loadProjects() 拉后端；增删改调 API；
                                画布编辑本地即时更新 + 防抖(500ms) PUT 保存激活项目；homeView 存 localStorage
-  store/useSettingsStore.ts    Zustand（无 persist）：loadSettings() 从后端拉公开配置(无 key)；
-                               saveProvider() PUT 后回拉；导出 getActiveConfig()/hasApiConfig()
-  lib/api.ts                   /api/* fetch 封装（项目 CRUD / 设置 / 模型 / 图像生成 generateImageApi / 视频生成 generateVideoApi / 图片上传 uploadImagesApi）
-  lib/migrate.ts               首次启动把旧 localStorage（openflow-store/settings）一次性导入后端，打 openflow-migrated 标记
-  lib/types.ts                 React Flow 强类型节点（FlowNode = Prompt/Image/Video；Project）；供应商类型从 @openflow/shared 再导出
+  store/useSettingsStore.ts    Zustand（无 persist）：loadSettings() 拉全局 defaultReqFrom；saveReqFrom() PUT 后回拉
+  lib/api.ts                   /api/* fetch 封装（项目 CRUD / 设置 get·save / 图像生成 generateImageApi / 视频生成 generateVideoApi / 图片上传 uploadImagesApi）
+  lib/migrate.ts               首次启动把旧 localStorage（openflow-store）项目数据一次性导入后端，打 openflow-migrated 标记
+  lib/types.ts                 React Flow 强类型节点（FlowNode = Prompt/Image/Video；Project）
   lib/nodeCatalog.ts           图像/视频预置模型 + 模型→AIGC model_name 映射(IMAGE_API_MODEL/imageApiModel、VIDEO_API_MODEL/videoApiModel) + 各模型可调项选项(图像尺寸/质量/张数、Nano version/宽高比/尺寸、Seedance version/mode/分辨率/时长) + 配色文案（侧栏与节点共用）
   components/ui/               shadcn/ui vendored（不参与 lint/format，勿手改）
-  components/settings/SettingsDialog.tsx 供应商面板（选商→key/BaseURL→获取模型→选模型→保存；key 写入不回显，用 hasKey 占位）+ 全局 req_from（署名）输入
+  components/gate/ReqFromGate.tsx 启动强制填写 req_from：设置已加载且全局署名为空时全屏阻断弹窗，填写保存后放行（已填则不出现）
+  components/settings/SettingsDialog.tsx 设置面板：仅全局 req_from（署名）输入 + 保存
   components/home/             HomePage（宫格/列表 + 新建）、ProjectCard
   components/workspace/ProjectWorkspace.tsx  Sidebar + 画布；未 loaded 前不跳首页
   components/projects/ProjectSidebar.tsx     工作区 Sidebar：返回首页 + 节点列表（按文本/图像/视频三类分组，点按添加对应节点并预设模型；不再显示项目列表）
@@ -71,9 +69,10 @@ apps/web/src/
 
 - **框架 / 构建**：React 19 + Vite + TypeScript（strict）；pnpm workspaces。
 - **后端**：Hono + `@hono/node-server`，`tsx watch` 跑（免构建）；端口 8787。Vite dev 代理 `/api` → 8787（`apps/web/vite.config.ts`）。
-- **数据库**：SQLite（`better-sqlite3`，单文件 `apps/server/data/openflow.db`）。`projects` 表 nodes/edges 存 JSON；`settings` 单行存 `activeProviderId` + `configs`(含各供应商 key) + `default_req_from`(全局署名)。原生模块装不上时回退 Node 内置 `node:sqlite`。
-- **数据流**：前端无 localStorage 持久化（仅 homeView + 迁移标记用 localStorage）。项目数据走 `/api/projects`；画布高频编辑防抖 PUT。设置走 `/api/settings`，**key 只存后端、GET 不回传**。
-- **模型调用**：经后端 `/api/run`、`/api/models` 代理；后端用激活供应商存储 key 调 OpenAI 兼容 `/chat/completions`、`/models`（非流式）。仅支持 OpenAI 兼容协议（Anthropic 原生不支持，走「自定义/中转」）。前端不再直连供应商，**无 CORS、key 不暴露**。
+- **数据库**：SQLite（`better-sqlite3`，单文件 `apps/server/data/openflow.db`）。`projects` 表 nodes/edges 存 JSON；`settings` 单行存 `default_req_from`(全局署名)。原生模块装不上时回退 Node 内置 `node:sqlite`。
+- **数据流**：前端无 localStorage 持久化（仅 homeView + 迁移标记用 localStorage）。项目数据走 `/api/projects`；画布高频编辑防抖 PUT。全局 req_from 走 `/api/settings`。
+- **生成调用**：图像 `/api/aigc`、视频 `/api/video`、图片上传 `/api/upload` 均经后端代理转发到 AIGC 接口（绕 CORS）；req_from 由后端从全局设置注入（空回退 env `AIGC_REQ_FROM`）。
+- **启动门槛**：`ReqFromGate` 在设置加载后若 req_from 为空则全屏阻断，必须填写署名才放行。
 - **路由**：`react-router-dom` `HashRouter`。
 - **画布**：React Flow（`@xyflow/react`），节点是普通 React 组件；连线 smoothstep。
 - **UI**：shadcn/ui（Tailwind v4）。新增组件 `pnpm dlx shadcn@latest add <name>`（在 apps/web 内）。

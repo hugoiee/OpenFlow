@@ -74,11 +74,3 @@ export type Project = {
   edges: Edge[]
 }
 
-// 供应商相关的纯数据类型集中在 @openflow/shared，前后端共用。
-export type {
-  ProviderId,
-  ProviderPreset,
-  ProviderConfig,
-  ProviderEndpoint,
-} from '@openflow/shared'
-export { PROVIDER_PRESETS } from '@openflow/shared'

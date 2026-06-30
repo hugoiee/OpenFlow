@@ -1,9 +1,7 @@
 import type {
-  FetchModelsBody,
   GenImageBody,
   GenVideoBody,
   ProjectDTO,
-  RunModelBody,
   SaveSettingsBody,
   SettingsDTO,
 } from '@openflow/shared'
@@ -66,23 +64,6 @@ export function saveSettingsApi(body: SaveSettingsBody): Promise<{ ok: true }> {
     method: 'PUT',
     body: JSON.stringify(body),
   })
-}
-
-// ---- 模型 ----
-export async function fetchModelsApi(body: FetchModelsBody): Promise<string[]> {
-  const { models } = await request<{ models: string[] }>('/models', {
-    method: 'POST',
-    body: JSON.stringify(body),
-  })
-  return models
-}
-
-export async function runModelApi(body: RunModelBody): Promise<string> {
-  const { content } = await request<{ content: string }>('/run', {
-    method: 'POST',
-    body: JSON.stringify(body),
-  })
-  return content
 }
 
 // ---- 图像生成 ----

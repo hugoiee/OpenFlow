@@ -1,58 +1,26 @@
 import { create } from 'zustand'
-import type {
-  ProviderConfigPublic,
-  ProviderId,
-  SaveSettingsBody,
-} from '@openflow/shared'
 import { getSettingsApi, saveSettingsApi } from '@/lib/api'
 
 type SettingsState = {
-  activeProviderId: ProviderId
-  /** 各供应商的「公开」配置：含 baseURL/selectedModel/models/hasKey，但**不含 key**（key 只在后端）。 */
-  configs: Partial<Record<ProviderId, ProviderConfigPublic>>
   /** 全局调用方署名（req_from）；为空时后端回退默认值。 */
   defaultReqFrom: string
   loaded: boolean
   loadSettings: () => Promise<void>
-  /** 保存某供应商配置并设为激活；apiKey 留空则后端保留原 key。可一并更新全局 req_from。保存后回拉刷新。 */
-  saveProvider: (body: SaveSettingsBody) => Promise<void>
+  /** 保存全局 req_from 署名；保存后回拉刷新。 */
+  saveReqFrom: (reqFrom: string) => Promise<void>
 }
 
 export const useSettingsStore = create<SettingsState>()((set, get) => ({
-  activeProviderId: 'openai',
-  configs: {},
   defaultReqFrom: '',
   loaded: false,
 
   loadSettings: async () => {
     const dto = await getSettingsApi()
-    set({
-      activeProviderId: dto.activeProviderId,
-      configs: dto.configs,
-      defaultReqFrom: dto.defaultReqFrom,
-      loaded: true,
-    })
+    set({ defaultReqFrom: dto.defaultReqFrom, loaded: true })
   },
 
-  saveProvider: async (body) => {
-    await saveSettingsApi(body)
+  saveReqFrom: async (reqFrom) => {
+    await saveSettingsApi({ defaultReqFrom: reqFrom })
     await get().loadSettings()
   },
 }))
-
-/** 取当前激活供应商的公开配置（未配置则 undefined）。 */
-export function getActiveConfig(state: {
-  activeProviderId: ProviderId
-  configs: Partial<Record<ProviderId, ProviderConfigPublic>>
-}): ProviderConfigPublic | undefined {
-  return state.configs[state.activeProviderId]
-}
-
-/** 当前激活供应商是否已配置可用（有 baseURL + 已存 key）。 */
-export function hasApiConfig(state: {
-  activeProviderId: ProviderId
-  configs: Partial<Record<ProviderId, ProviderConfigPublic>>
-}): boolean {
-  const config = getActiveConfig(state)
-  return Boolean(config?.baseURL && config?.hasKey)
-}
