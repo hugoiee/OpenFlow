@@ -21,8 +21,31 @@ export function imageApiModel(model: string): string {
   return IMAGE_API_MODEL[model] ?? model
 }
 
-/** 图像节点可调选项的取值（下拉枚举）。 */
-export const IMAGE_SIZE_OPTIONS = ['1024x1024', '1024x1536', '1536x1024', 'auto'] as const
+/**
+ * 图像节点可调选项的取值（下拉枚举）。
+ * Image 2 受支持的尺寸：1080p / 4k 各两种宽高比（9:16 竖、16:9 横）。
+ */
+export const IMAGE_SIZE_OPTIONS = [
+  '1536x864', // 1k 16:9
+  '864x1536', // 1k 9:16
+  '2048x1152', // 2k 9:16
+  '1152x2048', // 2k 9:16
+  '3840x2160', // 4k 16:9
+  '2160x3840', // 4k 9:16
+] as const
+
+/** 尺寸的人类可读标签（下拉里显示，比裸像素值直观）。 */
+export const IMAGE_SIZE_LABELS: Record<string, string> = {
+  '1536x864': '1k · 16:9',
+  '864x1536': '1k · 9:16',
+  '2048x1152': '2k · 16:9',
+  '1152x2048': '2k · 9:16',
+  '3840x2160': '4K · 16:9',
+  '2160x3840': '4K · 9:16',
+}
+
+/** 图像节点尺寸默认值（首选项）。 */
+export const IMAGE_SIZE_DEFAULT = IMAGE_SIZE_OPTIONS[0]
 export const IMAGE_QUALITY_OPTIONS = ['auto', 'low', 'medium', 'high'] as const
 export const IMAGE_N_OPTIONS = [1, 2, 3, 4] as const
 

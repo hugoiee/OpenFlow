@@ -15,6 +15,8 @@ import {
   GEN_NODE_META,
   IMAGE_N_OPTIONS,
   IMAGE_QUALITY_OPTIONS,
+  IMAGE_SIZE_DEFAULT,
+  IMAGE_SIZE_LABELS,
   IMAGE_SIZE_OPTIONS,
   imageApiModel,
 } from '@/lib/nodeCatalog'
@@ -42,7 +44,11 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
   // 兼容旧数据：早期 image 节点只有 {label, model}，缺失字段给默认值，避免崩
   const imagesText = data.imagesText ?? ''
   const reqFrom = data.reqFrom ?? ''
-  const size = data.size ?? '1024x1024'
+  // 旧数据可能存了已不再支持的尺寸（如 1024x1024），回退到默认受支持尺寸
+  const storedSize = data.size ?? IMAGE_SIZE_DEFAULT
+  const size = (IMAGE_SIZE_OPTIONS as readonly string[]).includes(storedSize)
+    ? storedSize
+    : IMAGE_SIZE_DEFAULT
   const quality = data.quality ?? 'auto'
   const n = data.n ?? 1
   const result = data.result ?? []
@@ -123,7 +129,7 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
               <SelectContent>
                 {IMAGE_SIZE_OPTIONS.map((s) => (
                   <SelectItem key={s} value={s} className="text-xs">
-                    {s}
+                    {IMAGE_SIZE_LABELS[s] ?? s}
                   </SelectItem>
                 ))}
               </SelectContent>
