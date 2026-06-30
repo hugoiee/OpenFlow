@@ -1,4 +1,5 @@
 import type { Edge, Node } from '@xyflow/react'
+import type { VideoTask } from './nodeCatalog'
 
 /** 节点种类：文本 prompt / 图像生成 / 视频生成 / 桌面拖入的媒体素材。 */
 export type FlowNodeType = 'prompt' | 'image' | 'video' | 'asset'
@@ -32,11 +33,13 @@ export type GenerationNodeData = {
   label: string
   /** 具名模型展示名（如 Seedance）。 */
   model: string
-  /** 输入图片 URL，每行一个（0=文生视频 / 1=首帧 / 2=首尾帧）。 */
+  /** 输入图片 URL，每行一个（按 videoTask 决定其语义：首帧 / 首尾帧 / 参考图）。 */
   imagesText?: string
   /** version：seedance-1.5-pro 等。 */
   version?: string
-  /** mode：first_last_frame / reference_image。 */
+  /** 生成任务（前端 4 选 1）：文生 / 首帧 / 首尾帧 / 参考图；提交时映射回 mode + 有序图。 */
+  videoTask?: VideoTask
+  /** mode：first_last_frame / reference_image（旧字段，保留兼容；现由 videoTask 派生）。 */
   mode?: string
   /** config.resolution，如 720p。 */
   resolution?: string

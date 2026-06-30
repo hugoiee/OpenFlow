@@ -97,12 +97,75 @@ export const SEEDANCE_VERSION_OPTIONS = [
 ] as const
 export const SEEDANCE_VERSION_DEFAULT = 'seedance-2.0'
 
-/** Seedance 的 mode 选项。 */
-export const SEEDANCE_MODE_OPTIONS = [
-  { value: 'first_last_frame', label: '首/尾帧（0=文生视频 / 1=首帧 / 2=首尾帧）' },
-  { value: 'reference_image', label: '参考图生成' },
+/**
+ * Seedance 视频生成「任务」：前端直观 4 选 1，提交时映射回后端 mode + 有序输入图。
+ * 后端只认 first_last_frame / reference_image 两个 mode，且 first_last_frame 下按图片张数
+ * 决定文生/首帧/首尾帧——把这层约定拆成 4 个显式任务，避免用户去记「张数=语义」。
+ */
+export type VideoTask = 'text' | 'first' | 'firstLast' | 'reference'
+
+/**
+ * 任务选项（卡片选择器用）。
+ * - slots：该任务占用的输入图槽位数（0=不需要图；null=参考图，不限张数）。
+ * - slotLabels：槽位的人类可读标签（用于给输入图打「首帧/尾帧」角标 + 空占位提示）。
+ */
+export const VIDEO_TASK_OPTIONS: {
+  value: VideoTask
+  label: string
+  desc: string
+  slots: number | null
+  slotLabels?: string[]
+}[] = [
+  { value: 'text', label: '文生视频', desc: '仅凭文字提示生成，无需输入图', slots: 0 },
+  { value: 'first', label: '首帧', desc: '以一张图作为起始画面', slots: 1, slotLabels: ['首帧'] },
+  {
+    value: 'firstLast',
+    label: '首尾帧',
+    desc: '指定起始与结束画面，在两帧间过渡',
+    slots: 2,
+    slotLabels: ['首帧', '尾帧'],
+  },
+  { value: 'reference', label: '参考图', desc: '多张图作为风格 / 内容参考', slots: null },
 ] as const
-export const SEEDANCE_MODE_DEFAULT = 'first_last_frame'
+
+export const VIDEO_TASK_DEFAULT: VideoTask = 'text'
+
+/** 任务 → 后端 mode（参考图走 reference_image，其余都走 first_last_frame）。 */
+export function videoTaskMode(task: VideoTask): string {
+  return task === 'reference' ? 'reference_image' : 'first_last_frame'
+}
+
+/** 任务对应的输入图槽位数（null=不限，作参考图；找不到任务回退 0）。 */
+export function videoTaskSlots(task: VideoTask): number | null {
+  // 注意：不能用 `?? 0`——会把「参考图」的 null（不限张数）误塌成 0，导致一张图都不提交
+  const option = VIDEO_TASK_OPTIONS.find((o) => o.value === task)
+  return option ? option.slots : 0
+}
+
+/** 任务对应的槽位标签（无槽位 / 参考图则为 undefined → 走数字角标的画廊态）。 */
+export function videoTaskSlotLabels(task: VideoTask): string[] | undefined {
+  return VIDEO_TASK_OPTIONS.find((o) => o.value === task)?.slotLabels
+}
+
+/** 按任务从有序输入图里取真正提交的图：文生=空 / 首帧=前1 / 首尾帧=前2 / 参考=全部。 */
+export function videoTaskImages(task: VideoTask, images: string[]): string[] {
+  const slots = videoTaskSlots(task)
+  return slots === null ? images : images.slice(0, slots)
+}
+
+/** 旧数据兼容：缺 videoTask 时，从 legacy mode + 输入图张数推断任务。 */
+export function deriveVideoTask(
+  videoTask: VideoTask | undefined,
+  legacyMode: string | undefined,
+  imageCount: number,
+): VideoTask {
+  if (videoTask) return videoTask
+  if (legacyMode === 'reference_image') return 'reference'
+  // legacy first_last_frame（或未设）：按当时的图片张数还原文生/首帧/首尾帧
+  if (imageCount >= 2) return 'firstLast'
+  if (imageCount === 1) return 'first'
+  return 'text'
+}
 
 /** Seedance config.resolution 选项。 */
 export const SEEDANCE_RESOLUTION_OPTIONS = ['480p', '720p', '1080p'] as const

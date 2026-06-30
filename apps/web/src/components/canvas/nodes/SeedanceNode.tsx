@@ -6,10 +6,12 @@ import { generateVideoApi } from '@/lib/api'
 import {
   GEN_NODE_META,
   SEEDANCE_DURATION_DEFAULT,
-  SEEDANCE_MODE_DEFAULT,
   SEEDANCE_RESOLUTION_DEFAULT,
   SEEDANCE_VERSION_DEFAULT,
+  deriveVideoTask,
   videoApiModel,
+  videoTaskImages,
+  videoTaskMode,
 } from '@/lib/nodeCatalog'
 import { collectUpstreamAudio, collectUpstreamImages, collectUpstreamPrompt } from '@/lib/graph'
 import { type VideoNode as VideoNodeType } from '@/lib/types'
@@ -27,7 +29,6 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
   // 兼容旧 video 节点（早期只有 {label, model}）：缺失字段给默认值；以下派生供 handleRun 取参。
   const imagesText = data.imagesText ?? ''
   const version = data.version ?? SEEDANCE_VERSION_DEFAULT
-  const mode = data.mode ?? SEEDANCE_MODE_DEFAULT
   const resolution = data.resolution ?? SEEDANCE_RESOLUTION_DEFAULT
   const duration = data.duration ?? SEEDANCE_DURATION_DEFAULT
   const result = data.result ?? []
@@ -51,7 +52,9 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
       .split('\n')
       .map((s) => s.trim())
       .filter(Boolean)
-    const images = [...(project ? collectUpstreamImages(project, id) : []), ...manualImages]
+    const combined = [...(project ? collectUpstreamImages(project, id) : []), ...manualImages]
+    // 任务 → 后端 mode + 真正提交的有序图（文生=空 / 首帧=前1 / 首尾帧=前2 / 参考=全部）
+    const task = deriveVideoTask(data.videoTask, data.mode, combined.length)
     // 输入音频 = 上游音频素材节点经连线传入（作 audio_list）
     const audios = project ? collectUpstreamAudio(project, id) : []
     updateNodeData(id, { running: true, error: undefined, result: [] })
@@ -59,9 +62,9 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
       const urls = await generateVideoApi({
         model: videoApiModel(data.model),
         version,
-        mode,
+        mode: videoTaskMode(task),
         prompt,
-        images,
+        images: videoTaskImages(task, combined),
         audios,
         resolution,
         duration,
