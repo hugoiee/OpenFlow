@@ -79,14 +79,11 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
 
   return (
     <Card
-      className={`relative w-72 gap-2 py-3 shadow-sm transition-shadow ${
+      className={`w-72 gap-2 py-3 shadow-sm transition-shadow ${
         selected ? 'ring-2 ring-primary' : ''
       }`}
     >
       <Handle type="target" position={Position.Left} className={`!size-3 ${meta.handle}`} />
-      <span className="pointer-events-none absolute right-full top-1/2 mr-2 -translate-y-1/2 whitespace-nowrap text-[11px] text-muted-foreground">
-        Prompt*
-      </span>
       <CardHeader className="px-3">
         <CardTitle className="flex items-center gap-2 text-sm">
           <span className={`size-2 rounded-full ${meta.dot}`} />
@@ -130,9 +127,6 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
         )}
       </CardContent>
       <Handle type="source" position={Position.Right} className={`!size-3 ${meta.handle}`} />
-      <span className="pointer-events-none absolute left-full top-1/2 ml-2 -translate-y-1/2 whitespace-nowrap text-[11px] text-muted-foreground">
-        Video
-      </span>
     </Card>
   )
 }

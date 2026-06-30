@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { ChevronLeft, ChevronRight, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { uploadImagesApi } from '@/lib/api'
@@ -29,6 +30,26 @@ function NodeInspectorPanel({ node }: { node: ImageNodeT | VideoNodeT }) {
 
   const id = node.id
   const imagesText = node.data.imagesText ?? ''
+  // 输入图 URL 列表（按行拆，去空白/空行），用于缩略图预览
+  const images = imagesText
+    .split('\n')
+    .map((s) => s.trim())
+    .filter(Boolean)
+
+  // 删除第 idx 张输入图：按位置移除（兼容重复 URL），重写回文本框
+  const removeImage = (idx: number) => {
+    updateNodeData(id, { imagesText: images.filter((_, i) => i !== idx).join('\n') })
+  }
+
+  // 调整顺序：把第 idx 张与相邻一张交换（dir=-1 前移 / 1 后移）。
+  // 顺序即「图片1 / 图片2…」，下游 prompt 按此引用。
+  const moveImage = (idx: number, dir: -1 | 1) => {
+    const target = idx + dir
+    if (target < 0 || target >= images.length) return
+    const next = images.slice()
+    ;[next[idx], next[target]] = [next[target], next[idx]]
+    updateNodeData(id, { imagesText: next.join('\n') })
+  }
 
   // 选择本地图片 → 上传 → 把返回 URL 按行追加进输入图文本框（保留已填内容）
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -65,7 +86,9 @@ function NodeInspectorPanel({ node }: { node: ImageNodeT | VideoNodeT }) {
               ? '输入图片 URL（每行一个，可留空做文生图）'
               : '输入图片 URL（每行一个；0=文生视频 / 1=首帧 / 2=首尾帧）'
           }
-          className="min-h-20 resize-none text-xs"
+          // field-sizing-fixed 关掉 shadcn 默认的 field-sizing-content（内容自动撑高）；
+          // 固定起始高度 + 内部滚动，避免图片一多就撑很长；resize-y 让用户可拖拽调高。
+          className="field-sizing-fixed h-20 max-h-72 resize-y text-xs"
         />
         <input
           ref={fileInputRef}
@@ -84,6 +107,65 @@ function NodeInspectorPanel({ node }: { node: ImageNodeT | VideoNodeT }) {
         >
           {uploading ? '上传中…' : '上传图片'}
         </Button>
+
+        {/* 输入图缩略图预览：每张右上角 × 可删除 */}
+        {images.length > 0 && (
+          <div className="grid grid-cols-3 gap-2">
+            {images.map((url, i) => (
+              <div
+                key={`${url}-${i}`}
+                className="group relative aspect-square overflow-hidden rounded-md border bg-muted"
+              >
+                <a href={url} target="_blank" rel="noreferrer" title={url}>
+                  <img
+                    src={url}
+                    alt={`输入图 ${i + 1}`}
+                    className="h-full w-full object-cover"
+                    onError={(e) => {
+                      e.currentTarget.style.visibility = 'hidden'
+                    }}
+                  />
+                </a>
+
+                {/* 序号角标：对应 prompt 里的「图片1 / 图片2…」 */}
+                <span className="pointer-events-none absolute left-1 top-1 z-10 grid size-4 place-items-center rounded-full bg-foreground/80 text-[10px] font-medium text-background shadow-sm">
+                  {i + 1}
+                </span>
+
+                <button
+                  type="button"
+                  onClick={() => removeImage(i)}
+                  title="移除"
+                  className="absolute right-1 top-1 z-10 grid size-4 place-items-center rounded-full bg-background/80 text-foreground shadow-sm transition-colors hover:bg-background"
+                >
+                  <X className="size-3" />
+                </button>
+
+                {/* 前移 / 后移：与相邻图交换位置，改变其在 prompt 中的编号 */}
+                <div className="absolute inset-x-1 bottom-1 z-10 flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() => moveImage(i, -1)}
+                    disabled={i === 0}
+                    title="前移"
+                    className="grid size-4 place-items-center rounded-full bg-background/80 text-foreground shadow-sm transition-colors hover:bg-background disabled:pointer-events-none disabled:opacity-30"
+                  >
+                    <ChevronLeft className="size-3" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => moveImage(i, 1)}
+                    disabled={i === images.length - 1}
+                    title="后移"
+                    className="grid size-4 place-items-center rounded-full bg-background/80 text-foreground shadow-sm transition-colors hover:bg-background disabled:pointer-events-none disabled:opacity-30"
+                  >
+                    <ChevronRight className="size-3" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* 模型专用参数 */}
