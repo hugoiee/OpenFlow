@@ -2,8 +2,9 @@
 
 节点式 AI 工作流画布编辑器：支持多个项目，每个项目是一块画布，可在画布上添加节点
 （节点列表按输出形态分三类：**文本** Prompt 节点 / **图像** 生成节点 / **视频** 生成节点）并用连线把
-节点连接起来。图像/视频节点目前为占位（具名模型固定预置、生成功能待接入）。供应商体系走 OpenAI 兼容的
-多供应商 API（设置面板选供应商、填 key/BaseURL、动态拉 /models 选模型；后端 /api/run 聊天代理仍保留待接入）。**前后端架构**：
+节点连接起来。图像类的 **Image 2(gpt-image-2)** 已接入真实生成（经后端 /api/aigc 代理调 AIGC 接口；prompt 取自上游
+Prompt 节点，节点上可调输入图/尺寸/质量/张数，运行后展示结果图）；Nano Banana 与视频节点暂为占位（model_name/生成待接入）。
+供应商体系走 OpenAI 兼容的多供应商 API（设置面板选供应商、填 key/BaseURL、动态拉 /models；后端 /api/run 聊天代理保留待接入）。**前后端架构**：
 数据存后端 SQLite，API key 只存后端，模型调用经后端代理（key 不进浏览器、绕开 CORS）。单用户、无鉴权。
 
 ## 仓库结构（pnpm workspaces monorepo）
@@ -35,10 +36,11 @@ apps/server/src/
   index.ts                     Hono 起服务(8787)，挂 /api 路由
   db.ts                        better-sqlite3 建库建表（projects / settings），库文件 apps/server/data/openflow.db（gitignore）
   settings-store.ts            读写 settings 单行（getActiveConfig 含 key）
-  provider.ts                  fetchModels()/runChat()：OpenAI 兼容 /models 与 /chat/completions（非流式）
+  provider.ts                  fetchModels()/runChat()：OpenAI 兼容 /models 与 /chat/completions（非流式）；runImageGen()：POST AIGC 接口生成图像 + 从任意响应稳健解析图片 URL
   routes/projects.ts           /api/projects CRUD（nodes/edges 以 JSON 存）
   routes/settings.ts           GET /api/settings(不回 key,只回 hasKey) / PUT(写入,key 留空则保留)
   routes/model.ts              POST /api/models(代理拉模型) / POST /api/run(用激活供应商 key 代理聊天)
+  routes/image.ts              POST /api/aigc(图像生成代理：补 req_from/model_name/version/config 转发 AIGC 接口；地址用 env AIGC_ENDPOINT 覆盖)
 apps/web/src/
   main.tsx                     入口：先 migrateLocalStorage() 迁移旧数据，再 load store，最后渲染（HashRouter）
   App.tsx                      路由：/ → 首页，/project/:id → 工作区，* → 回首页
@@ -46,10 +48,10 @@ apps/web/src/
                                画布编辑本地即时更新 + 防抖(500ms) PUT 保存激活项目；homeView 存 localStorage
   store/useSettingsStore.ts    Zustand（无 persist）：loadSettings() 从后端拉公开配置(无 key)；
                                saveProvider() PUT 后回拉；导出 getActiveConfig()/hasApiConfig()
-  lib/api.ts                   /api/* fetch 封装（项目 CRUD / 设置 / 模型）
+  lib/api.ts                   /api/* fetch 封装（项目 CRUD / 设置 / 模型 / 图像生成 generateImageApi）
   lib/migrate.ts               首次启动把旧 localStorage（openflow-store/settings）一次性导入后端，打 openflow-migrated 标记
   lib/types.ts                 React Flow 强类型节点（FlowNode = Prompt/Image/Video；Project）；供应商类型从 @openflow/shared 再导出
-  lib/nodeCatalog.ts           图像/视频生成节点的固定预置模型（IMAGE_MODELS/VIDEO_MODELS）+ 配色文案元信息（侧栏与节点共用）
+  lib/nodeCatalog.ts           图像/视频预置模型 + 图像模型→AIGC model_name 映射(IMAGE_API_MODEL/imageApiModel) + 尺寸/质量/张数选项 + 配色文案（侧栏与节点共用）
   components/ui/               shadcn/ui vendored（不参与 lint/format，勿手改）
   components/settings/SettingsDialog.tsx 供应商面板（选商→key/BaseURL→获取模型→选模型→保存；key 写入不回显，用 hasKey 占位）
   components/home/             HomePage（宫格/列表 + 新建）、ProjectCard
@@ -58,8 +60,9 @@ apps/web/src/
   components/canvas/
     FlowCanvas.tsx             React Flow 封装；连线默认 smoothstep（横平竖直）
     nodes/PromptNode.tsx       Prompt 节点（Card + Textarea，source Handle 在右）
-    nodes/GenerationNode.tsx   图像/视频生成节点（image/video 共用）：模型在添加时固定、画布上只读展示不可切换；运行按钮占位置灰（生成待接入）；Handle 左进右出
-    nodes/index.ts             nodeTypes 注册表（prompt / image / video）
+    nodes/ImageNode.tsx        图像生成节点：输入图URL/尺寸/质量/张数可调；运行收集上游 Prompt 文本→generateImageApi→展示结果图；Handle 左进右出
+    nodes/GenerationNode.tsx   视频生成节点：模型添加时固定、只读展示不可切换；运行按钮占位置灰（生成待接入）；Handle 左进右出
+    nodes/index.ts             nodeTypes 注册表（prompt → PromptNode / image → ImageNode / video → GenerationNode）
 ```
 
 ## 技术约束

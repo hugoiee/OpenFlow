@@ -80,3 +80,21 @@ export type RunModelBody = {
   model: string
   prompt: string
 }
+
+/** POST /api/aigc 请求体（图像生成，经后端代理到 AIGC 接口）。 */
+export type GenImageBody = {
+  /** 调用方署名（req_from），由前端填写；为空时后端回退默认值。 */
+  reqFrom: string
+  /** AIGC 接口的 model_name（如 gpt-image-2）。 */
+  model: string
+  /** 生成 / 编辑指令。 */
+  prompt: string
+  /** 待编辑的输入图片 URL 列表（纯文生图时为空）。 */
+  images: string[]
+  /** 出图尺寸，如 1024x1024 / auto。 */
+  size: string
+  /** 出图张数。 */
+  n: number
+  /** 出图质量，如 auto / low / medium / high。 */
+  quality: string
+}

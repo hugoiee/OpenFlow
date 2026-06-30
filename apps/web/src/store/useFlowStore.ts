@@ -60,13 +60,27 @@ function createNode(type: FlowNodeType, count: number, model = ''): FlowNode {
       data: { label: 'Prompt', text: '' },
     }
   }
-  // 图像 / 视频生成节点：带固定预置模型；生成功能待接入
-  return {
-    id: newId('n_'),
-    type,
-    position,
-    data: { label: type === 'image' ? '图像' : '视频', model },
+  if (type === 'image') {
+    // 图像生成节点：带具名模型 + 可调选项默认值；运行状态/结果初始为空
+    return {
+      id: newId('n_'),
+      type: 'image',
+      position,
+      data: {
+        label: '图像',
+        model,
+        reqFrom: '',
+        imagesText: '',
+        size: '1024x1024',
+        n: 1,
+        quality: 'auto',
+        running: false,
+        result: [],
+      },
+    }
   }
+  // 视频生成节点：占位待接入
+  return { id: newId('n_'), type: 'video', position, data: { label: '视频', model } }
 }
 
 // 画布高频编辑 → 防抖把激活项目整体 PUT 回后端
@@ -106,7 +120,13 @@ export const useFlowStore = create<FlowState>()((set) => {
       const projects: Project[] = dtos.map((d) => ({
         id: d.id,
         name: d.name,
-        nodes: d.nodes as FlowNode[],
+        // image 节点的 running/error 是瞬时态：运行中刷新会被防抖 PUT 存成 running:true，
+        // 载入时复位，避免节点永远卡在「生成中…」（result 保留，刷新后仍能看到上次出图）。
+        nodes: (d.nodes as FlowNode[]).map((node) =>
+          node.type === 'image'
+            ? { ...node, data: { ...node.data, running: false, error: undefined } }
+            : node,
+        ),
         edges: d.edges as Edge[],
       }))
       set({ projects, loaded: true })

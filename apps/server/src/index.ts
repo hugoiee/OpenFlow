@@ -4,6 +4,7 @@ import './db'
 import { projects } from './routes/projects'
 import { settings } from './routes/settings'
 import { model } from './routes/model'
+import { image } from './routes/image'
 
 const app = new Hono()
 
@@ -11,6 +12,7 @@ app.get('/api/health', (c) => c.json({ ok: true }))
 app.route('/api/projects', projects)
 app.route('/api/settings', settings)
 app.route('/api', model)
+app.route('/api', image)
 
 const port = Number(process.env.PORT ?? 8787)
 serve({ fetch: app.fetch, port })

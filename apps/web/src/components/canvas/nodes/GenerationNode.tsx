@@ -2,10 +2,10 @@ import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { GEN_NODE_META } from '@/lib/nodeCatalog'
-import { type ImageNode, type VideoNode } from '@/lib/types'
+import { type VideoNode } from '@/lib/types'
 
-/** 图像 / 视频生成节点（共用）。模型在添加时已固定，画布上只读展示、不可切换；生成功能待接入。 */
-export function GenerationNode({ type, data, selected }: NodeProps<ImageNode | VideoNode>) {
+/** 视频生成节点。模型在添加时已固定，画布上只读展示、不可切换；生成功能待接入。 */
+export function GenerationNode({ type, data, selected }: NodeProps<VideoNode>) {
   const meta = GEN_NODE_META[type]
 
   return (

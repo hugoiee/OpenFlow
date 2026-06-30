@@ -1,5 +1,6 @@
 import type {
   FetchModelsBody,
+  GenImageBody,
   ProjectDTO,
   RunModelBody,
   SaveSettingsBody,
@@ -81,4 +82,13 @@ export async function runModelApi(body: RunModelBody): Promise<string> {
     body: JSON.stringify(body),
   })
   return content
+}
+
+// ---- 图像生成 ----
+export async function generateImageApi(body: GenImageBody): Promise<string[]> {
+  const { images } = await request<{ images: string[] }>('/aigc', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+  return images
 }
