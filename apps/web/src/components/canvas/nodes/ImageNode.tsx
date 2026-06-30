@@ -12,23 +12,11 @@ import {
   NANO_VERSION_DEFAULT,
   imageApiModel,
 } from '@/lib/nodeCatalog'
+import { collectUpstreamImages, collectUpstreamPrompt } from '@/lib/graph'
 import { type ImageNode as ImageNodeType } from '@/lib/types'
 import { useFlowStore } from '@/store/useFlowStore'
 
 const meta = GEN_NODE_META.image
-
-/** 收集所有指向该节点的上游 prompt 节点文本，拼成生成指令。 */
-function collectUpstreamPrompt(nodeId: string): string {
-  const state = useFlowStore.getState()
-  const project = state.projects.find((p) => p.id === state.activeProjectId)
-  if (!project) return ''
-  const sourceIds = project.edges.filter((e) => e.target === nodeId).map((e) => e.source)
-  return project.nodes
-    .filter((n) => n.type === 'prompt' && sourceIds.includes(n.id))
-    .map((n) => (n.type === 'prompt' ? n.data.text : ''))
-    .filter(Boolean)
-    .join('\n\n')
-}
 
 /**
  * 图像生成节点：卡片只展示生成结果（运行态 / 结果图 / 空占位）。
@@ -60,15 +48,19 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
   }
 
   const handleRun = async () => {
-    const prompt = collectUpstreamPrompt(id)
+    const state = useFlowStore.getState()
+    const project = state.projects.find((p) => p.id === state.activeProjectId)
+    const prompt = project ? collectUpstreamPrompt(project, id) : ''
     if (!prompt.trim()) {
       fail('请先连接一个有内容的 Prompt 节点')
       return
     }
-    const images = imagesText
+    // 输入图 = 上游 image 节点的连线结果（图片1…）在前，手动填/传的在后
+    const manualImages = imagesText
       .split('\n')
       .map((s) => s.trim())
       .filter(Boolean)
+    const images = [...(project ? collectUpstreamImages(project, id) : []), ...manualImages]
     updateNodeData(id, { running: true, error: undefined, result: [] })
     try {
       const urls = await generateImageApi({

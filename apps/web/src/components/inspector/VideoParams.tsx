@@ -5,9 +5,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Slider } from '@/components/ui/slider'
 import {
   SEEDANCE_DURATION_DEFAULT,
-  SEEDANCE_DURATION_OPTIONS,
+  SEEDANCE_DURATION_MAX,
+  SEEDANCE_DURATION_MIN,
   SEEDANCE_MODE_DEFAULT,
   SEEDANCE_MODE_OPTIONS,
   SEEDANCE_RESOLUTION_DEFAULT,
@@ -61,41 +63,35 @@ export function VideoParams({ id, data }: { id: string; data: GenerationNodeData
         </Select>
       </label>
 
-      <div className="grid grid-cols-2 gap-2">
-        <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
-          分辨率
-          <Select value={resolution} onValueChange={(v) => updateNodeData(id, { resolution: v })}>
-            <SelectTrigger className="w-full text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {SEEDANCE_RESOLUTION_OPTIONS.map((r) => (
-                <SelectItem key={r} value={r} className="text-xs">
-                  {r}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </label>
+      <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
+        分辨率
+        <Select value={resolution} onValueChange={(v) => updateNodeData(id, { resolution: v })}>
+          <SelectTrigger className="w-full text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {SEEDANCE_RESOLUTION_OPTIONS.map((r) => (
+              <SelectItem key={r} value={r} className="text-xs">
+                {r}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </label>
 
-        <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
-          时长（秒）
-          <Select
-            value={String(duration)}
-            onValueChange={(v) => updateNodeData(id, { duration: Number(v) })}
-          >
-            <SelectTrigger className="w-full text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {SEEDANCE_DURATION_OPTIONS.map((d) => (
-                <SelectItem key={d} value={String(d)} className="text-xs">
-                  {d}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </label>
+      <div className="flex flex-col gap-1.5">
+        <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+          <span>时长（秒）</span>
+          <span className="font-medium text-foreground">{duration}s</span>
+        </div>
+        <Slider
+          value={[duration]}
+          min={SEEDANCE_DURATION_MIN}
+          max={SEEDANCE_DURATION_MAX}
+          step={1}
+          onValueChange={(vals) => updateNodeData(id, { duration: vals[0] })}
+          className="py-1"
+        />
       </div>
     </div>
   )

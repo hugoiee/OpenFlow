@@ -95,7 +95,7 @@ export const SEEDANCE_VERSION_OPTIONS = [
   { value: 'seedance-1.0-pro', label: 'seedance-1.0-pro' },
   { value: 'seedance-1.0-lite', label: 'seedance-1.0-lite' },
 ] as const
-export const SEEDANCE_VERSION_DEFAULT = 'seedance-1.5-pro'
+export const SEEDANCE_VERSION_DEFAULT = 'seedance-2.0'
 
 /** Seedance 的 mode 选项。 */
 export const SEEDANCE_MODE_OPTIONS = [
@@ -108,8 +108,9 @@ export const SEEDANCE_MODE_DEFAULT = 'first_last_frame'
 export const SEEDANCE_RESOLUTION_OPTIONS = ['480p', '720p', '1080p'] as const
 export const SEEDANCE_RESOLUTION_DEFAULT = '720p'
 
-/** Seedance config.duration（秒）选项。 */
-export const SEEDANCE_DURATION_OPTIONS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] as const
+/** Seedance config.duration（秒）范围（滑块 4–15s，步长 1）。 */
+export const SEEDANCE_DURATION_MIN = 4
+export const SEEDANCE_DURATION_MAX = 15
 export const SEEDANCE_DURATION_DEFAULT = 6
 
 /** 生成类节点（image/video）的展示元信息。 */

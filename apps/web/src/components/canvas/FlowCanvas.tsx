@@ -37,7 +37,8 @@ export function FlowCanvas() {
       >
         <Background />
         <Controls />
-        <MiniMap pannable zoomable />
+        {/* 缩略图挪到左下角，紧贴 4 个控制按钮右侧 */}
+        <MiniMap pannable zoomable position="bottom-left" style={{ left: 40 }} />
       </ReactFlow>
     </div>
   )

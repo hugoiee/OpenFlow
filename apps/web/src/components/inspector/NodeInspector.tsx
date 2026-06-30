@@ -3,7 +3,8 @@ import { ChevronLeft, ChevronRight, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { uploadImagesApi } from '@/lib/api'
-import { type ImageNode as ImageNodeT, type VideoNode as VideoNodeT } from '@/lib/types'
+import { collectUpstreamImages } from '@/lib/graph'
+import { type ImageNode as ImageNodeT, type Project, type VideoNode as VideoNodeT } from '@/lib/types'
 import { useActiveProject, useFlowStore } from '@/store/useFlowStore'
 import { ImageParams } from './ImageParams'
 import { VideoParams } from './VideoParams'
@@ -15,26 +16,35 @@ import { VideoParams } from './VideoParams'
  */
 export function NodeInspector() {
   const project = useActiveProject()
-  const selected = (project?.nodes ?? []).filter((n) => n.selected)
+  if (!project) return null
+  const selected = project.nodes.filter((n) => n.selected)
   if (selected.length !== 1) return null
   const node = selected[0]
   if (node.type !== 'image' && node.type !== 'video') return null
   // key={node.id}：切换选中节点时重置 uploading / 文件输入，避免上传态串台
-  return <NodeInspectorPanel key={node.id} node={node} />
+  return <NodeInspectorPanel key={node.id} node={node} project={project} />
 }
 
-function NodeInspectorPanel({ node }: { node: ImageNodeT | VideoNodeT }) {
+function NodeInspectorPanel({
+  node,
+  project,
+}: {
+  node: ImageNodeT | VideoNodeT
+  project: Project
+}) {
   const updateNodeData = useFlowStore((s) => s.updateNodeData)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
 
   const id = node.id
   const imagesText = node.data.imagesText ?? ''
-  // 输入图 URL 列表（按行拆，去空白/空行），用于缩略图预览
+  // 手动填/传的输入图 URL 列表（按行拆，去空白/空行）
   const images = imagesText
     .split('\n')
     .map((s) => s.trim())
     .filter(Boolean)
+  // 上游 image 节点经连线传入的结果图（只读，排在手动图之前 = 图片1…）
+  const connected = collectUpstreamImages(project, id)
 
   // 删除第 idx 张输入图：按位置移除（兼容重复 URL），重写回文本框
   const removeImage = (idx: number) => {
@@ -108,9 +118,35 @@ function NodeInspectorPanel({ node }: { node: ImageNodeT | VideoNodeT }) {
           {uploading ? '上传中…' : '上传图片'}
         </Button>
 
-        {/* 输入图缩略图预览：每张右上角 × 可删除 */}
-        {images.length > 0 && (
+        {/* 输入图缩略图预览：连线传入的（只读）排前，手动的（可删/排序）在后；序号即「图片1/图片2…」 */}
+        {(connected.length > 0 || images.length > 0) && (
           <div className="grid grid-cols-3 gap-2">
+            {/* 上游连线传入的图：只读，序号 1..k */}
+            {connected.map((url, i) => (
+              <div
+                key={`up-${url}-${i}`}
+                className="relative aspect-square overflow-hidden rounded-md border border-primary/50 bg-muted ring-1 ring-primary/30"
+              >
+                <a href={url} target="_blank" rel="noreferrer" title={url}>
+                  <img
+                    src={url}
+                    alt={`连线输入图 ${i + 1}`}
+                    className="h-full w-full object-cover"
+                    onError={(e) => {
+                      e.currentTarget.style.visibility = 'hidden'
+                    }}
+                  />
+                </a>
+                <span className="pointer-events-none absolute left-1 top-1 z-10 grid size-4 place-items-center rounded-full bg-foreground/80 text-[10px] font-medium text-background shadow-sm">
+                  {i + 1}
+                </span>
+                <span className="pointer-events-none absolute inset-x-1 bottom-1 z-10 rounded bg-primary/80 px-1 text-center text-[9px] leading-4 text-primary-foreground">
+                  连线
+                </span>
+              </div>
+            ))}
+
+            {/* 手动上传/填入的图：可删 / 排序，序号接在连线图之后 */}
             {images.map((url, i) => (
               <div
                 key={`${url}-${i}`}
@@ -119,7 +155,7 @@ function NodeInspectorPanel({ node }: { node: ImageNodeT | VideoNodeT }) {
                 <a href={url} target="_blank" rel="noreferrer" title={url}>
                   <img
                     src={url}
-                    alt={`输入图 ${i + 1}`}
+                    alt={`输入图 ${connected.length + i + 1}`}
                     className="h-full w-full object-cover"
                     onError={(e) => {
                       e.currentTarget.style.visibility = 'hidden'
@@ -127,9 +163,9 @@ function NodeInspectorPanel({ node }: { node: ImageNodeT | VideoNodeT }) {
                   />
                 </a>
 
-                {/* 序号角标：对应 prompt 里的「图片1 / 图片2…」 */}
+                {/* 序号角标：接在连线图之后，对应 prompt 里的「图片1 / 图片2…」 */}
                 <span className="pointer-events-none absolute left-1 top-1 z-10 grid size-4 place-items-center rounded-full bg-foreground/80 text-[10px] font-medium text-background shadow-sm">
-                  {i + 1}
+                  {connected.length + i + 1}
                 </span>
 
                 <button
@@ -141,7 +177,7 @@ function NodeInspectorPanel({ node }: { node: ImageNodeT | VideoNodeT }) {
                   <X className="size-3" />
                 </button>
 
-                {/* 前移 / 后移：与相邻图交换位置，改变其在 prompt 中的编号 */}
+                {/* 前移 / 后移：在手动图内部交换位置 */}
                 <div className="absolute inset-x-1 bottom-1 z-10 flex items-center justify-between">
                   <button
                     type="button"
