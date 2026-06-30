@@ -141,7 +141,7 @@ export async function runVideoGen(input: VideoGenInput): Promise<string[]> {
       prompt: input.prompt,
       image_list: input.images,
       video_list: [],
-      audio_list: [],
+      audio_list: input.audios ?? [],
       config: { resolution: input.resolution, duration: input.duration },
     }),
   })

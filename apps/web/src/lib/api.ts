@@ -84,10 +84,10 @@ export async function generateVideoApi(body: GenVideoBody): Promise<string[]> {
   return videos
 }
 
-// ---- 图片上传 ----
+// ---- 文件上传（图片 / 音频）----
 // 走 multipart，不能复用 request()（它写死了 application/json）；让浏览器自带 boundary。
-// req_from（用户标识）由后端从全局设置注入，前端不再传。
-export async function uploadImagesApi(files: File[]): Promise<string[]> {
+// req_from（用户标识）由后端从全局设置注入，前端不再传。后端只透传 multipart，图片/音频同一端点。
+export async function uploadFilesApi(files: File[]): Promise<string[]> {
   const form = new FormData()
   files.forEach((f) => form.append('files', f))
   let res: Response

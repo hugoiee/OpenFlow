@@ -2,7 +2,9 @@
 
 节点式 AI 工作流画布编辑器：支持多个项目，每个项目是一块画布，可在画布上添加节点
 （节点列表按输出形态分三类：**文本** Prompt 节点 / **图像** 生成节点 / **视频** 生成节点）并用连线把
-节点连接起来。图像类的 **Image 2(gpt-image-2)** 与 **Nano Banana(nano-banana)**、视频类的 **Seedance(seedance)** 均已接入真实生成
+节点连接起来。还支持从桌面**拖入图像/音频文件**：拖到空白处经 /api/upload 上传后生成 **素材节点**（图像素材 / 音频素材，纯「源」节点，
+连下游图像/视频节点作输入——图像素材作输入图、音频素材作视频 audio_list）；拖到已有图像/视频节点上则把图片直接追加进其输入图。
+图像类的 **Image 2(gpt-image-2)** 与 **Nano Banana(nano-banana)**、视频类的 **Seedance(seedance)** 均已接入真实生成
 （经后端代理调 AIGC 接口；prompt 取自上游 Prompt 节点，节点上可调各自参数，输入图可手填 URL 或经 /api/upload 上传，运行后展示结果图/视频）。
 调用方署名 **req_from** 为全局设置（首次打开网站若未填则强制填写，存后端单例 settings；图像/视频生成与图片上传统一由后端注入）。设置面板仅此一项。**前后端架构**：
 数据存后端 SQLite，AIGC 调用经后端代理（绕开 CORS）。单用户、无鉴权。
@@ -30,27 +32,29 @@ pnpm format        # Prettier 格式化 apps/*/src 与 packages/*/src（不含 c
 ## 目录结构
 
 ```
-packages/shared/src/index.ts   ProjectDTO / SettingsDTO(defaultReqFrom) / SaveSettingsBody(defaultReqFrom) / GenImageBody / GenVideoBody
+packages/shared/src/index.ts   ProjectDTO / SettingsDTO(defaultReqFrom) / SaveSettingsBody(defaultReqFrom) / GenImageBody / GenVideoBody(含 audios → audio_list)
 apps/server/src/
   index.ts                     Hono 起服务(8787)，挂 /api 路由
   db.ts                        better-sqlite3 建库建表（projects / settings），库文件 apps/server/data/openflow.db（gitignore）；settings 表只存 default_req_from（旧库 provider 列留存不读）
   settings-store.ts            读写 settings 单行的全局 default_req_from
-  provider.ts                  runImageGen()/runVideoGen()：POST AIGC 接口生成图像/视频（按 model 分支构造 payload）+ 从任意响应稳健解析 URL；uploadImages()：转发 multipart 到上传接口；resolveReqFrom()：把全局署名解析成最终 req_from（空回退 env AIGC_REQ_FROM，再回退 'openflow'）
+  provider.ts                  runImageGen()/runVideoGen()：POST AIGC 接口生成图像/视频（按 model 分支构造 payload；视频 audio_list 取自入参 audios）+ 从任意响应稳健解析 URL；uploadImages()：转发 multipart 到上传接口（图片/音频同一端点）；resolveReqFrom()：把全局署名解析成最终 req_from（空回退 env AIGC_REQ_FROM，再回退 'openflow'）
   routes/projects.ts           /api/projects CRUD（nodes/edges 以 JSON 存）
   routes/settings.ts           GET /api/settings(回全局 defaultReqFrom) / PUT(写入 defaultReqFrom)
   routes/image.ts              POST /api/aigc(图像生成代理：Image 2/Nano Banana，按 model 补 version/config 转发 AIGC；地址用 env AIGC_ENDPOINT 覆盖；req_from 从全局设置注入)
-  routes/video.ts              POST /api/video(视频生成代理：seedance，补 version/mode/config 转发 AIGC /aigc；req_from 从全局设置注入)
-  routes/upload.ts             POST /api/upload(图片上传代理：转发 multipart 到上传接口，地址用 env UPLOAD_ENDPOINT 覆盖；req_from 从全局设置注入)
+  routes/video.ts              POST /api/video(视频生成代理：seedance，补 version/mode/config + audios→audio_list 转发 AIGC /aigc；req_from 从全局设置注入)
+  routes/upload.ts             POST /api/upload(文件上传代理：图片/音频统一转发 multipart 到上传接口，地址用 env UPLOAD_ENDPOINT 覆盖；req_from 从全局设置注入)
 apps/web/src/
   main.tsx                     入口：先 migrateLocalStorage() 迁移旧数据，再 load store，最后渲染（HashRouter）
   App.tsx                      用 ReqFromGate 包裹路由（/ → 首页，/project/:id → 工作区，* → 回首页）
   store/useFlowStore.ts        Zustand（无 persist）：启动 loadProjects() 拉后端；增删改调 API；
-                               画布编辑本地即时更新 + 防抖(500ms) PUT 保存激活项目；homeView 存 localStorage
+                               画布编辑本地即时更新 + 防抖(500ms) PUT 保存激活项目；homeView 存 localStorage；
+                               addAssetNode(kind,position)/removeNode(id) 供拖拽建/撤素材节点；载入时复位 asset 的 uploading
   store/useSettingsStore.ts    Zustand（无 persist）：loadSettings() 拉全局 defaultReqFrom；saveReqFrom() PUT 后回拉
-  lib/api.ts                   /api/* fetch 封装（项目 CRUD / 设置 get·save / 图像生成 generateImageApi / 视频生成 generateVideoApi / 图片上传 uploadImagesApi）
+  lib/api.ts                   /api/* fetch 封装（项目 CRUD / 设置 get·save / 图像生成 generateImageApi / 视频生成 generateVideoApi / 文件上传 uploadFilesApi——图片/音频同端点）
+  lib/graph.ts                 连线采集：collectUpstreamPrompt（上游文本）/ collectUpstreamImages（上游 image 结果 + 图像素材 URL 作输入图）/ collectUpstreamAudio（上游音频素材 URL 作 audio_list）
   lib/migrate.ts               首次启动把旧 localStorage（openflow-store）项目数据一次性导入后端，打 openflow-migrated 标记
-  lib/types.ts                 React Flow 强类型节点（FlowNode = Prompt/Image/Video；Project）
-  lib/nodeCatalog.ts           图像/视频预置模型 + 模型→AIGC model_name 映射(IMAGE_API_MODEL/imageApiModel、VIDEO_API_MODEL/videoApiModel) + 各模型可调项选项(图像尺寸/质量/张数、Nano version/宽高比/尺寸、Seedance version/mode/分辨率/时长) + 配色文案（侧栏与节点共用）
+  lib/types.ts                 React Flow 强类型节点（FlowNode = Prompt/Image/Video/Asset；AssetNodeData{kind:image|audio,url,fileName,uploading,error}；Project）
+  lib/nodeCatalog.ts           图像/视频预置模型 + 模型→AIGC model_name 映射(IMAGE_API_MODEL/imageApiModel、VIDEO_API_MODEL/videoApiModel) + 各模型可调项选项(图像尺寸/质量/张数、Nano version/宽高比/尺寸、Seedance version/mode/分辨率/时长) + 配色文案（侧栏与节点共用，含素材节点 ASSET_NODE_META：图像=琥珀 / 音频=天蓝）
   components/ui/               shadcn/ui vendored（不参与 lint/format，勿手改）
   components/gate/ReqFromGate.tsx 启动强制填写 req_from：设置已加载且全局署名为空时全屏阻断弹窗，填写保存后放行（已填则不出现）
   components/settings/SettingsDialog.tsx 设置面板：仅全局 req_from（署名）输入 + 保存
@@ -58,11 +62,12 @@ apps/web/src/
   components/workspace/ProjectWorkspace.tsx  Sidebar + 画布；未 loaded 前不跳首页
   components/projects/ProjectSidebar.tsx     工作区 Sidebar：返回首页 + 节点列表（按文本/图像/视频三类分组，点按添加对应节点并预设模型；不再显示项目列表）
   components/canvas/
-    FlowCanvas.tsx             React Flow 封装；连线默认 smoothstep（横平竖直）
+    FlowCanvas.tsx             React Flow 封装；连线默认 smoothstep（横平竖直）；onDragOver/onDrop 接桌面拖入文件（按 MIME 分图像/音频，screenToFlowPosition 定位：落生成节点上→追加输入图，否则建素材节点上传写回 URL）
     nodes/PromptNode.tsx       Prompt 节点（Card + Textarea，source Handle 在右）
     nodes/ImageNode.tsx        图像生成节点：输入图(可上传)/按模型(Image 2 走尺寸/质量/张数；Nano Banana 走 version/宽高比/尺寸)；运行收集上游 Prompt 文本→generateImageApi→展示结果图；Handle 左进右出（req_from 署名走全局设置，节点不再单设）
-    nodes/SeedanceNode.tsx     视频生成节点（seedance）：输入图(可上传)/version/mode/分辨率/时长；运行→generateVideoApi→<video> 展示；Handle 左进右出（req_from 署名走全局设置，节点不再单设）
-    nodes/index.ts             nodeTypes 注册表（prompt → PromptNode / image → ImageNode / video → SeedanceNode）
+    nodes/SeedanceNode.tsx     视频生成节点（seedance）：输入图(可上传)/version/mode/分辨率/时长；运行收集上游音频(audios)→generateVideoApi→<video> 展示；Handle 左进右出（req_from 署名走全局设置，节点不再单设）
+    nodes/AssetNode.tsx        素材节点（桌面拖入）：图像素材显示缩略图 / 音频素材显示 <audio>；上传中骨架、失败内联；仅右侧 source Handle（纯源，连下游作输入）
+    nodes/index.ts             nodeTypes 注册表（prompt → PromptNode / image → ImageNode / video → SeedanceNode / asset → AssetNode）
 ```
 
 ## 技术约束
@@ -82,7 +87,7 @@ apps/web/src/
 ## 编码规范
 
 - 组件文件 PascalCase，函数组件具名导出。
-- 新增节点类型需同步更新 `apps/web/src/lib/types.ts`、`nodes/index.ts`、`createNode()`(store)、`ProjectSidebar` 的 `NODE_GROUPS`；图像/视频类的预置模型在 `lib/nodeCatalog.ts`。
+- 新增节点类型需同步更新 `apps/web/src/lib/types.ts`、`nodes/index.ts`、`createNode()`(store)、`ProjectSidebar` 的 `NODE_GROUPS`；图像/视频类的预置模型在 `lib/nodeCatalog.ts`。（例外：`asset` 素材节点不走侧栏/`createNode`，由 `FlowCanvas` 拖拽经 `addAssetNode()` 创建。）
 - 节点内可交互元素加 `nodrag` class。
 - 不手改 `apps/web/src/components/ui/*`、`src/hooks/use-mobile.ts` 与 `index.css` 的 shadcn 主题块（生成内容，已在 eslint globalIgnores 排除）。
 - 改后端 SQLite 表结构时注意已有数据兼容。

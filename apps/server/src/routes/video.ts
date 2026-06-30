@@ -20,6 +20,7 @@ video.post('/video', async (c) => {
       mode: typeof body.mode === 'string' ? body.mode : '',
       prompt: body.prompt,
       images: Array.isArray(body.images) ? body.images : [],
+      audios: Array.isArray(body.audios) ? body.audios : [],
       resolution: body.resolution || '720p',
       duration: typeof body.duration === 'number' ? body.duration : 6,
     })

@@ -11,7 +11,7 @@ import {
   SEEDANCE_VERSION_DEFAULT,
   videoApiModel,
 } from '@/lib/nodeCatalog'
-import { collectUpstreamImages, collectUpstreamPrompt } from '@/lib/graph'
+import { collectUpstreamAudio, collectUpstreamImages, collectUpstreamPrompt } from '@/lib/graph'
 import { type VideoNode as VideoNodeType } from '@/lib/types'
 import { useFlowStore } from '@/store/useFlowStore'
 
@@ -52,6 +52,8 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
       .map((s) => s.trim())
       .filter(Boolean)
     const images = [...(project ? collectUpstreamImages(project, id) : []), ...manualImages]
+    // 输入音频 = 上游音频素材节点经连线传入（作 audio_list）
+    const audios = project ? collectUpstreamAudio(project, id) : []
     updateNodeData(id, { running: true, error: undefined, result: [] })
     try {
       const urls = await generateVideoApi({
@@ -60,6 +62,7 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
         mode,
         prompt,
         images,
+        audios,
         resolution,
         duration,
       })

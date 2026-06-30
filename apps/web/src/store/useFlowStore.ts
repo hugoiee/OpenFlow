@@ -56,6 +56,10 @@ type FlowState = {
   onEdgesChange: (changes: EdgeChange[]) => void
   onConnect: (connection: Connection) => void
   addNode: (type: FlowNodeType, model?: string) => void
+  /** 在指定画布坐标新建一个素材节点（上传中态），返回新节点 id。 */
+  addAssetNode: (kind: 'image' | 'audio', position: { x: number; y: number }) => string
+  /** 删除某个节点（如素材上传失败时移除占位节点）。 */
+  removeNode: (nodeId: string) => void
   updateNodeData: (nodeId: string, data: Partial<FlowNode['data']>) => void
 }
 
@@ -157,6 +161,10 @@ export const useFlowStore = create<FlowState>()((set) => {
           if (node.type === 'video') {
             return { ...node, data: { ...node.data, running: false, error: undefined } }
           }
+          // 素材节点：uploading 是瞬时态，载入时复位，避免刷新后卡在「上传中…」
+          if (node.type === 'asset') {
+            return { ...node, data: { ...node.data, uploading: false } }
+          }
           return node
         }),
         edges: d.edges as Edge[],
@@ -222,6 +230,31 @@ export const useFlowStore = create<FlowState>()((set) => {
       patchActive((p) => ({
         ...p,
         nodes: [...p.nodes, createNode(type, p.nodes.length, model)],
+      })),
+
+    addAssetNode: (kind, position) => {
+      const id = newId('n_')
+      const node: FlowNode = {
+        id,
+        type: 'asset',
+        position,
+        data: {
+          label: kind === 'image' ? '图像素材' : '音频素材',
+          kind,
+          url: '',
+          uploading: true,
+        },
+      }
+      patchActive((p) => ({ ...p, nodes: [...p.nodes, node] }))
+      return id
+    },
+
+    removeNode: (nodeId) =>
+      patchActive((p) => ({
+        ...p,
+        nodes: p.nodes.filter((n) => n.id !== nodeId),
+        // 一并清掉与该节点相关的连线
+        edges: p.edges.filter((e) => e.source !== nodeId && e.target !== nodeId),
       })),
 
     updateNodeData: (nodeId, data) =>

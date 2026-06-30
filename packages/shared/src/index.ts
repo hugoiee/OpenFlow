@@ -56,6 +56,8 @@ export type GenVideoBody = {
   prompt: string
   /** 输入图 URL 列表（0=t2v / 1=首帧 / 2=首尾帧）。 */
   images: string[]
+  /** 输入音频 URL 列表（来自上游音频素材节点，作 audio_list；无则空）。 */
+  audios?: string[]
   /** config.resolution，如 720p。 */
   resolution: string
   /** config.duration，秒。 */

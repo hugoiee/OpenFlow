@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
-import { uploadImagesApi } from '@/lib/api'
+import { uploadFilesApi } from '@/lib/api'
 import { collectUpstreamImages } from '@/lib/graph'
 import { type ImageNode as ImageNodeT, type Project, type VideoNode as VideoNodeT } from '@/lib/types'
 import { useActiveProject, useFlowStore } from '@/store/useFlowStore'
@@ -68,7 +68,7 @@ function NodeInspectorPanel({
     if (files.length === 0) return
     setUploading(true)
     try {
-      const urls = await uploadImagesApi(files)
+      const urls = await uploadFilesApi(files)
       const next = [imagesText.trim(), ...urls].filter(Boolean).join('\n')
       updateNodeData(id, { imagesText: next })
     } catch (err) {

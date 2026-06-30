@@ -121,3 +121,12 @@ export const GEN_NODE_META: Record<
   image: { label: '图像', dot: 'bg-amber-500', handle: '!bg-amber-500' },
   video: { label: '视频', dot: 'bg-rose-500', handle: '!bg-rose-500' },
 }
+
+/** 素材节点（image/audio）的展示元信息（配色与连接点颜色，按种类区分）。 */
+export const ASSET_NODE_META: Record<
+  'image' | 'audio',
+  { label: string; dot: string; handle: string }
+> = {
+  image: { label: '图像素材', dot: 'bg-amber-500', handle: '!bg-amber-500' },
+  audio: { label: '音频素材', dot: 'bg-sky-500', handle: '!bg-sky-500' },
+}

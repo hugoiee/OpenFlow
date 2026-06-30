@@ -1,12 +1,30 @@
 import type { Edge, Node } from '@xyflow/react'
 
-/** 节点种类：文本 prompt / 图像生成 / 视频生成。 */
-export type FlowNodeType = 'prompt' | 'image' | 'video'
+/** 节点种类：文本 prompt / 图像生成 / 视频生成 / 桌面拖入的媒体素材。 */
+export type FlowNodeType = 'prompt' | 'image' | 'video' | 'asset'
 
 /** 纯文字 prompt 节点的数据。 */
 export type PromptNodeData = {
   label: string
   text: string
+}
+
+/**
+ * 素材节点：承载从桌面拖入的一张图片 / 一段音频（已上传得到 URL）。
+ * 纯「源」节点（只出不进）：图像素材连下游图像/视频节点作输入图，音频素材连视频节点作音轨。
+ */
+export type AssetNodeData = {
+  label: string
+  /** 素材种类：图像 / 音频。 */
+  kind: 'image' | 'audio'
+  /** 上传后的媒体 URL（上传完成前为空）。 */
+  url: string
+  /** 原始文件名（展示用）。 */
+  fileName?: string
+  /** 是否正在上传。 */
+  uploading?: boolean
+  /** 上传失败信息。 */
+  error?: string
 }
 
 /** 视频生成节点（seedance）的数据：具名模型 + 可调选项 + 运行状态与结果。 */
@@ -64,7 +82,8 @@ export type ImageNodeData = {
 export type PromptNode = Node<PromptNodeData, 'prompt'>
 export type ImageNode = Node<ImageNodeData, 'image'>
 export type VideoNode = Node<GenerationNodeData, 'video'>
-export type FlowNode = PromptNode | ImageNode | VideoNode
+export type AssetNode = Node<AssetNodeData, 'asset'>
+export type FlowNode = PromptNode | ImageNode | VideoNode | AssetNode
 
 /** 一个项目 = 一块画布。 */
 export type Project = {
