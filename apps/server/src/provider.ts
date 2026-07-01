@@ -158,12 +158,7 @@ export async function runVideoGen(input: VideoGenInput): Promise<string[]> {
       image_list: input.images,
       video_list: [],
       audio_list: input.audios ?? [],
-      // ratio 省略时不塞进 config，保持旧行为（由接口自行决定宽高比）
-      config: {
-        resolution: input.resolution,
-        duration: input.duration,
-        ...(input.ratio?.trim() ? { ratio: input.ratio } : {}),
-      },
+      config: { resolution: input.resolution, duration: input.duration },
     }),
   })
   const data = (await res.json().catch(() => null)) as unknown

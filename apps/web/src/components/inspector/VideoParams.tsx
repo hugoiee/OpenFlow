@@ -11,9 +11,6 @@ import {
   SEEDANCE_DURATION_DEFAULT,
   SEEDANCE_DURATION_MAX,
   SEEDANCE_DURATION_MIN,
-  SEEDANCE_RATIO_DEFAULT,
-  SEEDANCE_RATIO_LABELS,
-  SEEDANCE_RATIO_OPTIONS,
   SEEDANCE_RESOLUTION_DEFAULT,
   SEEDANCE_RESOLUTION_OPTIONS,
   SEEDANCE_VERSION_DEFAULT,
@@ -56,77 +53,10 @@ export function VideoParams({ id, data }: { id: string; data: GenerationNodeData
 
   const version = data.version ?? SEEDANCE_VERSION_DEFAULT
   const resolution = data.resolution ?? SEEDANCE_RESOLUTION_DEFAULT
-  const ratio = data.ratio ?? SEEDANCE_RATIO_DEFAULT
   const duration = data.duration ?? SEEDANCE_DURATION_DEFAULT
 
   return (
     <div className="flex flex-col gap-3">
-      {/* 模型参数：version / 分辨率 / 宽高比 / 时长（置于生成方式之上） */}
-      <div className="flex flex-col gap-2">
-        <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
-          version
-          <Select value={version} onValueChange={(v) => updateNodeData(id, { version: v })}>
-            <SelectTrigger className="w-full text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {SEEDANCE_VERSION_OPTIONS.map((o) => (
-                <SelectItem key={o.value} value={o.value} className="text-xs">
-                  {o.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </label>
-
-        <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
-          分辨率
-          <Select value={resolution} onValueChange={(v) => updateNodeData(id, { resolution: v })}>
-            <SelectTrigger className="w-full text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {SEEDANCE_RESOLUTION_OPTIONS.map((r) => (
-                <SelectItem key={r} value={r} className="text-xs">
-                  {r}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </label>
-
-        <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
-          宽高比
-          <Select value={ratio} onValueChange={(v) => updateNodeData(id, { ratio: v })}>
-            <SelectTrigger className="w-full text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {SEEDANCE_RATIO_OPTIONS.map((r) => (
-                <SelectItem key={r} value={r} className="text-xs">
-                  {SEEDANCE_RATIO_LABELS[r] ?? r}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </label>
-
-        <div className="flex flex-col gap-1.5">
-          <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-            <span>时长（秒）</span>
-            <span className="font-medium text-foreground">{duration}s</span>
-          </div>
-          <Slider
-            value={[duration]}
-            min={SEEDANCE_DURATION_MIN}
-            max={SEEDANCE_DURATION_MAX}
-            step={1}
-            onValueChange={(vals) => updateNodeData(id, { duration: vals[0] })}
-            className="py-1"
-          />
-        </div>
-      </div>
-
       {/* 任务选择：4 选 1 卡片 */}
       <div className="flex flex-col gap-1.5">
         <span className="text-[11px] text-muted-foreground">生成方式</span>
@@ -184,6 +114,56 @@ export function VideoParams({ id, data }: { id: string; data: GenerationNodeData
       <div className="flex flex-col gap-2">
         <span className="text-[11px] text-muted-foreground">输入音频（audio_list）</span>
         <AudioInput id={id} audiosText={data.audiosText ?? ''} />
+      </div>
+
+      {/* 模型参数：version / 分辨率 / 时长 */}
+      <div className="flex flex-col gap-2">
+        <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
+          version
+          <Select value={version} onValueChange={(v) => updateNodeData(id, { version: v })}>
+            <SelectTrigger className="w-full text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {SEEDANCE_VERSION_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value} className="text-xs">
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </label>
+
+        <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
+          分辨率
+          <Select value={resolution} onValueChange={(v) => updateNodeData(id, { resolution: v })}>
+            <SelectTrigger className="w-full text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {SEEDANCE_RESOLUTION_OPTIONS.map((r) => (
+                <SelectItem key={r} value={r} className="text-xs">
+                  {r}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </label>
+
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+            <span>时长（秒）</span>
+            <span className="font-medium text-foreground">{duration}s</span>
+          </div>
+          <Slider
+            value={[duration]}
+            min={SEEDANCE_DURATION_MIN}
+            max={SEEDANCE_DURATION_MAX}
+            step={1}
+            onValueChange={(vals) => updateNodeData(id, { duration: vals[0] })}
+            className="py-1"
+          />
+        </div>
       </div>
     </div>
   )

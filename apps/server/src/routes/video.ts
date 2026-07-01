@@ -24,8 +24,6 @@ video.post('/video', async (c) => {
       images: Array.isArray(body.images) ? body.images : [],
       audios: Array.isArray(body.audios) ? body.audios : [],
       resolution: body.resolution || '720p',
-      // ratio 可选：省略/非字符串时不传，由 provider 保持旧行为
-      ratio: typeof body.ratio === 'string' ? body.ratio : undefined,
       duration: typeof body.duration === 'number' ? body.duration : 6,
     })
     return c.json({ videos })
