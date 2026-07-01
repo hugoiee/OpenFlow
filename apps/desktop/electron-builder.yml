@@ -13,12 +13,12 @@ asarUnpack:
   - '**/node_modules/better-sqlite3/**'
 npmRebuild: true
 mac:
-  # 显式指定 arch，避免 electron-builder 按宿主机 arch 默认（团队多为 Apple Silicon）
+  # 同时出 Apple Silicon(arm64) 与 Intel(x64) 两套安装包；分开构建、各自内置对应 arch 的原生模块
   target:
     - target: dmg
-      arch: [arm64]
+      arch: [arm64, x64]
     - target: zip
-      arch: [arm64]
+      arch: [arm64, x64]
   category: public.app-category.graphics-design
   # 内部自用：不做签名/公证（identity 置空跳过签名）
   identity: null

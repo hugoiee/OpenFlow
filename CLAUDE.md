@@ -30,7 +30,7 @@ pnpm lint          # pnpm -r lint
 pnpm format        # Prettier 格式化 apps/*/src 与 packages/*/src（不含 components/ui）
 
 # 桌面端（Electron）打包 —— 详见「桌面端打包」章节
-pnpm --filter @openflow/desktop dist:mac   # 产 mac dmg/zip（arm64，未签名）到 apps/desktop/release
+pnpm --filter @openflow/desktop dist:mac   # 产 mac dmg/zip（arm64 + x64/Intel，未签名）到 apps/desktop/release
 pnpm --filter @openflow/desktop dist:win   # 产 win nsis 安装包（x64，未签名，可在 mac 上交叉构建）
 pnpm --filter @openflow/desktop dev        # Electron 开发（自动切 electron ABI + 连 Vite dev server:5173）
 ```
@@ -81,7 +81,7 @@ apps/desktop/
   src/preload.ts               预加载：contextIsolation，仅暴露 window.openflow.desktop 标记（渲染进程只用 fetch 访问本地 /api）
   scripts/build.mjs            esbuild 把 main/preload + @openflow/server 打成 CJS(dist-electron/*.cjs，better-sqlite3/electron 外部化) + 拷 apps/web/dist → dist-electron/web
   scripts/sqlite-abi.mjs       在 Node/Electron ABI 间切 better-sqlite3（node=prebuild-install / electron=electron-rebuild）
-  electron-builder.yml         打包配置：asar + better-sqlite3 解包(asarUnpack)；mac dmg/zip(arm64,identity:null 未签名)、win nsis(x64 未签名)
+  electron-builder.yml         打包配置：asar + better-sqlite3 解包(asarUnpack)；mac dmg/zip(arm64+x64,identity:null 未签名)、win nsis(x64 未签名)
 ```
 
 ## 技术约束
@@ -106,7 +106,7 @@ apps/desktop/
   - `pnpm dev:all` / `pnpm server`（普通 Node）需 **Node ABI**；`electron .` 与打包需 **Electron ABI**。
   - `scripts/sqlite-abi.mjs` 负责切换：`rebuild:node`（prebuild-install）/ `rebuild:electron`（electron-rebuild）。
   - `dist:mac`/`dist:win` **打包结束会自动 `rebuild:node` 还原**（打好的 app 已自带 Electron ABI 副本），故打包不破坏 `pnpm dev:all`；`pnpm --filter @openflow/desktop dev/start` 会先切 Electron ABI，用完想跑普通 Node 服务需手动 `pnpm --filter @openflow/desktop rebuild:node`。
-- **分发**：当前 mac(arm64 dmg/zip) / win(x64 nsis) 均 **未签名**（内部自用）；mac 首次打开需右键「打开」绕过 Gatekeeper，win 点「仍要运行」绕过 SmartScreen。产物在 `apps/desktop/release/`（gitignore）。正式对外分发需另配 Apple Developer ID 公证 + Windows 代码签名证书。
+- **分发**：当前 mac(arm64 + x64/Intel dmg/zip，各自内置对应 arch 原生模块) / win(x64 nsis) 均 **未签名**（内部自用）；mac 首次打开需右键「打开」绕过 Gatekeeper，win 点「仍要运行」绕过 SmartScreen。产物在 `apps/desktop/release/`（gitignore；x64 dmg 无 arch 后缀 `OpenFlow-<ver>.dmg`，arm64 为 `-arm64.dmg`）。正式对外分发需另配 Apple Developer ID 公证 + Windows 代码签名证书。
 - **端点分发友好**：内网 AIGC/上传地址不写死，改由设置面板填（存后端 settings）；打包发给不同网络的人也能自行改地址。
 - **pnpm 注意**：`@electron/rebuild` 用 git 引用 `@electron/node-gyp`，`pnpm-workspace.yaml` 里用 `overrides` 覆盖成 npm 发布版绕开 exotic-subdep 拦截；`electron` 的 postinstall 需在 `allowBuilds` 放行。
 
