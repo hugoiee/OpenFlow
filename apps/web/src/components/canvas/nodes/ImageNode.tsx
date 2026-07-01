@@ -1,7 +1,10 @@
+import { useState } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
+import { Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { DownloadDialog, type DownloadTarget } from '@/components/canvas/DownloadDialog'
 import { generateImageApi } from '@/lib/api'
 import {
   GEN_NODE_META,
@@ -24,6 +27,15 @@ const meta = GEN_NODE_META.image
  */
 export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
   const updateNodeData = useFlowStore((s) => s.updateNodeData)
+
+  // 下载重命名对话框：downloadTarget 记录当前要下载的结果图
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [downloadTarget, setDownloadTarget] = useState<DownloadTarget | null>(null)
+  const openDownload = (url: string, index?: number) => {
+    const base = data.label || '图像'
+    setDownloadTarget({ url, kind: 'image', defaultName: index ? `${base}-${index}` : base })
+    setDialogOpen(true)
+  }
 
   // 兼容旧数据：早期 image 节点只有 {label, model}，缺失字段给默认值，避免崩。
   // 以下派生供 handleRun 取参（参数 UI 已移到 Inspector，但运行时仍从 data 读取）。
@@ -99,14 +111,24 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
             <Skeleton className="aspect-square w-full" />
           ) : result.length > 0 ? (
             <div className={`grid gap-1 ${result.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
-              {result.map((url) => (
-                <a key={url} href={url} target="_blank" rel="noreferrer" className="block">
-                  <img
-                    src={url}
-                    alt="生成结果"
-                    className="max-h-64 w-full bg-muted object-contain"
-                  />
-                </a>
+              {result.map((url, i) => (
+                <div key={url} className="group/dl relative">
+                  <a href={url} target="_blank" rel="noreferrer" className="block">
+                    <img
+                      src={url}
+                      alt="生成结果"
+                      className="max-h-64 w-full bg-muted object-contain"
+                    />
+                  </a>
+                  <button
+                    type="button"
+                    title="下载"
+                    onClick={() => openDownload(url, result.length > 1 ? i + 1 : undefined)}
+                    className="nodrag absolute right-1 top-1 rounded-md bg-black/60 p-1 text-white opacity-0 transition-opacity hover:bg-black/80 focus:opacity-100 group-hover/dl:opacity-100"
+                  >
+                    <Download className="size-3.5" />
+                  </button>
+                </div>
               ))}
             </div>
           ) : (
@@ -134,6 +156,7 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
           </p>
         )}
       </CardContent>
+      <DownloadDialog open={dialogOpen} onOpenChange={setDialogOpen} target={downloadTarget} />
       <Handle type="source" position={Position.Right} className={`!size-3 ${meta.handle}`} />
     </Card>
   )

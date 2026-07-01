@@ -1,7 +1,10 @@
+import { useState } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
+import { Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { DownloadDialog, type DownloadTarget } from '@/components/canvas/DownloadDialog'
 import { generateVideoApi } from '@/lib/api'
 import {
   GEN_NODE_META,
@@ -26,6 +29,15 @@ const meta = GEN_NODE_META.video
  */
 export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
   const updateNodeData = useFlowStore((s) => s.updateNodeData)
+
+  // 下载重命名对话框：downloadTarget 记录当前要下载的结果视频
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [downloadTarget, setDownloadTarget] = useState<DownloadTarget | null>(null)
+  const openDownload = (url: string, index?: number) => {
+    const base = data.label || '视频'
+    setDownloadTarget({ url, kind: 'video', defaultName: index ? `${base}-${index}` : base })
+    setDialogOpen(true)
+  }
 
   // 兼容旧 video 节点（早期只有 {label, model}）：缺失字段给默认值；以下派生供 handleRun 取参。
   const imagesText = data.imagesText ?? ''
@@ -105,8 +117,18 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
             <Skeleton className="aspect-video w-full" />
           ) : result.length > 0 ? (
             <div className="flex flex-col gap-1">
-              {result.map((url) => (
-                <video key={url} src={url} controls className="w-full bg-muted" />
+              {result.map((url, i) => (
+                <div key={url} className="group/dl relative">
+                  <video src={url} controls className="w-full bg-muted" />
+                  <button
+                    type="button"
+                    title="下载"
+                    onClick={() => openDownload(url, result.length > 1 ? i + 1 : undefined)}
+                    className="nodrag absolute right-1 top-1 rounded-md bg-black/60 p-1 text-white opacity-0 transition-opacity hover:bg-black/80 focus:opacity-100 group-hover/dl:opacity-100"
+                  >
+                    <Download className="size-3.5" />
+                  </button>
+                </div>
               ))}
             </div>
           ) : (
@@ -133,6 +155,7 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
           </p>
         )}
       </CardContent>
+      <DownloadDialog open={dialogOpen} onOpenChange={setDialogOpen} target={downloadTarget} />
       <Handle type="source" position={Position.Right} className={`!size-3 ${meta.handle}`} />
     </Card>
   )

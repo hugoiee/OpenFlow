@@ -84,6 +84,33 @@ export async function generateVideoApi(body: GenVideoBody): Promise<string[]> {
   return videos
 }
 
+// ---- 下载生成结果 ----
+// 生成结果 URL 是跨域内网地址，浏览器 <a download> 对跨域资源无效（只会跳转、无法指定文件名），
+// 故走同源 /api/download 代理：后端拉取源文件、按响应 Content-Type 补正确扩展名，
+// 并以 Content-Disposition 触发下载。前端只需把用户填的文件名（不含后缀）与 kind 传给它。
+export function buildDownloadUrl(
+  url: string,
+  name: string,
+  kind: 'image' | 'video',
+): string {
+  const q = new URLSearchParams({ url, name, kind })
+  return `/api/download?${q.toString()}`
+}
+
+/** 触发浏览器下载：点一个指向同源下载代理的隐藏 <a>，文件名与后缀由后端决定。 */
+export function triggerDownload(
+  url: string,
+  name: string,
+  kind: 'image' | 'video',
+): void {
+  const a = document.createElement('a')
+  a.href = buildDownloadUrl(url, name, kind)
+  a.rel = 'noopener'
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+}
+
 // ---- 文件上传（图片 / 音频）----
 // 走 multipart，不能复用 request()（它写死了 application/json）；让浏览器自带 boundary。
 // req_from（用户标识）由后端从全局设置注入，前端不再传。

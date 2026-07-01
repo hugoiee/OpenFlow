@@ -7,6 +7,7 @@ import { settings } from './routes/settings'
 import { image } from './routes/image'
 import { upload } from './routes/upload'
 import { video } from './routes/video'
+import { download } from './routes/download'
 
 export interface CreateAppOptions {
   /** 前端静态产物目录（Electron 生产环境注入）；提供则在根路径托管 SPA。 */
@@ -74,6 +75,7 @@ export function createApp(opts: CreateAppOptions = {}): Hono {
   app.route('/api', image)
   app.route('/api', upload)
   app.route('/api', video)
+  app.route('/api', download)
 
   if (opts.staticDir) mountStatic(app, opts.staticDir)
 
