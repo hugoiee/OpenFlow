@@ -28,6 +28,7 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
 
   // 兼容旧 video 节点（早期只有 {label, model}）：缺失字段给默认值；以下派生供 handleRun 取参。
   const imagesText = data.imagesText ?? ''
+  const audiosText = data.audiosText ?? ''
   const version = data.version ?? SEEDANCE_VERSION_DEFAULT
   const resolution = data.resolution ?? SEEDANCE_RESOLUTION_DEFAULT
   const duration = data.duration ?? SEEDANCE_DURATION_DEFAULT
@@ -55,8 +56,12 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
     const combined = [...(project ? collectUpstreamImages(project, id) : []), ...manualImages]
     // 任务 → 后端 mode + 真正提交的有序图（文生=空 / 首帧=前1 / 首尾帧=前2 / 参考=全部）
     const task = deriveVideoTask(data.videoTask, data.mode, combined.length)
-    // 输入音频 = 上游音频素材节点经连线传入（作 audio_list）
-    const audios = project ? collectUpstreamAudio(project, id) : []
+    // 输入音频 = 上游音频素材节点经连线传入（在前）+ 本节点手动填/传的 URL（在后），一并作 audio_list
+    const manualAudios = audiosText
+      .split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean)
+    const audios = [...(project ? collectUpstreamAudio(project, id) : []), ...manualAudios]
     updateNodeData(id, { running: true, error: undefined, result: [] })
     try {
       const urls = await generateVideoApi({

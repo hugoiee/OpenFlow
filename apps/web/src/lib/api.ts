@@ -86,13 +86,17 @@ export async function generateVideoApi(body: GenVideoBody): Promise<string[]> {
 
 // ---- 文件上传（图片 / 音频）----
 // 走 multipart，不能复用 request()（它写死了 application/json）；让浏览器自带 boundary。
-// req_from（用户标识）由后端从全局设置注入，前端不再传。后端只透传 multipart，图片/音频同一端点。
-export async function uploadFilesApi(files: File[]): Promise<string[]> {
+// req_from（用户标识）由后端从全局设置注入，前端不再传。
+// kind 走 query：图片 → /api/upload，音频 → /api/upload-media（后端据此分流上游端点）。
+export async function uploadFilesApi(
+  files: File[],
+  kind: 'image' | 'audio' = 'image',
+): Promise<string[]> {
   const form = new FormData()
   files.forEach((f) => form.append('files', f))
   let res: Response
   try {
-    res = await fetch('/api/upload', { method: 'POST', body: form })
+    res = await fetch(`/api/upload?kind=${kind}`, { method: 'POST', body: form })
   } catch (e) {
     throw new Error(`后端不可用：${e instanceof Error ? e.message : String(e)}`, { cause: e })
   }

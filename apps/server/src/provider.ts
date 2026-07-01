@@ -12,9 +12,11 @@ type VideoGenInput = GenVideoBody & { reqFrom: string }
 export function resolveReqFrom(value: string | undefined): string {
   return value?.trim() || AIGC_REQ_FROM
 }
-// 图片上传接口（当前无鉴权）；地址可用环境变量覆盖
+// 文件上传接口（当前无鉴权）；图片与音频走不同端点，地址可用环境变量覆盖
 const UPLOAD_ENDPOINT =
   process.env.UPLOAD_ENDPOINT ?? 'http://10.75.202.161:8511/api/upload'
+const UPLOAD_MEDIA_ENDPOINT =
+  process.env.UPLOAD_MEDIA_ENDPOINT ?? 'http://10.75.202.161:8511/api/upload-media'
 
 /** 从任意响应结构里稳健地收集 http(s) URL（去重）。 */
 function collectUrls(v: unknown): string[] {
@@ -108,10 +110,17 @@ export async function runImageGen(input: ImageGenInput): Promise<string[]> {
   return urls
 }
 
-/** 转发 multipart 文件到上传接口 → 图片 URL 列表。出错抛带可读信息的 Error。 */
-export async function uploadImages(form: FormData): Promise<string[]> {
+/**
+ * 转发 multipart 文件到上传接口 → URL 列表。图片走 /api/upload，音频走 /api/upload-media。
+ * 出错抛带可读信息的 Error。
+ */
+export async function uploadFiles(
+  form: FormData,
+  kind: 'image' | 'audio' = 'image',
+): Promise<string[]> {
+  const endpoint = kind === 'audio' ? UPLOAD_MEDIA_ENDPOINT : UPLOAD_ENDPOINT
   // 不手动设 Content-Type，让 fetch 自带 multipart boundary
-  const res = await fetch(UPLOAD_ENDPOINT, { method: 'POST', body: form })
+  const res = await fetch(endpoint, { method: 'POST', body: form })
   const data = (await res.json().catch(() => null)) as unknown
   if (!res.ok) {
     throw new Error(

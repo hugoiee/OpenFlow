@@ -35,6 +35,8 @@ export type GenerationNodeData = {
   model: string
   /** 输入图片 URL，每行一个（按 videoTask 决定其语义：首帧 / 首尾帧 / 参考图）。 */
   imagesText?: string
+  /** 输入音频 URL，每行一个（作 audio_list；运行时与上游音频素材节点的 URL 合并）。 */
+  audiosText?: string
   /** version：seedance-1.5-pro 等。 */
   version?: string
   /** 生成任务（前端 4 选 1）：文生 / 首帧 / 首尾帧 / 参考图；提交时映射回 mode + 有序图。 */

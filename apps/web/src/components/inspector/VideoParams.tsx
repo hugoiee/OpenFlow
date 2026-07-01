@@ -23,6 +23,7 @@ import {
 import { collectUpstreamImages } from '@/lib/graph'
 import { type GenerationNodeData } from '@/lib/types'
 import { useActiveProject, useFlowStore } from '@/store/useFlowStore'
+import { AudioInput } from './AudioInput'
 import { ImageInput } from './ImageInput'
 
 /** 任务 → 卡片图标。 */
@@ -108,6 +109,12 @@ export function VideoParams({ id, data }: { id: string; data: GenerationNodeData
           />
         </div>
       )}
+
+      {/* 输入音频：所有任务均可挂音轨（audio_list）；上游音频素材连线只读展示，手动可传/填 */}
+      <div className="flex flex-col gap-2">
+        <span className="text-[11px] text-muted-foreground">输入音频（audio_list）</span>
+        <AudioInput id={id} audiosText={data.audiosText ?? ''} />
+      </div>
 
       {/* 模型参数：version / 分辨率 / 时长 */}
       <div className="flex flex-col gap-2">
