@@ -142,8 +142,10 @@ export function FlowCanvas() {
 
   if (!project) return null
 
-  // 用 smoothstep 让连线横平竖直（直角折线）；兼容已存的旧连线
-  const edges = project.edges.map((e) => (e.type ? e : { ...e, type: 'smoothstep' }))
+  // 用 straight 让连线走两端点间最短直线；旧的 smoothstep 折线也一并归一成直线
+  const edges = project.edges.map((e) =>
+    e.type && e.type !== 'smoothstep' ? e : { ...e, type: 'straight' },
+  )
 
   return (
     <div className="relative h-full w-full" onDragOver={onDragOver} onDrop={onDrop}>
@@ -156,7 +158,7 @@ export function FlowCanvas() {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
-        defaultEdgeOptions={{ type: 'smoothstep' }}
+        defaultEdgeOptions={{ type: 'straight' }}
         fitView
         proOptions={{ hideAttribution: true }}
       >
