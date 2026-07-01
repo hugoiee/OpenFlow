@@ -31,7 +31,7 @@ pnpm format        # Prettier 格式化 apps/*/src 与 packages/*/src（不含 c
 
 # 桌面端（Electron）打包 —— 详见「桌面端打包」章节
 pnpm --filter @openflow/desktop dist:mac   # 产 mac dmg/zip（arm64 + x64/Intel，未签名）到 apps/desktop/release
-pnpm --filter @openflow/desktop dist:win   # 产 win nsis 安装包（x64，未签名，可在 mac 上交叉构建）
+pnpm --filter @openflow/desktop dist:win   # 产 win nsis 安装包（x64，未签名；在 mac 上交叉构建：先拉 win 预编译 better-sqlite3 再打包）
 pnpm --filter @openflow/desktop dev        # Electron 开发（自动切 electron ABI + 连 Vite dev server:5173）
 ```
 
@@ -80,7 +80,7 @@ apps/desktop/
   src/main.ts                  Electron 主进程：dataDir=userData → startServer(内嵌后端)；生产随机端口 + 托管 SPA 后 loadURL(localhost)，开发连 VITE_DEV_SERVER_URL(5173)；含 OPENFLOW_SELFTEST 无界面自检分支
   src/preload.ts               预加载：contextIsolation，仅暴露 window.openflow.desktop 标记（渲染进程只用 fetch 访问本地 /api）
   scripts/build.mjs            esbuild 把 main/preload + @openflow/server 打成 CJS(dist-electron/*.cjs，better-sqlite3/electron 外部化) + 拷 apps/web/dist → dist-electron/web
-  scripts/sqlite-abi.mjs       在 Node/Electron ABI 间切 better-sqlite3（node=prebuild-install / electron=electron-rebuild）
+  scripts/sqlite-abi.mjs       在 Node/Electron ABI 间切 better-sqlite3（node=prebuild-install / electron=electron-rebuild / win=prebuild-install 拉 win32-x64+Electron ABI 预编译产物，供 mac 交叉打包 win）
   electron-builder.yml         打包配置：asar + better-sqlite3 解包(asarUnpack)；mac dmg/zip(arm64+x64,identity:null 未签名)、win nsis(x64 未签名)
 ```
 
@@ -104,8 +104,9 @@ apps/desktop/
 - **构建链**：esbuild 把 `main.ts`/`preload.ts` + 内联的 `@openflow/server` 打成 CJS（`.cjs`，`electron` 与 `better-sqlite3` 外部化）；`apps/web` 仍用自身 Vite 构建，产物拷进 `dist-electron/web`。`@openflow/server` 在 desktop 里是 **devDependency**（打包时被 esbuild 内联，运行时不需要）；唯一真正的运行时原生依赖是 `better-sqlite3`。
 - **⚠️ 原生模块 ABI 冲突（重要）**：`better-sqlite3` 是编译过的原生模块，Node 与 Electron 的 ABI 不同，而 pnpm 让二者共用同一物理副本，**一次只能是一种 ABI**。故：
   - `pnpm dev:all` / `pnpm server`（普通 Node）需 **Node ABI**；`electron .` 与打包需 **Electron ABI**。
-  - `scripts/sqlite-abi.mjs` 负责切换：`rebuild:node`（prebuild-install）/ `rebuild:electron`（electron-rebuild）。
-  - `dist:mac`/`dist:win` **打包结束会自动 `rebuild:node` 还原**（打好的 app 已自带 Electron ABI 副本），故打包不破坏 `pnpm dev:all`；`pnpm --filter @openflow/desktop dev/start` 会先切 Electron ABI，用完想跑普通 Node 服务需手动 `pnpm --filter @openflow/desktop rebuild:node`。
+  - `scripts/sqlite-abi.mjs` 负责切换：`rebuild:node`（prebuild-install）/ `rebuild:electron`（electron-rebuild）/ `rebuild:win`（prebuild-install 拉 win32-x64+Electron ABI 预编译产物）。
+  - **⚠️ 交叉打包 win（在 mac 上）**：原生模块无法在 mac 上为 Windows 编译，electron-builder 对「异平台」目标**不会重建**（会把 node_modules 里当前那份 `.node` 原样拷进包）。故 `dist:win`/`dist:all` 的 win 步骤先 `rebuild:win` 把 win32-x64+Electron ABI 的 `better_sqlite3.node` 覆盖进 node_modules，再 `electron-builder --win -c.npmRebuild=false` 原样打包——**否则包里会混进 mac 的 `.node`，Windows 上加载即崩、内嵌服务起不来、窗口不出现（进程在但无界面）**。彻底可靠的方式仍是在 Windows/CI 上原生构建。
+  - `dist:mac`/`dist:win` **打包结束会自动 `rebuild:node` 还原**（打好的 app 已自带对应 ABI 副本），故打包不破坏 `pnpm dev:all`；`pnpm --filter @openflow/desktop dev/start` 会先切 Electron ABI，用完想跑普通 Node 服务需手动 `pnpm --filter @openflow/desktop rebuild:node`。
 - **分发**：当前 mac(arm64 + x64/Intel dmg/zip，各自内置对应 arch 原生模块) / win(x64 nsis) 均 **未签名**（内部自用）；mac 首次打开需右键「打开」绕过 Gatekeeper，win 点「仍要运行」绕过 SmartScreen。产物在 `apps/desktop/release/`（gitignore；x64 dmg 无 arch 后缀 `OpenFlow-<ver>.dmg`，arm64 为 `-arm64.dmg`）。正式对外分发需另配 Apple Developer ID 公证 + Windows 代码签名证书。
 - **端点分发友好**：内网 AIGC/上传地址不写死，改由设置面板填（存后端 settings）；打包发给不同网络的人也能自行改地址。
 - **pnpm 注意**：`@electron/rebuild` 用 git 引用 `@electron/node-gyp`，`pnpm-workspace.yaml` 里用 `overrides` 覆盖成 npm 发布版绕开 exotic-subdep 拦截；`electron` 的 postinstall 需在 `allowBuilds` 放行。

@@ -12,11 +12,12 @@
     "build": "pnpm run build:web && pnpm run bundle",
     "rebuild:electron": "node scripts/sqlite-abi.mjs electron",
     "rebuild:node": "node scripts/sqlite-abi.mjs node",
+    "rebuild:win": "node scripts/sqlite-abi.mjs win",
     "start": "pnpm run rebuild:electron && pnpm run bundle && electron .",
     "dev": "pnpm run rebuild:electron && pnpm run bundle && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .",
     "dist:mac": "pnpm run build && electron-builder --mac && pnpm run rebuild:node",
-    "dist:win": "pnpm run build && electron-builder --win && pnpm run rebuild:node",
-    "dist:all": "pnpm run build && electron-builder --mac --win && pnpm run rebuild:node",
+    "dist:win": "pnpm run build && pnpm run rebuild:win && electron-builder --win -c.npmRebuild=false && pnpm run rebuild:node",
+    "dist:all": "pnpm run build && electron-builder --mac && pnpm run rebuild:win && electron-builder --win -c.npmRebuild=false && pnpm run rebuild:node",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

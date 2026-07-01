@@ -1,5 +1,5 @@
 import path from 'node:path'
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, dialog } from 'electron'
 import { startServer, type RunningServer } from '@openflow/server/server'
 
 // 打包为 CJS，运行时用原生 __dirname 指向 dist-electron（import.meta.url 在 CJS 产物里为空）
@@ -95,8 +95,20 @@ if (process.env.OPENFLOW_SELFTEST) {
   app.whenReady().then(runSelfTest)
 } else {
   app.whenReady().then(async () => {
-    await ensureServer()
-    createWindow()
+    try {
+      await ensureServer()
+      createWindow()
+    } catch (err) {
+      // 内嵌服务启动失败（最常见：原生模块 better-sqlite3 的 ABI/平台不匹配）。
+      // 若不处理，主进程会静默存活但无窗口（任务管理器有进程、界面不出现）——此处显式弹错并退出。
+      dialog.showErrorBox(
+        'OpenFlow 启动失败',
+        '内嵌服务启动失败，应用无法打开。\n\n' +
+          '常见原因：当前系统缺少匹配的原生数据库模块（better-sqlite3）。\n\n' +
+          String(err instanceof Error ? (err.stack ?? err.message) : err),
+      )
+      app.quit()
+    }
   })
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
