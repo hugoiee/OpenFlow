@@ -45,8 +45,6 @@ export type GenerationNodeData = {
   mode?: string
   /** config.resolution，如 720p。 */
   resolution?: string
-  /** config.ratio（宽高比），如 16:9 / adaptive。 */
-  ratio?: string
   /** config.duration，秒。 */
   duration?: number
   /** 是否正在生成。 */

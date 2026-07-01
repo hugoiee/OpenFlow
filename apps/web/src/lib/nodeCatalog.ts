@@ -171,28 +171,6 @@ export function deriveVideoTask(
 export const SEEDANCE_RESOLUTION_OPTIONS = ['480p', '720p', '1080p'] as const
 export const SEEDANCE_RESOLUTION_DEFAULT = '720p'
 
-/**
- * Seedance config.ratio（宽高比）选项。
- * adaptive=自适应（跟随输入图/由接口决定），其余为固定宽高比。
- */
-export const SEEDANCE_RATIO_OPTIONS = [
-  '16:9',
-  '4:3',
-  '1:1',
-  '3:4',
-  '9:16',
-  '21:9',
-  'adaptive',
-] as const
-
-/** 宽高比的人类可读标签（下拉里显示；adaptive 用中文更直观）。 */
-export const SEEDANCE_RATIO_LABELS: Record<string, string> = {
-  adaptive: '自适应',
-}
-
-/** 视频节点宽高比默认值（自适应：不改变现有「跟随输入图」的行为）。 */
-export const SEEDANCE_RATIO_DEFAULT = 'adaptive'
-
 /** Seedance config.duration（秒）范围（滑块 4–15s，步长 1）。 */
 export const SEEDANCE_DURATION_MIN = 4
 export const SEEDANCE_DURATION_MAX = 15

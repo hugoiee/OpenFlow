@@ -72,8 +72,6 @@ export type GenVideoBody = {
   audios?: string[]
   /** config.resolution，如 720p。 */
   resolution: string
-  /** config.ratio（宽高比），如 16:9 / adaptive；省略则由后端回退默认。 */
-  ratio?: string
   /** config.duration，秒。 */
   duration: number
 }

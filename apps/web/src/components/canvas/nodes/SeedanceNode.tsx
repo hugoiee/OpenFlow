@@ -6,7 +6,6 @@ import { generateVideoApi } from '@/lib/api'
 import {
   GEN_NODE_META,
   SEEDANCE_DURATION_DEFAULT,
-  SEEDANCE_RATIO_DEFAULT,
   SEEDANCE_RESOLUTION_DEFAULT,
   SEEDANCE_VERSION_DEFAULT,
   deriveVideoTask,
@@ -32,7 +31,6 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
   const audiosText = data.audiosText ?? ''
   const version = data.version ?? SEEDANCE_VERSION_DEFAULT
   const resolution = data.resolution ?? SEEDANCE_RESOLUTION_DEFAULT
-  const ratio = data.ratio ?? SEEDANCE_RATIO_DEFAULT
   const duration = data.duration ?? SEEDANCE_DURATION_DEFAULT
   const result = data.result ?? []
   const running = data.running ?? false
@@ -74,8 +72,6 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
         images: videoTaskImages(task, combined),
         audios,
         resolution,
-        // adaptive（自适应）=不约束宽高比，等价旧行为，故不传；仅在选了固定比例时下发
-        ratio: ratio === SEEDANCE_RATIO_DEFAULT ? undefined : ratio,
         duration,
       })
       updateNodeData(id, { running: false, result: urls })
