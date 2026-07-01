@@ -3,9 +3,15 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import Database from 'better-sqlite3'
 
-const here = dirname(fileURLToPath(import.meta.url))
-// apps/server/data/openflow.db
-const dataDir = join(here, '..', 'data')
+// 数据目录：桌面端(Electron)注入 OPENFLOW_DATA_DIR=app.getPath('userData')；
+// 否则回退源码相对目录 apps/server/data（pnpm dev:all 场景）。
+// 回退分支延迟到函数里求值：esbuild 打成 CJS 时 import.meta.url 为空，
+// 桌面端始终注入 OPENFLOW_DATA_DIR，故此分支不会执行到，避免 fileURLToPath 崩。
+function sourceRelativeDataDir(): string {
+  const here = dirname(fileURLToPath(import.meta.url))
+  return join(here, '..', 'data')
+}
+const dataDir = process.env.OPENFLOW_DATA_DIR?.trim() || sourceRelativeDataDir()
 mkdirSync(dataDir, { recursive: true })
 
 export const db = new Database(join(dataDir, 'openflow.db'))
@@ -22,12 +28,23 @@ db.exec(`
 
   CREATE TABLE IF NOT EXISTS settings (
     id TEXT PRIMARY KEY,
-    default_req_from TEXT NOT NULL DEFAULT ''
+    default_req_from TEXT NOT NULL DEFAULT '',
+    aigc_endpoint TEXT NOT NULL DEFAULT '',
+    upload_endpoint TEXT NOT NULL DEFAULT '',
+    upload_media_endpoint TEXT NOT NULL DEFAULT ''
   );
 `)
 
-// 旧库迁移：settings 表补 default_req_from 列（早期版本无此列；旧的供应商列若存在则留存不读）
+// 旧库迁移：settings 表按需补列（早期版本可能缺；旧的供应商列若存在则留存不读）
 const settingsCols = db.prepare('PRAGMA table_info(settings)').all() as { name: string }[]
-if (!settingsCols.some((col) => col.name === 'default_req_from')) {
-  db.exec("ALTER TABLE settings ADD COLUMN default_req_from TEXT NOT NULL DEFAULT ''")
+const settingsColNames = new Set(settingsCols.map((col) => col.name))
+for (const col of [
+  'default_req_from',
+  'aigc_endpoint',
+  'upload_endpoint',
+  'upload_media_endpoint',
+]) {
+  if (!settingsColNames.has(col)) {
+    db.exec(`ALTER TABLE settings ADD COLUMN ${col} TEXT NOT NULL DEFAULT ''`)
+  }
 }

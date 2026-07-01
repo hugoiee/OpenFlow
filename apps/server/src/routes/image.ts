@@ -12,9 +12,11 @@ image.post('/aigc', async (c) => {
     return c.json({ error: '缺少 model 或 prompt' }, 400)
   }
   try {
+    const s = readSettings()
     const images = await runImageGen({
-      // req_from 取全局设置（前端不再传）；为空时由 provider 回退默认值
-      reqFrom: readSettings().defaultReqFrom,
+      // req_from / 端点取全局设置（前端不再传）；为空时由 provider 回退默认值
+      reqFrom: s.defaultReqFrom,
+      endpoint: s.aigcEndpoint,
       model: body.model,
       prompt: body.prompt,
       images: Array.isArray(body.images) ? body.images : [],

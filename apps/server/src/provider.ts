@@ -4,13 +4,18 @@ import type { GenImageBody, GenVideoBody } from '@openflow/shared'
 const AIGC_ENDPOINT = process.env.AIGC_ENDPOINT ?? 'http://10.75.202.161:8204/aigc'
 const AIGC_REQ_FROM = process.env.AIGC_REQ_FROM ?? 'openflow'
 
-// 生成请求的内部输入：在请求体基础上补全局署名 req_from（由路由从设置注入）
-type ImageGenInput = GenImageBody & { reqFrom: string }
-type VideoGenInput = GenVideoBody & { reqFrom: string }
+// 生成请求的内部输入：在请求体基础上补全局署名 req_from + 可选端点（由路由从设置注入）
+type ImageGenInput = GenImageBody & { reqFrom: string; endpoint?: string }
+type VideoGenInput = GenVideoBody & { reqFrom: string; endpoint?: string }
 
 /** 把（可能为空的）全局署名解析成最终 req_from：空则回退环境变量，再回退 'openflow'。 */
 export function resolveReqFrom(value: string | undefined): string {
   return value?.trim() || AIGC_REQ_FROM
+}
+
+/** 端点解析：设置里非空则用它，否则回退传入的 env/内置默认。 */
+function resolveEndpoint(value: string | undefined, fallback: string): string {
+  return value?.trim() || fallback
 }
 // 文件上传接口（当前无鉴权）；图片与音频走不同端点，地址可用环境变量覆盖
 const UPLOAD_ENDPOINT =
@@ -84,7 +89,7 @@ export async function runImageGen(input: ImageGenInput): Promise<string[]> {
     ? { aspect_ratio: input.aspectRatio, image_size: input.imageSize }
     : { size: input.size, n: input.n, quality: input.quality }
 
-  const res = await fetch(AIGC_ENDPOINT, {
+  const res = await fetch(resolveEndpoint(input.endpoint, AIGC_ENDPOINT), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -117,8 +122,10 @@ export async function runImageGen(input: ImageGenInput): Promise<string[]> {
 export async function uploadFiles(
   form: FormData,
   kind: 'image' | 'audio' = 'image',
+  endpointOverride?: string,
 ): Promise<string[]> {
-  const endpoint = kind === 'audio' ? UPLOAD_MEDIA_ENDPOINT : UPLOAD_ENDPOINT
+  const fallback = kind === 'audio' ? UPLOAD_MEDIA_ENDPOINT : UPLOAD_ENDPOINT
+  const endpoint = resolveEndpoint(endpointOverride, fallback)
   // 不手动设 Content-Type，让 fetch 自带 multipart boundary
   const res = await fetch(endpoint, { method: 'POST', body: form })
   const data = (await res.json().catch(() => null)) as unknown
@@ -139,7 +146,7 @@ export async function uploadFiles(
 
 /** POST AIGC 接口生成视频（seedance）→ 视频 URL 列表。出错抛带可读信息的 Error。 */
 export async function runVideoGen(input: VideoGenInput): Promise<string[]> {
-  const res = await fetch(AIGC_ENDPOINT, {
+  const res = await fetch(resolveEndpoint(input.endpoint, AIGC_ENDPOINT), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

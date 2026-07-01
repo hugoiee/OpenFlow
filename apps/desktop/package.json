@@ -1,0 +1,35 @@
+{
+  "name": "@openflow/desktop",
+  "private": true,
+  "version": "0.0.0",
+  "description": "OpenFlow desktop shell (Electron)",
+  "author": "OpenFlow",
+  "type": "module",
+  "main": "dist-electron/main.cjs",
+  "scripts": {
+    "bundle": "node scripts/build.mjs",
+    "build:web": "pnpm --filter @openflow/web build",
+    "build": "pnpm run build:web && pnpm run bundle",
+    "rebuild:electron": "node scripts/sqlite-abi.mjs electron",
+    "rebuild:node": "node scripts/sqlite-abi.mjs node",
+    "start": "pnpm run rebuild:electron && pnpm run bundle && electron .",
+    "dev": "pnpm run rebuild:electron && pnpm run bundle && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .",
+    "dist:mac": "pnpm run build && electron-builder --mac && pnpm run rebuild:node",
+    "dist:win": "pnpm run build && electron-builder --win && pnpm run rebuild:node",
+    "dist:all": "pnpm run build && electron-builder --mac --win && pnpm run rebuild:node",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.8.1"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^3.7.0",
+    "@openflow/server": "workspace:*",
+    "@types/node": "^24.12.3",
+    "cross-env": "^7.0.3",
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8",
+    "esbuild": "^0.28.1",
+    "typescript": "~6.0.2"
+  }
+}

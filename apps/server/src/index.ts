@@ -1,23 +1,10 @@
-import { serve } from '@hono/node-server'
-import { Hono } from 'hono'
-import './db'
-import { projects } from './routes/projects'
-import { settings } from './routes/settings'
-import { image } from './routes/image'
-import { upload } from './routes/upload'
-import { video } from './routes/video'
+import { startServer } from './server'
 
-const app = new Hono()
-
-app.get('/api/health', (c) => c.json({ ok: true }))
-app.route('/api/projects', projects)
-app.route('/api/settings', settings)
-app.route('/api', image)
-app.route('/api', upload)
-app.route('/api', video)
-
+// 独立开发入口（pnpm dev:all / pnpm server）：固定 8787，数据走源码相对目录。
 const port = Number(process.env.PORT ?? 8787)
-serve({ fetch: app.fetch, port })
-console.log(`[openflow-server] listening on http://localhost:${port}`)
+startServer({ port }).then(({ port }) => {
+  console.log(`[openflow-server] listening on http://localhost:${port}`)
+})
 
-export { app }
+export { createApp } from './app'
+export { startServer } from './server'

@@ -8,16 +8,28 @@ export type ProjectDTO = {
   edges: unknown[]
 }
 
-/** GET /api/settings 响应：全局调用方署名（req_from）。 */
+/** GET /api/settings 响应：全局调用方署名 + AIGC/上传端点。空字符串表示回退后端默认。 */
 export type SettingsDTO = {
   /** 全局调用方署名（req_from）；为空时后端回退默认值。 */
   defaultReqFrom: string
+  /** AIGC 图像/视频生成端点；为空时后端回退 env AIGC_ENDPOINT / 内置默认。 */
+  aigcEndpoint: string
+  /** 图片上传端点；为空时回退 env UPLOAD_ENDPOINT / 内置默认。 */
+  uploadEndpoint: string
+  /** 音频上传端点；为空时回退 env UPLOAD_MEDIA_ENDPOINT / 内置默认。 */
+  uploadMediaEndpoint: string
 }
 
-/** PUT /api/settings 请求体：写入全局 req_from 署名。 */
+/** PUT /api/settings 请求体：省略的字段保持原值（合并写入）。 */
 export type SaveSettingsBody = {
   /** 全局调用方署名（req_from）。 */
   defaultReqFrom: string
+  /** AIGC 图像/视频生成端点（空串=清空回退默认；省略=保持原值）。 */
+  aigcEndpoint?: string
+  /** 图片上传端点（空串=清空回退默认；省略=保持原值）。 */
+  uploadEndpoint?: string
+  /** 音频上传端点（空串=清空回退默认；省略=保持原值）。 */
+  uploadMediaEndpoint?: string
 }
 
 /** POST /api/aigc 请求体（图像生成，经后端代理到 AIGC 接口）。req_from 由后端从全局设置注入。 */

@@ -1,0 +1,33 @@
+appId: com.openflow.desktop
+productName: OpenFlow
+directories:
+  output: release
+  buildResources: build
+# 只打包 esbuild 产物 + package.json；better-sqlite3 由 electron-builder 作为生产依赖自动纳入并重建
+files:
+  - dist-electron/**/*
+  - package.json
+asar: true
+# 原生模块不能进 asar，需解包到 app.asar.unpacked
+asarUnpack:
+  - '**/node_modules/better-sqlite3/**'
+npmRebuild: true
+mac:
+  # 显式指定 arch，避免 electron-builder 按宿主机 arch 默认（团队多为 Apple Silicon）
+  target:
+    - target: dmg
+      arch: [arm64]
+    - target: zip
+      arch: [arm64]
+  category: public.app-category.graphics-design
+  # 内部自用：不做签名/公证（identity 置空跳过签名）
+  identity: null
+win:
+  # 绝大多数 Windows PC 为 x64；显式指定避免默认成宿主机 arm64
+  target:
+    - target: nsis
+      arch: [x64]
+  # 内部自用：不做代码签名
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true

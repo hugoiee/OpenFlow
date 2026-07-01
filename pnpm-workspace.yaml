@@ -4,3 +4,8 @@ packages:
 allowBuilds:
   better-sqlite3: true
   esbuild: true
+  electron: true
+# @electron/rebuild 用 git 引用 @electron/node-gyp（pnpm 默认拦 exotic subdep）；
+# 覆盖成 npm 上同一 fork 的发布版，避免走 git 且更可复现
+overrides:
+  '@electron/node-gyp': '10.2.0-electron.2'
