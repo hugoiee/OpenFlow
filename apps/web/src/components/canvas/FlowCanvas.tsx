@@ -1,6 +1,5 @@
 import {
   Background,
-  Controls,
   MiniMap,
   ReactFlow,
   ReactFlowProvider,
@@ -8,6 +7,7 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { nodeTypes } from './nodes'
+import { ZoomSlider } from './ZoomSlider'
 import { uploadFilesApi } from '@/lib/api'
 import { type FlowNodeType } from '@/lib/types'
 import { useActiveProject, useFlowStore } from '@/store/useFlowStore'
@@ -189,9 +189,10 @@ export function FlowCanvas() {
         proOptions={{ hideAttribution: true }}
       >
         <Background />
-        <Controls />
-        {/* 缩略图挪到左下角，紧贴 4 个控制按钮右侧 */}
-        <MiniMap pannable zoomable position="bottom-left" style={{ left: 40 }} />
+        {/* 横向缩放滑块：画布顶部，紧贴左上角 SidebarTrigger 右侧并排 */}
+        <ZoomSlider position="top-left" style={{ top: 8, left: 48, margin: 0 }} />
+        {/* 缩略图移到左下角 */}
+        <MiniMap pannable zoomable position="bottom-left" />
       </ReactFlow>
     </div>
   )
