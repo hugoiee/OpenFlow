@@ -12,7 +12,8 @@
       "name": "openflow-server",
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["server"],
-      "port": 8787
+      "port": 8787,
+      "autoPort": false
     }
   ]
 }
