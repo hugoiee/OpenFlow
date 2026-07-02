@@ -39,15 +39,13 @@ const IMAGE_ICONS: Record<string, LucideIcon> = {
 
 // 节点列表按输出形态分三类：文本 / 图像 / 视频。
 // 图像、视频项各对应一个具名预置模型，点按即添加对应节点并预设该模型。
-const NODE_GROUPS: { label: string; subtitle: string; items: NodeItem[] }[] = [
+const NODE_GROUPS: { label: string; items: NodeItem[] }[] = [
   {
     label: '文本',
-    subtitle: '编写 Prompt 提示词',
     items: [{ type: 'prompt', label: 'Prompt 节点', icon: Type }],
   },
   {
     label: '图像模型',
-    subtitle: '从文本生成图像',
     items: IMAGE_MODELS.map((m) => ({
       type: 'image' as const,
       label: m,
@@ -57,7 +55,6 @@ const NODE_GROUPS: { label: string; subtitle: string; items: NodeItem[] }[] = [
   },
   {
     label: '视频模型',
-    subtitle: '从文本 / 图像生成视频',
     items: VIDEO_MODELS.map((m) => ({
       type: 'video' as const,
       label: m,
@@ -114,7 +111,7 @@ export function ProjectSidebar() {
               <button
                 type="button"
                 title="邮箱前缀（req_from）· 点击修改"
-                className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1 py-0.5 text-left text-xs text-muted-foreground transition-colors hover:bg-sidebar-accent"
+                className="flex h-10 min-w-0 flex-1 items-center gap-1.5 rounded-md px-1 py-0.5 text-left text-xs text-muted-foreground transition-colors hover:bg-sidebar-accent"
               >
                 <span className="shrink-0">邮箱前缀</span>
                 <span className="truncate font-medium text-sidebar-foreground">
@@ -152,11 +149,10 @@ export function ProjectSidebar() {
         {NODE_GROUPS.map((group) => (
           <SidebarGroup key={group.label}>
             <div className="px-2 pb-2">
-              <h3 className="text-base font-semibold leading-tight">{group.label}</h3>
-              <p className="text-xs text-muted-foreground">{group.subtitle}</p>
+              <h3 className="text-xs font-semibold leading-tight">{group.label}</h3>
             </div>
             <SidebarGroupContent>
-              <div className="grid grid-cols-2 gap-2 px-1">
+              <div className="grid grid-cols-2 gap-2 px-1 mb-4">
                 {group.items.map((item) => {
                   const Icon = item.icon
                   return (
