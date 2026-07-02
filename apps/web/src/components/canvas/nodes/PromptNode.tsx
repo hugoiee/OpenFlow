@@ -9,7 +9,7 @@ export function PromptNode({ id, data, selected }: NodeProps<PromptNodeType>) {
 
   return (
     <Card
-      className={`w-64 gap-2 py-3 shadow-sm transition-shadow ${
+      className={`inline-block w-auto gap-2 py-3 shadow-sm transition-shadow ${
         selected ? 'ring-2 ring-primary' : ''
       }`}
     >
@@ -24,7 +24,7 @@ export function PromptNode({ id, data, selected }: NodeProps<PromptNodeType>) {
           value={data.text}
           onChange={(e) => updateNodeData(id, { text: e.target.value })}
           placeholder="在这里写 prompt…"
-          className="nodrag min-h-24 resize-none text-sm"
+          className="nodrag field-sizing-fixed h-24 min-h-24 w-56 min-w-56 resize overflow-hidden text-sm"
         />
       </CardContent>
       <Handle type="source" position={Position.Right} className="!size-3 !bg-sky-500" />
