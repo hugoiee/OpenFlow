@@ -179,6 +179,8 @@ export function FlowCanvas() {
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         defaultEdgeOptions={{ type: 'straight' }}
+        minZoom={0.1}
+        maxZoom={4}
         fitView
         proOptions={{ hideAttribution: true }}
       >

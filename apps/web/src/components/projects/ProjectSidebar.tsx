@@ -1,5 +1,14 @@
 import { Link, useNavigate } from 'react-router-dom'
-import { Home, Settings, Type, Image as ImageIcon, Banana, Video, type LucideIcon } from 'lucide-react'
+import {
+  Home,
+  Settings,
+  LogOut,
+  Type,
+  Image as ImageIcon,
+  Banana,
+  Video,
+  type LucideIcon,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Sidebar,
@@ -15,6 +24,7 @@ import { SettingsDialog } from '@/components/settings/SettingsDialog'
 import { IMAGE_MODELS, VIDEO_MODELS } from '@/lib/nodeCatalog'
 import { type FlowNodeType } from '@/lib/types'
 import { useFlowStore } from '@/store/useFlowStore'
+import { useSettingsStore } from '@/store/useSettingsStore'
 
 type NodeItem = { type: FlowNodeType; label: string; icon: LucideIcon; model?: string }
 
@@ -52,6 +62,17 @@ const NODE_GROUPS: { label: string; subtitle: string; items: NodeItem[] }[] = [
 export function ProjectSidebar() {
   const navigate = useNavigate()
   const addNode = useFlowStore((s) => s.addNode)
+  const defaultReqFrom = useSettingsStore((s) => s.defaultReqFrom)
+  const saveReqFrom = useSettingsStore((s) => s.saveReqFrom)
+
+  // 退出：清空 req_from → ReqFromGate 会重新全屏阻断，回到首次输入邮箱前缀页
+  const handleLogout = async () => {
+    try {
+      await saveReqFrom('')
+    } catch (e) {
+      console.error('[openflow] 退出失败', e)
+    }
+  }
 
   return (
     <Sidebar>
@@ -70,6 +91,31 @@ export function ProjectSidebar() {
             </Button>
           </SettingsDialog>
         </div>
+        {defaultReqFrom && (
+          <div className="mt-1 flex items-center gap-1">
+            <SettingsDialog>
+              <button
+                type="button"
+                title="邮箱前缀（req_from）· 点击修改"
+                className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1 py-0.5 text-left text-xs text-muted-foreground transition-colors hover:bg-sidebar-accent"
+              >
+                <span className="shrink-0">邮箱前缀</span>
+                <span className="truncate font-medium text-sidebar-foreground">
+                  {defaultReqFrom}
+                </span>
+              </button>
+            </SettingsDialog>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="size-6 shrink-0 text-muted-foreground"
+              title="退出（清空邮箱前缀）"
+              onClick={handleLogout}
+            >
+              <LogOut className="size-3.5" />
+            </Button>
+          </div>
+        )}
       </SidebarHeader>
 
       <SidebarContent>

@@ -44,19 +44,20 @@ export function ReqFromGate({ children }: { children: React.ReactNode }) {
             className="flex w-full max-w-sm flex-col gap-4 rounded-lg border bg-background p-6 shadow-lg"
           >
             <div className="flex flex-col gap-1.5">
-              <h2 className="text-lg font-semibold">先填写你的署名</h2>
-              <p className="text-sm text-muted-foreground">
-                使用前请填写调用方署名 req_from，图像 / 视频生成与图片上传都会用到。
+              <h2 className="text-lg font-semibold">先填写你的邮箱前缀</h2>
+              <p className="text-sm font-medium text-destructive">
+                警告：为避免资源滥用，请使用本人百度邮箱前缀登录；频繁切换用户名或使用非邮箱前缀可能触发
+                IP 封禁，请谨慎操作。
               </p>
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="gate-reqFrom">req_from（署名）</Label>
+              <Label htmlFor="gate-reqFrom">邮箱前缀</Label>
               <Input
                 id="gate-reqFrom"
                 autoFocus
                 value={value}
                 onChange={(e) => setValue(e.target.value)}
-                placeholder="改自己名字哦，不要冒用他/她人。"
+                placeholder="请输入邮箱前缀，如 zhaoqianyu或v_zhaoqianyu"
               />
               {error && <p className="text-xs text-destructive">{error}</p>}
             </div>

@@ -65,18 +65,18 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
         <DialogHeader>
           <DialogTitle>设置</DialogTitle>
           <DialogDescription>
-            调用方署名 req_from 用于图像 / 视频生成与文件上传。端点留空则使用服务端默认地址。
+            邮箱前缀（req_from）用于图像 / 视频生成与文件上传。端点留空则使用服务端默认地址。
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col gap-4 py-2">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="reqFrom">req_from（署名）</Label>
+            <Label htmlFor="reqFrom">邮箱前缀</Label>
             <Input
               id="reqFrom"
               value={reqFrom}
               onChange={(e) => setReqFrom(e.target.value)}
-              placeholder="改自己名字哦，不要冒用他/她人。"
+              placeholder="请输入邮箱前缀，如 zhaoqianyu或v_zhaoqianyu"
             />
           </div>
 
