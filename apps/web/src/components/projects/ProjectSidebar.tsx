@@ -100,9 +100,18 @@ export function ProjectSidebar() {
                     <button
                       key={item.label}
                       type="button"
+                      draggable
+                      onDragStart={(e) => {
+                        // 拖拽建节点：把类型/模型塞进 dataTransfer，画布 onDrop 读取
+                        e.dataTransfer.setData(
+                          'application/openflow-node',
+                          JSON.stringify({ type: item.type, model: item.model }),
+                        )
+                        e.dataTransfer.effectAllowed = 'copy'
+                      }}
                       onClick={() => addNode(item.type, item.model)}
-                      title={`添加 ${item.label}`}
-                      className="group flex aspect-[4/3] flex-col items-center justify-center gap-2 rounded-xl border border-sidebar-border bg-sidebar-accent/40 px-2 text-center transition-colors hover:border-sidebar-ring hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+                      title={`拖入画布或点按添加 ${item.label}`}
+                      className="group flex aspect-[4/3] cursor-grab flex-col items-center justify-center gap-2 rounded-xl border border-sidebar-border bg-sidebar-accent/40 px-2 text-center transition-colors hover:border-sidebar-ring hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring active:cursor-grabbing"
                     >
                       <Icon className="size-6 text-muted-foreground transition-colors group-hover:text-sidebar-accent-foreground" />
                       <span className="text-xs font-medium leading-tight text-sidebar-foreground">
