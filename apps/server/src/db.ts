@@ -33,6 +33,22 @@ db.exec(`
     upload_endpoint TEXT NOT NULL DEFAULT '',
     upload_media_endpoint TEXT NOT NULL DEFAULT ''
   );
+
+  -- 异步生成任务：点「生成」后后端建行并后台跑 AIGC，前端凭 taskId 轮询/刷新重连。
+  -- params 存请求体 JSON（不含 req_from/端点，运行时从 settings 解析）；result 存结果 URL 列表 JSON。
+  CREATE TABLE IF NOT EXISTS tasks (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    node_id TEXT NOT NULL,
+    kind TEXT NOT NULL,                     -- 'image' | 'video'
+    status TEXT NOT NULL DEFAULT 'pending', -- pending | running | succeeded | failed
+    params TEXT NOT NULL DEFAULT '{}',
+    result TEXT NOT NULL DEFAULT '[]',
+    error TEXT NOT NULL DEFAULT '',
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_tasks_node ON tasks (project_id, node_id, created_at DESC);
 `)
 
 // 旧库迁移：settings 表按需补列（早期版本可能缺；旧的供应商列若存在则留存不读）

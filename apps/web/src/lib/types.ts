@@ -55,6 +55,8 @@ export type GenerationNodeData = {
   result?: string[]
   /** 上次运行的错误信息（成功则清空）。 */
   error?: string
+  /** 进行中的异步任务 id：随节点存库，刷新后凭它重连轮询（关页面不丢结果）。 */
+  taskId?: string
 }
 
 /** 图像生成节点的数据：具名模型 + 可调选项 + 运行状态与结果。 */
@@ -83,6 +85,8 @@ export type ImageNodeData = {
   result: string[]
   /** 上次运行的错误信息（成功则清空）。 */
   error?: string
+  /** 进行中的异步任务 id：随节点存库，刷新后凭它重连轮询（关页面不丢结果）。 */
+  taskId?: string
 }
 
 /** React Flow 节点类型（带上各自的 data）。 */

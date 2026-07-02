@@ -1,9 +1,11 @@
 import type {
+  CreateTaskResponse,
   GenImageBody,
   GenVideoBody,
   ProjectDTO,
   SaveSettingsBody,
   SettingsDTO,
+  TaskDTO,
 } from '@openflow/shared'
 
 /** 统一的 /api 请求封装：非 2xx 时抛出含后端错误信息的 Error。 */
@@ -66,22 +68,40 @@ export function saveSettingsApi(body: SaveSettingsBody): Promise<{ ok: true }> {
   })
 }
 
-// ---- 图像生成 ----
-export async function generateImageApi(body: GenImageBody): Promise<string[]> {
-  const { images } = await request<{ images: string[] }>('/aigc', {
+// ---- 图像 / 视频生成（异步任务）----
+// 点「生成」→ 后端建任务、后台跑 AIGC，立刻返回 taskId；前端凭 taskId 轮询（见 taskPolling.ts）。
+export async function createImageTaskApi(body: GenImageBody): Promise<string> {
+  const { taskId } = await request<CreateTaskResponse>('/aigc', {
     method: 'POST',
     body: JSON.stringify(body),
   })
-  return images
+  return taskId
 }
 
-// ---- 视频生成 ----
-export async function generateVideoApi(body: GenVideoBody): Promise<string[]> {
-  const { videos } = await request<{ videos: string[] }>('/video', {
+export async function createVideoTaskApi(body: GenVideoBody): Promise<string> {
+  const { taskId } = await request<CreateTaskResponse>('/video', {
     method: 'POST',
     body: JSON.stringify(body),
   })
-  return videos
+  return taskId
+}
+
+// ---- 任务查询（轮询 / 重连）----
+export function getTaskApi(id: string): Promise<TaskDTO> {
+  return request<TaskDTO>(`/tasks/${id}`)
+}
+
+/** 按节点取最近一次任务；无任务（404）时返回 null（刷新后无 taskId 的重连兜底）。 */
+export async function getLatestTaskForNodeApi(
+  projectId: string,
+  nodeId: string,
+): Promise<TaskDTO | null> {
+  const q = new URLSearchParams({ projectId, nodeId })
+  try {
+    return await request<TaskDTO>(`/tasks?${q.toString()}`)
+  } catch {
+    return null
+  }
 }
 
 // ---- 下载生成结果 ----

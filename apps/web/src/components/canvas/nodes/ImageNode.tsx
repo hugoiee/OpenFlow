@@ -1,11 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { DownloadDialog, type DownloadTarget } from '@/components/canvas/DownloadDialog'
-import { generateImageApi } from '@/lib/api'
+import { createImageTaskApi } from '@/lib/api'
+import { pollTask } from '@/lib/taskPolling'
 import {
   GEN_NODE_META,
   IMAGE_SIZE_DEFAULT,
@@ -55,14 +56,46 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
 
   // 生成失败：节点底部内联显示 + 弹窗提示
   const fail = (message: string) => {
-    updateNodeData(id, { running: false, error: message })
+    updateNodeData(id, { running: false, error: message, taskId: undefined })
     window.alert(`图像生成失败：${message}`)
   }
+
+  // 应用任务终态：成功填结果、失败报错，一并清 taskId（重连锚点用毕）。
+  const applyTaskResult = (task: { status: string; result: string[]; error?: string }) => {
+    if (task.status === 'succeeded') {
+      updateNodeData(id, { running: false, result: task.result, taskId: undefined })
+    } else {
+      fail(task.error || '任务失败')
+    }
+  }
+
+  // 刷新/重开后重连：节点带着未完成的 taskId 载入时，恢复「生成中…」并继续轮询。
+  // attachedRef 按 taskId 记录已挂载的轮询，避免与 handleRun 或重渲染重复轮询。
+  const attachedRef = useRef<string | null>(null)
+  useEffect(() => {
+    const taskId = data.taskId
+    if (!taskId || attachedRef.current === taskId) return
+    attachedRef.current = taskId
+    const controller = new AbortController()
+    updateNodeData(id, { running: true, error: undefined })
+    pollTask(taskId, { signal: controller.signal })
+      .then(applyTaskResult)
+      .catch((e) => {
+        if (e instanceof DOMException && e.name === 'AbortError') return
+        fail(e instanceof Error ? e.message : String(e))
+      })
+    return () => controller.abort()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.taskId])
 
   const handleRun = async () => {
     const state = useFlowStore.getState()
     const project = state.projects.find((p) => p.id === state.activeProjectId)
-    const prompt = project ? collectUpstreamPrompt(project, id) : ''
+    if (!project) {
+      fail('未找到当前项目')
+      return
+    }
+    const prompt = collectUpstreamPrompt(project, id)
     if (!prompt.trim()) {
       fail('请先连接一个有内容的 Prompt 节点')
       return
@@ -72,10 +105,12 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
       .split('\n')
       .map((s) => s.trim())
       .filter(Boolean)
-    const images = [...(project ? collectUpstreamImages(project, id) : []), ...manualImages]
-    updateNodeData(id, { running: true, error: undefined, result: [] })
+    const images = [...collectUpstreamImages(project, id), ...manualImages]
+    updateNodeData(id, { running: true, error: undefined, result: [], taskId: undefined })
     try {
-      const urls = await generateImageApi({
+      const taskId = await createImageTaskApi({
+        projectId: project.id,
+        nodeId: id,
         model: imageApiModel(data.model),
         prompt,
         images,
@@ -84,8 +119,14 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
           ? { version, aspectRatio, imageSize, size: '', n: 1, quality: '' }
           : { size, n, quality }),
       })
-      updateNodeData(id, { running: false, result: urls })
+      // 立刻存下 taskId：点击后 1s 刷新也已存下，可重连（关页面不丢结果）
+      attachedRef.current = taskId
+      updateNodeData(id, { taskId })
+      const controller = new AbortController()
+      const task = await pollTask(taskId, { signal: controller.signal })
+      applyTaskResult(task)
     } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') return
       fail(e instanceof Error ? e.message : String(e))
     }
   }

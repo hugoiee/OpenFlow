@@ -34,6 +34,10 @@ export type SaveSettingsBody = {
 
 /** POST /api/aigc 请求体（图像生成，经后端代理到 AIGC 接口）。req_from 由后端从全局设置注入。 */
 export type GenImageBody = {
+  /** 归属项目 id（用于建任务、按节点重连）。 */
+  projectId: string
+  /** 发起生成的节点 id（用于建任务、按节点重连）。 */
+  nodeId: string
   /** AIGC 接口的 model_name（如 gpt-image-2 / nano-banana）。 */
   model: string
   /** 生成 / 编辑指令。 */
@@ -58,6 +62,10 @@ export type GenImageBody = {
 
 /** POST /api/video 视频生成请求体（seedance，经后端代理到 AIGC /aigc 接口）。req_from 由后端从全局设置注入。 */
 export type GenVideoBody = {
+  /** 归属项目 id（用于建任务、按节点重连）。 */
+  projectId: string
+  /** 发起生成的节点 id（用于建任务、按节点重连）。 */
+  nodeId: string
   /** model_name，如 seedance。 */
   model: string
   /** version：seedance-1.5-pro / seedance-2.0 等。 */
@@ -77,3 +85,25 @@ export type GenVideoBody = {
   /** config.duration，秒。 */
   duration: number
 }
+
+/** 异步生成任务的种类 / 状态。 */
+export type TaskKind = 'image' | 'video'
+export type TaskStatus = 'pending' | 'running' | 'succeeded' | 'failed'
+
+/** 任务 DTO：前端轮询用；不含请求体 params（内部持久化，不外泄）。 */
+export type TaskDTO = {
+  id: string
+  projectId: string
+  nodeId: string
+  kind: TaskKind
+  status: TaskStatus
+  /** 成功前为空。 */
+  result: string[]
+  /** 失败时的可读错误信息。 */
+  error?: string
+  createdAt: number
+  updatedAt: number
+}
+
+/** POST /api/aigc | /api/video 建任务成功响应。 */
+export type CreateTaskResponse = { taskId: string }

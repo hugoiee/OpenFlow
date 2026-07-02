@@ -2,11 +2,13 @@ import { readFile } from 'node:fs/promises'
 import { extname, join, normalize, sep } from 'node:path'
 import { Hono } from 'hono'
 import './db'
+import './task-store'
 import { projects } from './routes/projects'
 import { settings } from './routes/settings'
 import { image } from './routes/image'
 import { upload } from './routes/upload'
 import { video } from './routes/video'
+import { tasks } from './routes/tasks'
 import { download } from './routes/download'
 
 export interface CreateAppOptions {
@@ -75,6 +77,7 @@ export function createApp(opts: CreateAppOptions = {}): Hono {
   app.route('/api', image)
   app.route('/api', upload)
   app.route('/api', video)
+  app.route('/api/tasks', tasks)
   app.route('/api', download)
 
   if (opts.staticDir) mountStatic(app, opts.staticDir)

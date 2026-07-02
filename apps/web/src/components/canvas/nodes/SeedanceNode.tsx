@@ -1,11 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { DownloadDialog, type DownloadTarget } from '@/components/canvas/DownloadDialog'
-import { generateVideoApi } from '@/lib/api'
+import { createVideoTaskApi } from '@/lib/api'
+import { pollTask } from '@/lib/taskPolling'
 import {
   GEN_NODE_META,
   SEEDANCE_DURATION_DEFAULT,
@@ -50,14 +51,45 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
   const running = data.running ?? false
 
   const fail = (message: string) => {
-    updateNodeData(id, { running: false, error: message })
+    updateNodeData(id, { running: false, error: message, taskId: undefined })
     window.alert(`视频生成失败：${message}`)
   }
+
+  // 应用任务终态：成功填结果、失败报错，一并清 taskId。
+  const applyTaskResult = (task: { status: string; result: string[]; error?: string }) => {
+    if (task.status === 'succeeded') {
+      updateNodeData(id, { running: false, result: task.result, taskId: undefined })
+    } else {
+      fail(task.error || '任务失败')
+    }
+  }
+
+  // 刷新/重开后重连：带着未完成 taskId 载入时恢复「生成中…」并继续轮询（关页面不丢结果）。
+  const attachedRef = useRef<string | null>(null)
+  useEffect(() => {
+    const taskId = data.taskId
+    if (!taskId || attachedRef.current === taskId) return
+    attachedRef.current = taskId
+    const controller = new AbortController()
+    updateNodeData(id, { running: true, error: undefined })
+    pollTask(taskId, { signal: controller.signal })
+      .then(applyTaskResult)
+      .catch((e) => {
+        if (e instanceof DOMException && e.name === 'AbortError') return
+        fail(e instanceof Error ? e.message : String(e))
+      })
+    return () => controller.abort()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.taskId])
 
   const handleRun = async () => {
     const state = useFlowStore.getState()
     const project = state.projects.find((p) => p.id === state.activeProjectId)
-    const prompt = project ? collectUpstreamPrompt(project, id) : ''
+    if (!project) {
+      fail('未找到当前项目')
+      return
+    }
+    const prompt = collectUpstreamPrompt(project, id)
     if (!prompt.trim()) {
       fail('请先连接一个有内容的 Prompt 节点')
       return
@@ -67,7 +99,7 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
       .split('\n')
       .map((s) => s.trim())
       .filter(Boolean)
-    const combined = [...(project ? collectUpstreamImages(project, id) : []), ...manualImages]
+    const combined = [...collectUpstreamImages(project, id), ...manualImages]
     // 任务 → 后端 mode + 真正提交的有序图（文生=空 / 首帧=前1 / 首尾帧=前2 / 参考=全部）
     const task = deriveVideoTask(data.videoTask, data.mode, combined.length)
     // 输入音频 = 上游音频素材节点经连线传入（在前）+ 本节点手动填/传的 URL（在后），一并作 audio_list
@@ -75,10 +107,12 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
       .split('\n')
       .map((s) => s.trim())
       .filter(Boolean)
-    const audios = [...(project ? collectUpstreamAudio(project, id) : []), ...manualAudios]
-    updateNodeData(id, { running: true, error: undefined, result: [] })
+    const audios = [...collectUpstreamAudio(project, id), ...manualAudios]
+    updateNodeData(id, { running: true, error: undefined, result: [], taskId: undefined })
     try {
-      const urls = await generateVideoApi({
+      const taskId = await createVideoTaskApi({
+        projectId: project.id,
+        nodeId: id,
         model: videoApiModel(data.model),
         version,
         mode: videoTaskMode(task),
@@ -90,8 +124,13 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
         ratio: ratio === SEEDANCE_RATIO_DEFAULT ? undefined : ratio,
         duration,
       })
-      updateNodeData(id, { running: false, result: urls })
+      attachedRef.current = taskId
+      updateNodeData(id, { taskId })
+      const controller = new AbortController()
+      const done = await pollTask(taskId, { signal: controller.signal })
+      applyTaskResult(done)
     } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') return
       fail(e instanceof Error ? e.message : String(e))
     }
   }

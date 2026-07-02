@@ -159,8 +159,8 @@ export const useFlowStore = create<FlowState>()((set) => {
       const projects: Project[] = dtos.map((d) => ({
         id: d.id,
         name: d.name,
-        // image/video 节点的 running/error 是瞬时态：运行中刷新会被防抖 PUT 存成 running:true，
-        // 载入时复位，避免节点永远卡在「生成中…」（result 保留，刷新后仍能看到上次结果）。
+        // image/video 节点的 running/error 是瞬时态：载入时复位为非运行态，避免卡在「生成中…」。
+        // 但保留 taskId（与 result）：若任务仍在飞，节点 mount 时凭 taskId 重连轮询（关页面不丢结果）。
         nodes: (d.nodes as FlowNode[]).map((node) => {
           if (node.type === 'image') {
             return { ...node, data: { ...node.data, running: false, error: undefined } }

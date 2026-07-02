@@ -3,9 +3,16 @@ import type { GenImageBody, GenVideoBody } from '@openflow/shared'
 // AIGC 图像生成接口（当前无鉴权）；地址可用环境变量覆盖
 const AIGC_ENDPOINT = process.env.AIGC_ENDPOINT ?? 'http://10.75.202.161:8204/aigc'
 
-// 生成请求的内部输入：在请求体基础上补全局署名 req_from + 可选端点（由路由从设置注入）
-type ImageGenInput = GenImageBody & { reqFrom: string; endpoint?: string }
-type VideoGenInput = GenVideoBody & { reqFrom: string; endpoint?: string }
+// 生成请求的内部输入：在请求体（去掉 projectId/nodeId 这类元数据）基础上补
+// 全局署名 req_from + 可选端点（由 task-store 从设置注入）
+type ImageGenInput = Omit<GenImageBody, 'projectId' | 'nodeId'> & {
+  reqFrom: string
+  endpoint?: string
+}
+type VideoGenInput = Omit<GenVideoBody, 'projectId' | 'nodeId'> & {
+  reqFrom: string
+  endpoint?: string
+}
 
 /**
  * 把全局署名解析成最终 req_from：必须非空，否则抛错——不再有兜底默认值。
