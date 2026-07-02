@@ -9,6 +9,7 @@ import {
 import '@xyflow/react/dist/style.css'
 import { nodeTypes } from './nodes'
 import { uploadFilesApi } from '@/lib/api'
+import { type FlowNodeType } from '@/lib/types'
 import { useActiveProject, useFlowStore } from '@/store/useFlowStore'
 
 export function FlowCanvas() {
@@ -17,13 +18,15 @@ export function FlowCanvas() {
   const onEdgesChange = useFlowStore((s) => s.onEdgesChange)
   const onConnect = useFlowStore((s) => s.onConnect)
   const addAssetNode = useFlowStore((s) => s.addAssetNode)
+  const addNode = useFlowStore((s) => s.addNode)
   const removeNode = useFlowStore((s) => s.removeNode)
   const updateNodeData = useFlowStore((s) => s.updateNodeData)
   const { screenToFlowPosition } = useReactFlow()
 
-  // 允许把桌面文件拖入画布（默认浏览器会拦截 drop，需 preventDefault）
+  // 允许把桌面文件 / 侧栏节点拖入画布（默认浏览器会拦截 drop，需 preventDefault）
   const onDragOver = (event: React.DragEvent) => {
-    if (Array.from(event.dataTransfer.types).includes('Files')) {
+    const types = Array.from(event.dataTransfer.types)
+    if (types.includes('Files') || types.includes('application/openflow-node')) {
       event.preventDefault()
       event.dataTransfer.dropEffect = 'copy'
     }
@@ -87,6 +90,23 @@ export function FlowCanvas() {
   }
 
   const onDrop = (event: React.DragEvent) => {
+    // 优先处理从侧栏拖入的节点（携带 application/openflow-node）
+    const nodePayload = event.dataTransfer.getData('application/openflow-node')
+    if (nodePayload) {
+      event.preventDefault()
+      try {
+        const { type, model } = JSON.parse(nodePayload) as {
+          type: FlowNodeType
+          model?: string
+        }
+        const pos = screenToFlowPosition({ x: event.clientX, y: event.clientY })
+        addNode(type, model, pos)
+      } catch (e) {
+        console.error('[openflow] 拖入节点解析失败', e)
+      }
+      return
+    }
+
     const files = Array.from(event.dataTransfer.files ?? [])
     if (files.length === 0) return
     event.preventDefault()

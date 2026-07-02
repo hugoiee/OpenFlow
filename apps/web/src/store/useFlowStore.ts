@@ -56,7 +56,7 @@ type FlowState = {
   onNodesChange: (changes: NodeChange<FlowNode>[]) => void
   onEdgesChange: (changes: EdgeChange[]) => void
   onConnect: (connection: Connection) => void
-  addNode: (type: FlowNodeType, model?: string) => void
+  addNode: (type: FlowNodeType, model?: string, position?: { x: number; y: number }) => void
   /** 在指定画布坐标新建一个素材节点（上传中态），返回新节点 id。 */
   addAssetNode: (kind: 'image' | 'audio', position: { x: number; y: number }) => string
   /** 删除某个节点（如素材上传失败时移除占位节点）。 */
@@ -64,9 +64,14 @@ type FlowState = {
   updateNodeData: (nodeId: string, data: Partial<FlowNode['data']>) => void
 }
 
-function createNode(type: FlowNodeType, count: number, model = ''): FlowNode {
-  // 让新节点错落排布，避免完全重叠
-  const position = { x: 80 + (count % 4) * 60, y: 80 + count * 50 }
+function createNode(
+  type: FlowNodeType,
+  count: number,
+  model = '',
+  positionOverride?: { x: number; y: number },
+): FlowNode {
+  // 拖入时用指针落点；点按时让新节点错落排布，避免完全重叠
+  const position = positionOverride ?? { x: 80 + (count % 4) * 60, y: 80 + count * 50 }
   if (type === 'prompt') {
     return {
       id: newId('n_'),
@@ -228,10 +233,10 @@ export const useFlowStore = create<FlowState>()((set) => {
     onConnect: (connection) =>
       patchActive((p) => ({ ...p, edges: addEdge(connection, p.edges) })),
 
-    addNode: (type, model) =>
+    addNode: (type, model, position) =>
       patchActive((p) => ({
         ...p,
-        nodes: [...p.nodes, createNode(type, p.nodes.length, model)],
+        nodes: [...p.nodes, createNode(type, p.nodes.length, model, position)],
       })),
 
     addAssetNode: (kind, position) => {
