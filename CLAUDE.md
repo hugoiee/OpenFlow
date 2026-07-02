@@ -45,12 +45,12 @@ apps/server/src/
   server.ts                    startServer({port?,dataDir?,staticDir?})：先设 OPENFLOW_DATA_DIR 再动态 import app（保证 db 读到注入目录）；绑 127.0.0.1，port=0 时取空闲端口，返回 {port, close}
   db.ts                        better-sqlite3 建库建表（projects / settings）；数据目录 = env OPENFLOW_DATA_DIR（桌面端注入 userData）否则回退 apps/server/data/openflow.db（gitignore）；settings 表列 default_req_from + aigc/upload/upload_media_endpoint（按需 ALTER 迁移，旧 provider 列留存不读）
   settings-store.ts            读写 settings 单行（defaultReqFrom + 三端点）；writeSettings(patch) 合并写：只覆盖出现的字段
-  provider.ts                  runImageGen()/runVideoGen()：POST AIGC 接口生成图像/视频（按 model 分支构造 payload；视频 audio_list 取自入参 audios；端点取入参 endpoint，空回退 env AIGC_ENDPOINT/内置）+ 从任意响应稳健解析 URL；uploadFiles(form,kind,endpointOverride?)：转发 multipart 到上传接口（端点取 override，空回退 UPLOAD_ENDPOINT / UPLOAD_MEDIA_ENDPOINT）；resolveReqFrom()：把全局署名解析成最终 req_from（空回退 env AIGC_REQ_FROM，再回退 'openflow'）
+  provider.ts                  runImageGen()/runVideoGen()：POST AIGC 接口生成图像/视频（按 model 分支构造 payload；视频 audio_list 取自入参 audios；端点取入参 endpoint，空回退 env AIGC_ENDPOINT/内置）+ 从任意响应稳健解析 URL；uploadFiles(form,kind,endpointOverride?)：转发 multipart 到上传接口（端点取 override，空回退 UPLOAD_ENDPOINT / UPLOAD_MEDIA_ENDPOINT）；resolveReqFrom()：把全局署名解析成最终 req_from（**为空即抛错、无兜底默认**——req_from 空时不允许发任何上游请求）
   routes/projects.ts           /api/projects CRUD（nodes/edges 以 JSON 存）
   routes/settings.ts           GET /api/settings(回 defaultReqFrom + 三端点) / PUT(defaultReqFrom 必填；端点省略保持原值、空串清空回退默认)
-  routes/image.ts              POST /api/aigc(图像生成代理：Image 2/Nano Banana，按 model 补 version/config 转发 AIGC；req_from + aigcEndpoint 从全局设置注入；端点空回退 env AIGC_ENDPOINT)
-  routes/video.ts              POST /api/video(视频生成代理：seedance，补 version/mode/config + audios→audio_list 转发 AIGC /aigc；req_from + aigcEndpoint 从全局设置注入)
-  routes/upload.ts             POST /api/upload(文件上传代理：按 query kind 分流转发 multipart——图片→uploadEndpoint、音频(kind=audio)→uploadMediaEndpoint（均从设置注入，空回退对应 env）；req_from 从全局设置注入)
+  routes/image.ts              POST /api/aigc(图像生成代理：Image 2/Nano Banana，按 model 补 version/config 转发 AIGC；req_from + aigcEndpoint 从全局设置注入，req_from 为空返回 400 拒发；端点空回退 env AIGC_ENDPOINT)
+  routes/video.ts              POST /api/video(视频生成代理：seedance，补 version/mode/config + audios→audio_list 转发 AIGC /aigc；req_from + aigcEndpoint 从全局设置注入，req_from 为空返回 400 拒发)
+  routes/upload.ts             POST /api/upload(文件上传代理：按 query kind 分流转发 multipart——图片→uploadEndpoint、音频(kind=audio)→uploadMediaEndpoint（均从设置注入，空回退对应 env）；req_from 从全局设置注入，为空返回 400 拒发)
 apps/web/src/
   main.tsx                     入口：先 migrateLocalStorage() 迁移旧数据，再 load store，最后渲染（HashRouter）
   App.tsx                      用 ReqFromGate 包裹路由（/ → 首页，/project/:id → 工作区，* → 回首页）
@@ -90,7 +90,7 @@ apps/desktop/
 - **后端**：Hono + `@hono/node-server`，`tsx watch` 跑（免构建）；端口 8787。Vite dev 代理 `/api` → 8787（`apps/web/vite.config.ts`）。
 - **数据库**：SQLite（`better-sqlite3`，单文件；开发在 `apps/server/data/openflow.db`，桌面端在 `userData` via env `OPENFLOW_DATA_DIR`）。`projects` 表 nodes/edges 存 JSON；`settings` 单行存 `default_req_from`(全局署名) + `aigc_endpoint`/`upload_endpoint`/`upload_media_endpoint`(可配置端点)。原生模块装不上时回退 Node 内置 `node:sqlite`。
 - **数据流**：前端无 localStorage 持久化（仅 homeView + 迁移标记用 localStorage）。项目数据走 `/api/projects`；画布高频编辑防抖 PUT。全局 req_from 走 `/api/settings`。
-- **生成调用**：图像 `/api/aigc`、视频 `/api/video`、文件上传 `/api/upload`（图片/音频按 `kind` 分流）均经后端代理转发到 AIGC 接口（绕 CORS）；req_from 由后端从全局设置注入（空回退 env `AIGC_REQ_FROM`）。**端点地址优先取全局设置里的 `aigcEndpoint`/`uploadEndpoint`/`uploadMediaEndpoint`，为空才回退 env（`AIGC_ENDPOINT`/`UPLOAD_ENDPOINT`/`UPLOAD_MEDIA_ENDPOINT`）再回退内置默认**——便于打包分发后由用户自填，不写死内网 IP。
+- **生成调用**：图像 `/api/aigc`、视频 `/api/video`、文件上传 `/api/upload`（图片/音频按 `kind` 分流）均经后端代理转发到 AIGC 接口（绕 CORS）；req_from 由后端从全局设置注入，**为空则直接返回 400 拒发、无兜底默认（`AIGC_REQ_FROM` 已不再使用）**。**端点地址优先取全局设置里的 `aigcEndpoint`/`uploadEndpoint`/`uploadMediaEndpoint`，为空才回退 env（`AIGC_ENDPOINT`/`UPLOAD_ENDPOINT`/`UPLOAD_MEDIA_ENDPOINT`）再回退内置默认**——便于打包分发后由用户自填，不写死内网 IP。
 - **启动门槛**：`ReqFromGate` 在设置加载后若 req_from 为空则全屏阻断，必须填写署名才放行。
 - **路由**：`react-router-dom` `HashRouter`。
 - **画布**：React Flow（`@xyflow/react`），节点是普通 React 组件；连线 smoothstep。

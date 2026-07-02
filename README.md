@@ -89,7 +89,6 @@ pnpm format      # Prettier 格式化
 | `PORT` | `8787` | 后端端口 |
 | `AIGC_ENDPOINT` | `http://10.75.202.161:8204/aigc` | 图像/视频生成接口 |
 | `UPLOAD_ENDPOINT` | `http://10.75.202.161:8511/api/upload` | 图片上传接口 |
-| `AIGC_REQ_FROM` | `openflow` | 请求署名 `req_from` 的兜底值（前端「设置」面板可全局配置，首次启动也会强制填写） |
 
 ```bash
 PORT=8787 AIGC_ENDPOINT=http://your-host/aigc pnpm server

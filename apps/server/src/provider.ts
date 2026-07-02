@@ -1,16 +1,20 @@
 import type { GenImageBody, GenVideoBody } from '@openflow/shared'
 
-// AIGC 图像生成接口（当前无鉴权）；地址/req_from 可用环境变量覆盖
+// AIGC 图像生成接口（当前无鉴权）；地址可用环境变量覆盖
 const AIGC_ENDPOINT = process.env.AIGC_ENDPOINT ?? 'http://10.75.202.161:8204/aigc'
-const AIGC_REQ_FROM = process.env.AIGC_REQ_FROM ?? 'openflow'
 
 // 生成请求的内部输入：在请求体基础上补全局署名 req_from + 可选端点（由路由从设置注入）
 type ImageGenInput = GenImageBody & { reqFrom: string; endpoint?: string }
 type VideoGenInput = GenVideoBody & { reqFrom: string; endpoint?: string }
 
-/** 把（可能为空的）全局署名解析成最终 req_from：空则回退环境变量，再回退 'openflow'。 */
+/**
+ * 把全局署名解析成最终 req_from：必须非空，否则抛错——不再有兜底默认值。
+ * req_from 为空时不允许发送任何上游请求（由此保证生成/上传都带真实署名）。
+ */
 export function resolveReqFrom(value: string | undefined): string {
-  return value?.trim() || AIGC_REQ_FROM
+  const trimmed = value?.trim()
+  if (!trimmed) throw new Error('缺少调用方署名 req_from，请先在设置中填写')
+  return trimmed
 }
 
 /** 端点解析：设置里非空则用它，否则回退传入的 env/内置默认。 */

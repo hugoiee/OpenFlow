@@ -11,6 +11,9 @@ upload.post('/upload', async (c) => {
   if (!form) return c.json({ error: '无效的上传请求' }, 400)
   const kind = c.req.query('kind') === 'audio' ? 'audio' : 'image'
   const s = readSettings()
+  if (!s.defaultReqFrom.trim()) {
+    return c.json({ error: '缺少调用方署名 req_from，请先在设置中填写' }, 400)
+  }
   // req_from 取全局设置注入（前端不再传），与图像/视频生成署名一致
   form.set('req_from', resolveReqFrom(s.defaultReqFrom))
   const endpoint = kind === 'audio' ? s.uploadMediaEndpoint : s.uploadEndpoint

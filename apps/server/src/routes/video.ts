@@ -13,8 +13,11 @@ video.post('/video', async (c) => {
   }
   try {
     const s = readSettings()
+    if (!s.defaultReqFrom.trim()) {
+      return c.json({ error: '缺少调用方署名 req_from，请先在设置中填写' }, 400)
+    }
     const videos = await runVideoGen({
-      // req_from / 端点取全局设置（前端不再传）；为空时由 provider 回退默认值
+      // req_from / 端点取全局设置（前端不再传）；req_from 为空已在上面拦截
       reqFrom: s.defaultReqFrom,
       endpoint: s.aigcEndpoint,
       model: body.model,
