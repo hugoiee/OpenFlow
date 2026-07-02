@@ -107,3 +107,20 @@ export type TaskDTO = {
 
 /** POST /api/aigc | /api/video 建任务成功响应。 */
 export type CreateTaskResponse = { taskId: string }
+
+/** 常用 Prompt 预设 DTO：全局共享库，供 Prompt 节点下拉选用。 */
+export type PromptPresetDTO = {
+  id: string
+  /** 简短标题（下拉 / 列表里展示）。 */
+  title: string
+  /** prompt 正文。 */
+  content: string
+  createdAt: number
+  updatedAt: number
+}
+
+/** POST /api/prompt-presets（新建）| PUT /api/prompt-presets/:id（更新）请求体。 */
+export type SavePromptPresetBody = {
+  title: string
+  content: string
+}

@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { SettingsDialog } from '@/components/settings/SettingsDialog'
+import { PromptPresetsDialog } from '@/components/presets/PromptPresetsDialog'
 import { ThemeToggle } from '@/components/theme/ThemeToggle'
 import { ProjectCard } from '@/components/home/ProjectCard'
 import { useFlowStore } from '@/store/useFlowStore'
@@ -41,6 +42,11 @@ export function HomePage() {
             </Button>
           </div>
           <ThemeToggle className="size-8" />
+          <PromptPresetsDialog>
+            <Button size="sm" variant="ghost" title="常用 Prompt 预设">
+              预设
+            </Button>
+          </PromptPresetsDialog>
           <SettingsDialog>
             <Button size="sm" variant="ghost" title="API 设置">
               设置

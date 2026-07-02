@@ -3,6 +3,8 @@ import type {
   GenImageBody,
   GenVideoBody,
   ProjectDTO,
+  PromptPresetDTO,
+  SavePromptPresetBody,
   SaveSettingsBody,
   SettingsDTO,
   TaskDTO,
@@ -66,6 +68,32 @@ export function saveSettingsApi(body: SaveSettingsBody): Promise<{ ok: true }> {
     method: 'PUT',
     body: JSON.stringify(body),
   })
+}
+
+// ---- 常用 Prompt 预设（全局共享库）----
+export function listPromptPresetsApi(): Promise<PromptPresetDTO[]> {
+  return request<PromptPresetDTO[]>('/prompt-presets')
+}
+
+export function createPromptPresetApi(body: SavePromptPresetBody): Promise<PromptPresetDTO> {
+  return request<PromptPresetDTO>('/prompt-presets', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+}
+
+export function updatePromptPresetApi(
+  id: string,
+  body: SavePromptPresetBody,
+): Promise<PromptPresetDTO> {
+  return request<PromptPresetDTO>(`/prompt-presets/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  })
+}
+
+export function deletePromptPresetApi(id: string): Promise<{ ok: true }> {
+  return request<{ ok: true }>(`/prompt-presets/${id}`, { method: 'DELETE' })
 }
 
 // ---- 图像 / 视频生成（异步任务）----

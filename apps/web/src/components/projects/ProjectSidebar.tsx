@@ -7,6 +7,7 @@ import {
   Image as ImageIcon,
   Banana,
   Video,
+  Library,
   type LucideIcon,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -21,6 +22,7 @@ import {
   SidebarMenuItem,
 } from '@/components/ui/sidebar'
 import { SettingsDialog } from '@/components/settings/SettingsDialog'
+import { PromptPresetsDialog } from '@/components/presets/PromptPresetsDialog'
 import { ThemeToggle } from '@/components/theme/ThemeToggle'
 import { IMAGE_MODELS, VIDEO_MODELS } from '@/lib/nodeCatalog'
 import { type FlowNodeType } from '@/lib/types'
@@ -94,6 +96,11 @@ export function ProjectSidebar() {
           </Link>
           <div className="flex items-center gap-0.5">
             <ThemeToggle />
+            <PromptPresetsDialog>
+              <Button size="icon" variant="ghost" className="size-7" title="常用 Prompt 预设">
+                <Library className="size-4" />
+              </Button>
+            </PromptPresetsDialog>
             <SettingsDialog>
               <Button size="icon" variant="ghost" className="size-7" title="API 设置">
                 <Settings className="size-4" />
