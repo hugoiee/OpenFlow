@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
-import { BookmarkPlus, Library } from 'lucide-react'
+import { BookmarkPlus, Library, Type } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import {
   Dialog,
   DialogContent,
@@ -14,6 +14,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { NodeHeader } from './NodeHeader'
 import { useFlowStore } from '@/store/useFlowStore'
 import { usePromptPresetStore } from '@/store/usePromptPresetStore'
 import type { PromptNode as PromptNodeType } from '@/lib/types'
@@ -71,16 +72,11 @@ export function PromptNode({ id, data, selected }: NodeProps<PromptNodeType>) {
 
   return (
     <Card
-      className={`inline-block w-auto gap-2 py-3 shadow-sm transition-shadow ${
+      className={`group/node inline-flex w-auto flex-col gap-2 py-3 shadow-sm transition-shadow ${
         selected ? 'ring-2 ring-primary' : ''
       }`}
     >
-      <CardHeader className="px-3">
-        <CardTitle className="flex items-center gap-2 text-sm">
-          <span className="size-2 rounded-full bg-sky-500 dark:bg-sky-400" />
-          {data.label}
-        </CardTitle>
-      </CardHeader>
+      <NodeHeader id={id} icon={Type} title={data.label} selected={selected} />
       <CardContent className="flex flex-col gap-2 px-3">
         <Textarea
           value={data.text}

@@ -1,6 +1,8 @@
 import { Handle, Position, type NodeProps } from '@xyflow/react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Image as ImageIcon, Music } from 'lucide-react'
+import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { NodeHeader } from './NodeHeader'
 import { ASSET_NODE_META } from '@/lib/nodeCatalog'
 import { type AssetNode as AssetNodeType } from '@/lib/types'
 
@@ -9,7 +11,7 @@ import { type AssetNode as AssetNodeType } from '@/lib/types'
  * 纯「源」节点——只有右侧 source Handle，可连到下游图像/视频生成节点作输入。
  * 图像素材展示缩略图，音频素材展示 <audio> 播放器；上传中显示骨架，失败内联红字。
  */
-export function AssetNode({ data, selected }: NodeProps<AssetNodeType>) {
+export function AssetNode({ id, data, selected }: NodeProps<AssetNodeType>) {
   const kind = data.kind ?? 'image'
   const meta = ASSET_NODE_META[kind]
   const uploading = data.uploading ?? false
@@ -17,21 +19,16 @@ export function AssetNode({ data, selected }: NodeProps<AssetNodeType>) {
 
   return (
     <Card
-      className={`w-60 gap-2 py-3 shadow-sm transition-shadow ${
+      className={`group/node w-60 gap-2 py-3 shadow-sm transition-shadow ${
         selected ? 'ring-2 ring-primary' : ''
       }`}
     >
-      <CardHeader className="px-3">
-        <CardTitle className="flex items-center gap-2 text-sm">
-          <span className={`size-2 rounded-full ${meta.dot}`} />
-          {meta.label}
-          {data.fileName && (
-            <span className="ml-auto max-w-[55%] truncate text-xs font-normal text-muted-foreground">
-              {data.fileName}
-            </span>
-          )}
-        </CardTitle>
-      </CardHeader>
+      <NodeHeader
+        id={id}
+        icon={kind === 'image' ? ImageIcon : Music}
+        title={data.fileName || meta.label}
+        selected={selected}
+      />
       <CardContent className="flex flex-col gap-2 px-3">
         <div className="nodrag overflow-hidden rounded-md border">
           {uploading ? (
