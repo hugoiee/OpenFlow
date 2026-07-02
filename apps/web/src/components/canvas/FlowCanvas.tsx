@@ -11,6 +11,7 @@ import { nodeTypes } from './nodes'
 import { uploadFilesApi } from '@/lib/api'
 import { type FlowNodeType } from '@/lib/types'
 import { useActiveProject, useFlowStore } from '@/store/useFlowStore'
+import { useThemeStore } from '@/store/useThemeStore'
 
 export function FlowCanvas() {
   const project = useActiveProject()
@@ -21,6 +22,8 @@ export function FlowCanvas() {
   const addNode = useFlowStore((s) => s.addNode)
   const removeNode = useFlowStore((s) => s.removeNode)
   const updateNodeData = useFlowStore((s) => s.updateNodeData)
+  // 实际生效的明暗（system 已解析）：让画布底纹 / 控制按钮 / 缩略图 / 连线跟随主题
+  const colorMode = useThemeStore((s) => s.resolved)
   const { screenToFlowPosition } = useReactFlow()
 
   // 允许把桌面文件 / 侧栏节点拖入画布（默认浏览器会拦截 drop，需 preventDefault）
@@ -179,6 +182,7 @@ export function FlowCanvas() {
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         defaultEdgeOptions={{ type: 'straight' }}
+        colorMode={colorMode}
         minZoom={0.1}
         maxZoom={4}
         fitView

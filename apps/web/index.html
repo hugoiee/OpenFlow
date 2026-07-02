@@ -5,6 +5,20 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>OpenFlow</title>
+    <script>
+      // 防白闪：首帧渲染前按已存主题偏好（无则跟随系统）先给 <html> 挂 .dark
+      ;(function () {
+        try {
+          var mode = localStorage.getItem('openflow-theme')
+          var dark =
+            mode === 'dark' ||
+            (mode !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)
+          if (dark) document.documentElement.classList.add('dark')
+        } catch (e) {
+          /* localStorage 不可用时保持浅色 */
+        }
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

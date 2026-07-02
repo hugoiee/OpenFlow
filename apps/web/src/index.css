@@ -128,3 +128,8 @@
     @apply font-sans;
   }
 }
+
+/* 深色模式下让浏览器原生控件（滚动条 / 表单 / <audio> <video> 控制条）也跟随暗色 */
+.dark {
+  color-scheme: dark;
+}

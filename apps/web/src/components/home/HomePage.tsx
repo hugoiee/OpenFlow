@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { SettingsDialog } from '@/components/settings/SettingsDialog'
+import { ThemeToggle } from '@/components/theme/ThemeToggle'
 import { ProjectCard } from '@/components/home/ProjectCard'
 import { useFlowStore } from '@/store/useFlowStore'
 
@@ -39,6 +40,7 @@ export function HomePage() {
               列表
             </Button>
           </div>
+          <ThemeToggle className="size-8" />
           <SettingsDialog>
             <Button size="sm" variant="ghost" title="API 设置">
               设置

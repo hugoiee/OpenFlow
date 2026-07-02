@@ -24,12 +24,16 @@ export async function startServer(opts: StartServerOptions = {}): Promise<Runnin
   const { createApp } = await import('./app')
   const app = createApp({ staticDir: opts.staticDir })
 
-  return await new Promise<RunningServer>((resolve) => {
+  return await new Promise<RunningServer>((resolve, reject) => {
+    // 监听失败（如指定端口被占用）时 reject，调用方可回退到 port:0 重试
+    const onError = (err: unknown) => reject(err)
     const server = serve(
       { fetch: app.fetch, port: opts.port ?? 0, hostname: '127.0.0.1' },
       (info) => {
+        server.off('error', onError)
         resolve({ port: info.port, close: () => server.close() })
       },
     )
+    server.on('error', onError)
   })
 }

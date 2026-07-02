@@ -21,6 +21,7 @@ import {
   SidebarMenuItem,
 } from '@/components/ui/sidebar'
 import { SettingsDialog } from '@/components/settings/SettingsDialog'
+import { ThemeToggle } from '@/components/theme/ThemeToggle'
 import { IMAGE_MODELS, VIDEO_MODELS } from '@/lib/nodeCatalog'
 import { type FlowNodeType } from '@/lib/types'
 import { useFlowStore } from '@/store/useFlowStore'
@@ -55,7 +56,12 @@ const NODE_GROUPS: { label: string; subtitle: string; items: NodeItem[] }[] = [
   {
     label: '视频模型',
     subtitle: '从文本 / 图像生成视频',
-    items: VIDEO_MODELS.map((m) => ({ type: 'video' as const, label: m, icon: Video, model: m })),
+    items: VIDEO_MODELS.map((m) => ({
+      type: 'video' as const,
+      label: m,
+      icon: Video,
+      model: m,
+    })),
   },
 ]
 
@@ -86,11 +92,14 @@ export function ProjectSidebar() {
           >
             OpenFlow
           </Link>
-          <SettingsDialog>
-            <Button size="icon" variant="ghost" className="size-7" title="API 设置">
-              <Settings className="size-4" />
-            </Button>
-          </SettingsDialog>
+          <div className="flex items-center gap-0.5">
+            <ThemeToggle />
+            <SettingsDialog>
+              <Button size="icon" variant="ghost" className="size-7" title="API 设置">
+                <Settings className="size-4" />
+              </Button>
+            </SettingsDialog>
+          </div>
         </div>
         {defaultReqFrom && (
           <div className="mt-1 flex items-center gap-1">

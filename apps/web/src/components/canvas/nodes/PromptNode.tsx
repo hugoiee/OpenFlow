@@ -15,7 +15,7 @@ export function PromptNode({ id, data, selected }: NodeProps<PromptNodeType>) {
     >
       <CardHeader className="px-3">
         <CardTitle className="flex items-center gap-2 text-sm">
-          <span className="size-2 rounded-full bg-sky-500" />
+          <span className="size-2 rounded-full bg-sky-500 dark:bg-sky-400" />
           {data.label}
         </CardTitle>
       </CardHeader>
@@ -27,7 +27,11 @@ export function PromptNode({ id, data, selected }: NodeProps<PromptNodeType>) {
           className="nodrag field-sizing-fixed h-24 min-h-24 w-56 min-w-56 resize overflow-hidden text-sm"
         />
       </CardContent>
-      <Handle type="source" position={Position.Right} className="!size-3 !bg-sky-500" />
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="!size-3 !bg-sky-500 dark:!bg-sky-400"
+      />
     </Card>
   )
 }

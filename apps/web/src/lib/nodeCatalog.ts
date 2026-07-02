@@ -117,7 +117,13 @@ export const VIDEO_TASK_OPTIONS: {
   slotLabels?: string[]
 }[] = [
   { value: 'text', label: '文生视频', desc: '仅凭文字提示生成，无需输入图', slots: 0 },
-  { value: 'first', label: '首帧', desc: '以一张图作为起始画面', slots: 1, slotLabels: ['首帧'] },
+  {
+    value: 'first',
+    label: '首帧',
+    desc: '以一张图作为起始画面',
+    slots: 1,
+    slotLabels: ['首帧'],
+  },
   {
     value: 'firstLast',
     label: '首尾帧',
@@ -203,8 +209,16 @@ export const GEN_NODE_META: Record<
   'image' | 'video',
   { label: string; dot: string; handle: string }
 > = {
-  image: { label: '图像', dot: 'bg-amber-500', handle: '!bg-amber-500' },
-  video: { label: '视频', dot: 'bg-rose-500', handle: '!bg-rose-500' },
+  image: {
+    label: '图像',
+    dot: 'bg-amber-500 dark:bg-amber-400',
+    handle: '!bg-amber-500 dark:!bg-amber-400',
+  },
+  video: {
+    label: '视频',
+    dot: 'bg-rose-500 dark:bg-rose-400',
+    handle: '!bg-rose-500 dark:!bg-rose-400',
+  },
 }
 
 /** 素材节点（image/audio）的展示元信息（配色与连接点颜色，按种类区分）。 */
@@ -212,6 +226,14 @@ export const ASSET_NODE_META: Record<
   'image' | 'audio',
   { label: string; dot: string; handle: string }
 > = {
-  image: { label: '图像素材', dot: 'bg-amber-500', handle: '!bg-amber-500' },
-  audio: { label: '音频素材', dot: 'bg-sky-500', handle: '!bg-sky-500' },
+  image: {
+    label: '图像素材',
+    dot: 'bg-amber-500 dark:bg-amber-400',
+    handle: '!bg-amber-500 dark:!bg-amber-400',
+  },
+  audio: {
+    label: '音频素材',
+    dot: 'bg-sky-500 dark:bg-sky-400',
+    handle: '!bg-sky-500 dark:!bg-sky-400',
+  },
 }
