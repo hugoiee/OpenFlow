@@ -133,3 +133,18 @@
 .dark {
   color-scheme: dark;
 }
+
+/*
+ * 画布鼠标指针随操作切换（左键框选 / 中键·空格平移）。
+ * 用 `.react-flow` 前缀提高特异性，覆盖 @xyflow/react 自带的 pane 光标规则（否则受 CSS 引入顺序影响）。
+ */
+.react-flow .react-flow__pane.selection {
+  cursor: default; /* 默认：左键拖拽框选（普通箭头） */
+}
+.react-flow .react-flow__pane.selection.draggable {
+  cursor: grab; /* 按住空格：可平移（张开手） */
+}
+.react-flow .react-flow__pane.dragging,
+.react-flow .react-flow__pane.selection.dragging {
+  cursor: grabbing; /* 正在平移（中键 / 空格拖拽）：抓手 */
+}

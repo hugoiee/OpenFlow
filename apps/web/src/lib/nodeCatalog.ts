@@ -116,6 +116,7 @@ export const VIDEO_TASK_OPTIONS: {
   slots: number | null
   slotLabels?: string[]
 }[] = [
+  { value: 'reference', label: '参考图', desc: '多张图作为风格 / 内容参考', slots: null },
   { value: 'text', label: '文生视频', desc: '仅凭文字提示生成，无需输入图', slots: 0 },
   {
     value: 'first',
@@ -131,7 +132,6 @@ export const VIDEO_TASK_OPTIONS: {
     slots: 2,
     slotLabels: ['首帧', '尾帧'],
   },
-  { value: 'reference', label: '参考图', desc: '多张图作为风格 / 内容参考', slots: null },
 ] as const
 
 export const VIDEO_TASK_DEFAULT: VideoTask = 'text'
@@ -175,7 +175,7 @@ export function deriveVideoTask(
 
 /** Seedance config.resolution 选项。 */
 export const SEEDANCE_RESOLUTION_OPTIONS = ['480p', '720p', '1080p'] as const
-export const SEEDANCE_RESOLUTION_DEFAULT = '720p'
+export const SEEDANCE_RESOLUTION_DEFAULT = '1080p'
 
 /**
  * Seedance config.ratio（宽高比）选项。
@@ -204,36 +204,26 @@ export const SEEDANCE_DURATION_MIN = 4
 export const SEEDANCE_DURATION_MAX = 15
 export const SEEDANCE_DURATION_DEFAULT = 6
 
-/** 生成类节点（image/video）的展示元信息。 */
-export const GEN_NODE_META: Record<
-  'image' | 'video',
-  { label: string; dot: string; handle: string }
-> = {
+/** 生成类节点（image/video）的展示元信息（连接点配色）。 */
+export const GEN_NODE_META: Record<'image' | 'video', { label: string; handle: string }> = {
   image: {
     label: '图像',
-    dot: 'bg-amber-500 dark:bg-amber-400',
     handle: '!bg-amber-500 dark:!bg-amber-400',
   },
   video: {
     label: '视频',
-    dot: 'bg-rose-500 dark:bg-rose-400',
     handle: '!bg-rose-500 dark:!bg-rose-400',
   },
 }
 
-/** 素材节点（image/audio）的展示元信息（配色与连接点颜色，按种类区分）。 */
-export const ASSET_NODE_META: Record<
-  'image' | 'audio',
-  { label: string; dot: string; handle: string }
-> = {
+/** 素材节点（image/audio）的展示元信息（标题回退文案 + 连接点配色，按种类区分）。 */
+export const ASSET_NODE_META: Record<'image' | 'audio', { label: string; handle: string }> = {
   image: {
     label: '图像素材',
-    dot: 'bg-amber-500 dark:bg-amber-400',
     handle: '!bg-amber-500 dark:!bg-amber-400',
   },
   audio: {
     label: '音频素材',
-    dot: 'bg-sky-500 dark:bg-sky-400',
     handle: '!bg-sky-500 dark:!bg-sky-400',
   },
 }

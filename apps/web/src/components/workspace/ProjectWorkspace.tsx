@@ -27,7 +27,7 @@ export function ProjectWorkspace() {
     <SidebarProvider className="h-screen min-h-0 overflow-hidden">
       <ProjectSidebar />
       <SidebarInset className="relative min-h-0">
-        <SidebarTrigger className="absolute left-2 top-2 z-20" />
+        <SidebarTrigger className="absolute left-2 top-2 z-20 size-10" />
         <FlowCanvasWithProvider />
         <NodeInspector />
       </SidebarInset>

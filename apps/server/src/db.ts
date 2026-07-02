@@ -49,6 +49,15 @@ db.exec(`
     updated_at INTEGER NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_tasks_node ON tasks (project_id, node_id, created_at DESC);
+
+  -- 全局「常用 Prompt」预设：Prompt 节点可下拉选用 / 一键存为预设（跨项目共享）。
+  CREATE TABLE IF NOT EXISTS prompt_presets (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL DEFAULT '',
+    content TEXT NOT NULL DEFAULT '',
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
 `)
 
 // 旧库迁移：settings 表按需补列（早期版本可能缺；旧的供应商列若存在则留存不读）

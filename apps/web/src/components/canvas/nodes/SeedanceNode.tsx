@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
-import { Download } from 'lucide-react'
+import { Download, Video } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { DownloadDialog, type DownloadTarget } from '@/components/canvas/DownloadDialog'
+import { NodeHeader } from './NodeHeader'
 import { createVideoTaskApi } from '@/lib/api'
 import { pollTask } from '@/lib/taskPolling'
 import {
@@ -137,18 +138,12 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
 
   return (
     <Card
-      className={`w-72 gap-2 py-3 shadow-sm transition-shadow ${
+      className={`group/node w-72 gap-2 py-3 shadow-sm transition-shadow ${
         selected ? 'ring-2 ring-primary' : ''
       }`}
     >
       <Handle type="target" position={Position.Left} className={`!size-3 ${meta.handle}`} />
-      <CardHeader className="px-3">
-        <CardTitle className="flex items-center gap-2 text-sm">
-          <span className={`size-2 rounded-full ${meta.dot}`} />
-          {data.label}
-          <span className="ml-auto text-xs font-normal text-muted-foreground">{data.model}</span>
-        </CardTitle>
-      </CardHeader>
+      <NodeHeader id={id} icon={Video} title={data.model} selected={selected} />
       <CardContent className="flex flex-col gap-2 px-3">
         {/* 结果展示区 */}
         <div className="nodrag overflow-hidden rounded-md border">

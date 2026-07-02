@@ -9,6 +9,7 @@ import { image } from './routes/image'
 import { upload } from './routes/upload'
 import { video } from './routes/video'
 import { tasks } from './routes/tasks'
+import { promptPresets } from './routes/prompt-presets'
 import { download } from './routes/download'
 
 export interface CreateAppOptions {
@@ -78,6 +79,7 @@ export function createApp(opts: CreateAppOptions = {}): Hono {
   app.route('/api', upload)
   app.route('/api', video)
   app.route('/api/tasks', tasks)
+  app.route('/api/prompt-presets', promptPresets)
   app.route('/api', download)
 
   if (opts.staticDir) mountStatic(app, opts.staticDir)
