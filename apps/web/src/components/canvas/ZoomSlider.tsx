@@ -29,7 +29,7 @@ export function ZoomSlider({
   return (
     <Panel
       className={cn(
-        'flex items-center gap-1 rounded-md border bg-background p-1 text-foreground shadow-sm',
+        'flex items-center gap-1 rounded-md bg-background p-1 text-foreground shadow-sm ring-1 ring-border',
         orientation === 'horizontal' ? 'flex-row' : 'flex-col',
         className,
       )}

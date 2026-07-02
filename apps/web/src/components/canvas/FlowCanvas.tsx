@@ -3,6 +3,7 @@ import {
   MiniMap,
   ReactFlow,
   ReactFlowProvider,
+  SelectionMode,
   useReactFlow,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
@@ -187,10 +188,15 @@ export function FlowCanvas() {
         maxZoom={4}
         fitView
         proOptions={{ hideAttribution: true }}
+        // 交互：左键拖拽默认框选；平移画布用中键拖拽或按住空格键拖拽
+        selectionOnDrag
+        panOnDrag={[1]}
+        selectionMode={SelectionMode.Partial}
+        panActivationKeyCode="Space"
       >
         <Background />
         {/* 横向缩放滑块：画布顶部，紧贴左上角 SidebarTrigger 右侧并排 */}
-        <ZoomSlider position="top-left" style={{ top: 8, left: 48, margin: 0 }} />
+        <ZoomSlider position="top-left" style={{ top: 8, left: 60, margin: 0 }} />
         {/* 缩略图移到左下角 */}
         <MiniMap pannable zoomable position="bottom-left" />
       </ReactFlow>

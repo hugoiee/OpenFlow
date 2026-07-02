@@ -95,14 +95,14 @@ export function ProjectSidebar() {
             OpenFlow
           </Link>
           <div className="flex items-center gap-0.5">
-            <ThemeToggle />
+            <ThemeToggle className="size-10" />
             <PromptPresetsDialog>
-              <Button size="icon" variant="ghost" className="size-7" title="常用 Prompt 预设">
+              <Button size="icon" variant="ghost" className="size-10" title="常用 Prompt 预设">
                 <Library className="size-4" />
               </Button>
             </PromptPresetsDialog>
             <SettingsDialog>
-              <Button size="icon" variant="ghost" className="size-7" title="API 设置">
+              <Button size="icon" variant="ghost" className="size-10" title="API 设置">
                 <Settings className="size-4" />
               </Button>
             </SettingsDialog>
