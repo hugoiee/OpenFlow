@@ -65,10 +65,11 @@ export function ProjectSidebar() {
   const defaultReqFrom = useSettingsStore((s) => s.defaultReqFrom)
   const saveReqFrom = useSettingsStore((s) => s.saveReqFrom)
 
-  // 退出：清空 req_from → ReqFromGate 会重新全屏阻断，回到首次输入邮箱前缀页
+  // 退出：清空 req_from → ReqFromGate 会重新全屏阻断；同时回到起始页
   const handleLogout = async () => {
     try {
       await saveReqFrom('')
+      navigate('/')
     } catch (e) {
       console.error('[openflow] 退出失败', e)
     }
