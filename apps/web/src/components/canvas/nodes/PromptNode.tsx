@@ -114,7 +114,7 @@ export function PromptNode({ id, data, selected }: NodeProps<PromptNodeType>) {
       <Handle
         type="source"
         position={Position.Right}
-        className="!size-3 !bg-sky-500 dark:!bg-sky-400"
+        className="!bg-sky-500 dark:!bg-sky-400"
       />
 
       {/* 选用预设：从全局预设库挑一条，内容替换当前节点文本 */}

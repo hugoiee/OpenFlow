@@ -56,7 +56,7 @@ export function AssetNode({ id, data, selected }: NodeProps<AssetNodeType>) {
           </p>
         )}
       </CardContent>
-      <Handle type="source" position={Position.Right} className={`!size-3 ${meta.handle}`} />
+      <Handle type="source" position={Position.Right} className={meta.handle} />
     </Card>
   )
 }

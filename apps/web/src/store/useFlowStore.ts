@@ -2,6 +2,7 @@ import {
   addEdge,
   applyEdgeChanges,
   applyNodeChanges,
+  reconnectEdge,
   type Connection,
   type Edge,
   type EdgeChange,
@@ -56,6 +57,8 @@ type FlowState = {
   onNodesChange: (changes: NodeChange<FlowNode>[]) => void
   onEdgesChange: (changes: EdgeChange[]) => void
   onConnect: (connection: Connection) => void
+  /** 拖动连线端点重连到新的 handle（Delete Edge on Drop：拖到空白处则由 FlowCanvas 删除该边）。 */
+  onReconnect: (oldEdge: Edge, newConnection: Connection) => void
   addNode: (type: FlowNodeType, model?: string, position?: { x: number; y: number }) => void
   /** 在指定画布坐标新建一个素材节点（上传中态），返回新节点 id。 */
   addAssetNode: (kind: 'image' | 'audio', position: { x: number; y: number }) => string
@@ -232,6 +235,9 @@ export const useFlowStore = create<FlowState>()((set) => {
 
     onConnect: (connection) =>
       patchActive((p) => ({ ...p, edges: addEdge(connection, p.edges) })),
+
+    onReconnect: (oldEdge, newConnection) =>
+      patchActive((p) => ({ ...p, edges: reconnectEdge(oldEdge, newConnection, p.edges) })),
 
     addNode: (type, model, position) =>
       patchActive((p) => ({
