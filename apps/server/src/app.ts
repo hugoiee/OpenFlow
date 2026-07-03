@@ -3,6 +3,7 @@ import { extname, join, normalize, sep } from 'node:path'
 import { Hono } from 'hono'
 import './db'
 import './task-store'
+import './preset-store' // 启动即播种分发用的默认 Prompt 预设（表为空时）
 import { projects } from './routes/projects'
 import { settings } from './routes/settings'
 import { image } from './routes/image'

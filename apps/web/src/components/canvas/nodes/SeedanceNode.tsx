@@ -142,7 +142,7 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
         selected ? 'ring-2 ring-primary' : ''
       }`}
     >
-      <Handle type="target" position={Position.Left} className={`!size-3 ${meta.handle}`} />
+      <Handle type="target" position={Position.Left} className={meta.handle} />
       <NodeHeader id={id} icon={Video} title={data.model} selected={selected} />
       <CardContent className="flex flex-col gap-2 px-3">
         {/* 结果展示区 */}
@@ -190,7 +190,7 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
         )}
       </CardContent>
       <DownloadDialog open={dialogOpen} onOpenChange={setDialogOpen} target={downloadTarget} />
-      <Handle type="source" position={Position.Right} className={`!size-3 ${meta.handle}`} />
+      <Handle type="source" position={Position.Right} className={meta.handle} />
     </Card>
   )
 }

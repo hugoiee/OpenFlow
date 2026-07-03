@@ -148,3 +148,39 @@
 .react-flow .react-flow__pane.selection.dragging {
   cursor: grabbing; /* 正在平移（中键 / 空格拖拽）：抓手 */
 }
+
+/*
+ * 连接点(handle)：放大可见圆点 + 大幅扩大隐形抓取区，方便连线。
+ * 只设几何/描边/阴影，绝不设 background-color —— 各节点的 !bg-* 上色类
+ * 与暗色 token 仍是唯一颜色来源，保持不变。用 `.react-flow` 前缀提高特异性，
+ * 压过 @xyflow/react style.css 自带的 6px 默认（无需 !important）。
+ */
+.react-flow .react-flow__handle {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--background);
+  box-shadow: 0 0 0 1px var(--border);
+  border-radius: 9999px;
+  transition: box-shadow 0.15s ease;
+}
+/* 悬停微放大反馈：用 box-shadow 光环而非 transform（裸 transform 会覆盖
+ * .react-flow__handle-left/-right 位置修饰类的居中位移）。 */
+.react-flow .react-flow__handle.connectionindicator:hover {
+  box-shadow:
+    0 0 0 1px var(--border),
+    0 0 0 5px color-mix(in srgb, var(--primary) 25%, transparent);
+}
+/* 隐形命中区 ~28px，居中于圆点：抓取/落点范围远大于圆点本身。仅在连接态
+ * (connectionindicator/connectingfrom) 由 RF 打开 pointer-events 时生效，
+ * 故空闲节点不会平白吞掉相邻 UI 的点击。 */
+.react-flow .react-flow__handle::before {
+  content: '';
+  position: absolute;
+  inset: 50%;
+  width: 28px;
+  height: 28px;
+  transform: translate(-50%, -50%);
+  border-radius: 9999px;
+  background: transparent;
+  pointer-events: all;
+}

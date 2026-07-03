@@ -134,7 +134,7 @@ export const VIDEO_TASK_OPTIONS: {
   },
 ] as const
 
-export const VIDEO_TASK_DEFAULT: VideoTask = 'text'
+export const VIDEO_TASK_DEFAULT: VideoTask = 'reference'
 
 /** 任务 → 后端 mode（参考图走 reference_image，其余都走 first_last_frame）。 */
 export function videoTaskMode(task: VideoTask): string {

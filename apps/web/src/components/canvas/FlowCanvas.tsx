@@ -5,8 +5,11 @@ import {
   ReactFlowProvider,
   SelectionMode,
   useReactFlow,
+  type Connection,
+  type Edge,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
+import { useCallback, useRef } from 'react'
 import { nodeTypes } from './nodes'
 import { ZoomSlider } from './ZoomSlider'
 import { uploadFilesApi } from '@/lib/api'
@@ -19,6 +22,7 @@ export function FlowCanvas() {
   const onNodesChange = useFlowStore((s) => s.onNodesChange)
   const onEdgesChange = useFlowStore((s) => s.onEdgesChange)
   const onConnect = useFlowStore((s) => s.onConnect)
+  const onReconnect = useFlowStore((s) => s.onReconnect)
   const addAssetNode = useFlowStore((s) => s.addAssetNode)
   const addNode = useFlowStore((s) => s.addNode)
   const removeNode = useFlowStore((s) => s.removeNode)
@@ -26,6 +30,32 @@ export function FlowCanvas() {
   // 实际生效的明暗（system 已解析）：让画布底纹 / 控制按钮 / 缩略图 / 连线跟随主题
   const colorMode = useThemeStore((s) => s.resolved)
   const { screenToFlowPosition } = useReactFlow()
+
+  // Delete Edge on Drop：拖动连线端点若松手在空白处（未落到合法 handle）则删除该连线。
+  // reconnect 成功会先触发 onReconnect 把标记置 true；未触发即视为落空 → onReconnectEnd 删除。
+  const edgeReconnectSuccessful = useRef(true)
+
+  const onReconnectStart = useCallback(() => {
+    edgeReconnectSuccessful.current = false
+  }, [])
+
+  const handleReconnect = useCallback(
+    (oldEdge: Edge, newConnection: Connection) => {
+      edgeReconnectSuccessful.current = true
+      onReconnect(oldEdge, newConnection)
+    },
+    [onReconnect],
+  )
+
+  const onReconnectEnd = useCallback(
+    (_event: MouseEvent | TouchEvent, edge: Edge) => {
+      if (!edgeReconnectSuccessful.current) {
+        onEdgesChange([{ type: 'remove', id: edge.id }])
+      }
+      edgeReconnectSuccessful.current = true
+    },
+    [onEdgesChange],
+  )
 
   // 允许把桌面文件 / 侧栏节点拖入画布（默认浏览器会拦截 drop，需 preventDefault）
   const onDragOver = (event: React.DragEvent) => {
@@ -182,10 +212,15 @@ export function FlowCanvas() {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        onReconnectStart={onReconnectStart}
+        onReconnect={handleReconnect}
+        onReconnectEnd={onReconnectEnd}
         defaultEdgeOptions={{ type: 'straight' }}
         colorMode={colorMode}
         minZoom={0.1}
         maxZoom={4}
+        // 松开连线时的吸附半径（默认 20）；调大让「落在附近」也能连上，配合放大的命中区更好连
+        connectionRadius={28}
         fitView
         proOptions={{ hideAttribution: true }}
         // 交互：左键拖拽默认框选；平移画布用中键拖拽或按住空格键拖拽
