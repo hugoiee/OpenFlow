@@ -8,6 +8,7 @@ import {
   useReactFlow,
   type Connection,
   type Edge,
+  type IsValidConnection,
   type OnConnectStart,
   type OnConnectEnd,
 } from '@xyflow/react'
@@ -18,6 +19,7 @@ import { ZoomSlider } from './ZoomSlider'
 import { CanvasContextMenu } from './CanvasContextMenu'
 import { SelectionContextMenu } from './SelectionContextMenu'
 import { uploadFilesApi } from '@/lib/api'
+import { edgeColorForSource, isValidTypedConnection } from '@/lib/handleTypes'
 import { type FlowNode, type FlowNodeType } from '@/lib/types'
 import { useActiveProject, useFlowStore } from '@/store/useFlowStore'
 import { useThemeStore } from '@/store/useThemeStore'
@@ -28,8 +30,13 @@ const MINIMAP_STORAGE_KEY = 'openflow-minimap'
 const SNAP_GRID: [number, number] = [20, 20]
 
 // 拉线松开在空白处时，记录连线从哪个节点的哪一端（source=输出端 / target=输入端）发起，
-// 供菜单选中后据方向连线（源→新 或 新→源）。
-type ConnectFrom = { nodeId: string; handleType: 'source' | 'target' }
+// 及该端点的 id（多端点节点如 Any LLM 的 'system' 用来连回精确端点；默认端点为 null）。
+// 供菜单选中后据方向 + 端点连线（源→新 或 新→源）。
+type ConnectFrom = {
+  nodeId: string
+  handleType: 'source' | 'target'
+  handleId: string | null
+}
 
 export function FlowCanvas() {
   const project = useActiveProject()
@@ -178,9 +185,21 @@ export function FlowCanvas() {
     connectStartRef.current = {
       nodeId: params.nodeId,
       handleType: params.handleType,
+      handleId: params.handleId ?? null,
       x: point?.clientX ?? 0,
       y: point?.clientY ?? 0,
     }
+  }, [])
+
+  // 连接校验：图像端点只接图像源、Prompt/System 端点只接文本源（视频等混合口不限）。
+  // 防止把 Prompt 误连到图像端点（文本被吞）或把图像误连到文本端点（漏进多模态）。
+  const isValidConnection = useCallback<IsValidConnection>((conn) => {
+    const state = useFlowStore.getState()
+    const proj = state.projects.find((p) => p.id === state.activeProjectId)
+    if (!proj) return true
+    const src = proj.nodes.find((n) => n.id === conn.source)
+    const tgt = proj.nodes.find((n) => n.id === conn.target)
+    return isValidTypedConnection(src, tgt, conn.targetHandle)
   }, [])
 
   const onConnectEnd = useCallback<OnConnectEnd>(
@@ -196,6 +215,7 @@ export function FlowCanvas() {
       openMenuAt(point.clientX, point.clientY, {
         nodeId: start.nodeId,
         handleType: start.handleType,
+        handleId: start.handleId,
       })
     },
     [openMenuAt],
@@ -273,12 +293,13 @@ export function FlowCanvas() {
     if (nodePayload) {
       event.preventDefault()
       try {
-        const { type, model } = JSON.parse(nodePayload) as {
+        const { type, model, videoVariant } = JSON.parse(nodePayload) as {
           type: FlowNodeType
           model?: string
+          videoVariant?: 'frames' | 'reference'
         }
         const pos = screenToFlowPosition({ x: event.clientX, y: event.clientY })
-        addNode(type, model, pos)
+        addNode(type, model, pos, videoVariant)
       } catch (e) {
         console.error('[openflow] 拖入节点解析失败', e)
       }
@@ -345,13 +366,17 @@ export function FlowCanvas() {
   const selectedNodeIds = new Set(
     project.nodes.filter((n) => n.selected).map((n) => n.id),
   )
+  // 连线着色：按源节点输出的数据类型（文本粉 / 图像绿 / 其余默认，与端点同色）。
+  const nodeById = new Map(project.nodes.map((n) => [n.id, n]))
   const edges = project.edges.map((e) => {
     const active = selectedNodeIds.has(e.source) || selectedNodeIds.has(e.target)
+    const color = edgeColorForSource(nodeById.get(e.source))
     return {
       ...e,
       type: 'default',
       animated: active,
       className: active ? 'edge-active' : undefined,
+      ...(color ? { style: { ...e.style, stroke: color } } : {}),
     }
   })
 
@@ -371,6 +396,7 @@ export function FlowCanvas() {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        isValidConnection={isValidConnection}
         onConnectStart={onConnectStart}
         onConnectEnd={onConnectEnd}
         onReconnectStart={onReconnectStart}
@@ -430,9 +456,10 @@ export function FlowCanvas() {
                 model: item.model,
                 position: menu.flow,
                 from: menu.connectFrom,
+                videoVariant: item.videoVariant,
               })
             } else {
-              addNode(item.type, item.model, menu.flow)
+              addNode(item.type, item.model, menu.flow, item.videoVariant)
             }
             setMenu(null)
           }}

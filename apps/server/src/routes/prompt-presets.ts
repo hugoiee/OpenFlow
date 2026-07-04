@@ -4,13 +4,16 @@ import { createPreset, deletePreset, listPresets, updatePreset } from '../preset
 
 export const promptPresets = new Hono()
 
-/** 校验请求体：title/content 均为字符串，title trim 后非空（content 允许空）。 */
+/**
+ * 校验请求体：title/content 均为字符串，title trim 后非空（content 允许空）；
+ * category 只认 'common' | 'system'，缺失/异常归一为 'common'。
+ */
 function parseBody(raw: unknown): SavePromptPresetBody | null {
   if (!raw || typeof raw !== 'object') return null
-  const { title, content } = raw as Record<string, unknown>
+  const { title, content, category } = raw as Record<string, unknown>
   if (typeof title !== 'string' || typeof content !== 'string') return null
   if (!title.trim()) return null
-  return { title: title.trim(), content }
+  return { title: title.trim(), content, category: category === 'system' ? 'system' : 'common' }
 }
 
 // 列表

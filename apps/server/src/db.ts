@@ -53,11 +53,13 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_tasks_node ON tasks (project_id, node_id, created_at DESC);
 
-  -- 全局「常用 Prompt」预设：Prompt 节点可下拉选用 / 一键存为预设（跨项目共享）。
+  -- 全局 Prompt 预设：Prompt 节点可下拉选用 / 一键存为预设（跨项目共享）。
+  -- category 分「常用 Prompt(common)」/「System Prompt(system)」两组。
   CREATE TABLE IF NOT EXISTS prompt_presets (
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL DEFAULT '',
     content TEXT NOT NULL DEFAULT '',
+    category TEXT NOT NULL DEFAULT 'common',
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
   );
@@ -78,4 +80,10 @@ for (const col of [
   if (!settingsColNames.has(col)) {
     db.exec(`ALTER TABLE settings ADD COLUMN ${col} TEXT NOT NULL DEFAULT ''`)
   }
+}
+
+// 旧库迁移：prompt_presets 早期无 category 列，补上（已有预设默认归入常用 Prompt）
+const presetCols = db.prepare('PRAGMA table_info(prompt_presets)').all() as { name: string }[]
+if (!presetCols.some((col) => col.name === 'category')) {
+  db.exec(`ALTER TABLE prompt_presets ADD COLUMN category TEXT NOT NULL DEFAULT 'common'`)
 }

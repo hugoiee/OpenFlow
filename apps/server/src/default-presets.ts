@@ -7,7 +7,10 @@
  *
  * ⚠️ 想改分发预设，改这个数组即可（标题 + 内容）。数组顺序 = 列表里的先后顺序（首个排最前）。
  */
-export type DefaultPreset = { title: string; content: string }
+import type { PromptPresetCategory } from '@openflow/shared'
+
+/** category 省略时按 'common'（常用 Prompt）处理。 */
+export type DefaultPreset = { title: string; content: string; category?: PromptPresetCategory }
 
 export const DEFAULT_PROMPT_PRESETS: DefaultPreset[] = [
   {
@@ -18,5 +21,11 @@ export const DEFAULT_PROMPT_PRESETS: DefaultPreset[] = [
   {
     title: '人像写真',
     content: '半身人像，85mm 定焦，背景浅景深虚化，柔和伦勃朗光，自然真实肤质，胶片质感',
+  },
+  {
+    title: '资深提示词工程师',
+    content:
+      '你是一名资深的 AIGC 提示词工程师。请把用户给出的想法改写成结构清晰、细节丰富、可直接用于文生图/文生视频的高质量提示词，只输出最终提示词本身，不要解释。',
+    category: 'system',
   },
 ]

@@ -1,5 +1,5 @@
 import type { Edge, Node } from '@xyflow/react'
-import type { VideoTask } from './nodeCatalog'
+import type { VideoTask, VideoVariant } from './nodeCatalog'
 
 /** 节点种类：文本 prompt / Any LLM / 图像生成 / 视频生成 / 桌面拖入的媒体素材。 */
 export type FlowNodeType = 'prompt' | 'llm' | 'image' | 'video' | 'asset'
@@ -22,6 +22,8 @@ export type LlmNodeData = {
   temperature: number
   /** 是否开启思考（发送 reasoning_effort 等原生推理参数）。 */
   thinking: boolean
+  /** 左侧图像输入端点数量（编号 1..N；默认 1，「添加图像输入」按钮递增）。多模态时把连入的图片发给模型。 */
+  imageInputs?: number
   /** 是否正在生成。 */
   running?: boolean
   /** 生成的回答文本（未运行时为空）。 */
@@ -57,6 +59,12 @@ export type GenerationNodeData = {
   label: string
   /** 具名模型展示名（如 Seedance）。 */
   model: string
+  /** 视频节点变体：frames（首尾帧）/ reference（参考图）。缺省按旧 videoTask 推断。 */
+  videoVariant?: VideoVariant
+  /** 图像输入端点数量（reference 变体用；frames 固定 2 个 First/Last，不读此值）。 */
+  imageInputs?: number
+  /** 音频输入端点数量（编号 1..N；默认 1，「添加音频输入」按钮递增）。 */
+  audioInputs?: number
   /** 输入图片 URL，每行一个（按 videoTask 决定其语义：首帧 / 首尾帧 / 参考图）。 */
   imagesText?: string
   /** 输入音频 URL，每行一个（作 audio_list；运行时与上游音频素材节点的 URL 合并）。 */
@@ -88,8 +96,10 @@ export type ImageNodeData = {
   label: string
   /** 具名模型展示名（如 Image 2）。 */
   model: string
-  /** 输入图片 URL，每行一个（纯文生图时为空）。 */
+  /** 输入图片 URL，每行一个（纯文生图时为空）。手填 URL 会并到连线收集的输入图之后。 */
   imagesText: string
+  /** 左侧图像输入端点数量（编号 1..N；默认 1，「添加图像输入」按钮递增）。 */
+  imageInputs?: number
   /** 出图尺寸，如 1024x1024 / auto。 */
   size: string
   /** 出图张数。 */

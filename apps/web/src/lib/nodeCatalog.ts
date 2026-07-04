@@ -130,6 +130,15 @@ export const SEEDANCE_VERSION_DEFAULT = 'seedance-2.0'
 export type VideoTask = 'text' | 'first' | 'firstLast' | 'reference'
 
 /**
+ * 视频节点变体（Seedance 拆成两种节点）：
+ * - 'frames'：首尾帧——最多两个图像端点（First Frame / Last Frame），走 first_last_frame；
+ * - 'reference'：参考图——可加多个编号图像端点，有图走 reference_image。
+ * 两者都：只连 Prompt（无图）时退化为文生视频；音频走编号音频端点。
+ */
+export type VideoVariant = 'frames' | 'reference'
+export const VIDEO_VARIANT_DEFAULT: VideoVariant = 'frames'
+
+/**
  * 任务选项（卡片选择器用）。
  * - slots：该任务占用的输入图槽位数（0=不需要图；null=参考图，不限张数）。
  * - slotLabels：槽位的人类可读标签（用于给输入图打「首帧/尾帧」角标 + 空占位提示）。

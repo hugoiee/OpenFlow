@@ -27,6 +27,7 @@ export function ProjectWorkspace() {
 
   return (
     <SidebarProvider
+      defaultOpen={false}
       className="h-screen min-h-0 overflow-hidden"
       style={{ '--sidebar-width': '240px' } as CSSProperties}
     >
