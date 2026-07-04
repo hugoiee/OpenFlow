@@ -7,29 +7,55 @@
 import { type Project } from './types'
 
 /**
+ * Any LLM 节点的「System Prompt 输入端点」的 handle id。
+ * LLM 节点有两个左侧输入：默认端点（无 id，收用户 Prompt）+ 此端点（收系统提示词）。
+ * 历史连线的 targetHandle 为空 → 归入用户 Prompt（向后兼容）。
+ */
+export const LLM_SYSTEM_HANDLE = 'system'
+
+/** 收集时的端点过滤：不传=全部；'user'=默认端点（非 system，含历史空 handle）；'system'=系统提示词端点。 */
+type PromptHandle = 'user' | 'system'
+
+/** 边的 targetHandle 是否命中所选输入端点。 */
+function edgeMatchesHandle(
+  targetHandle: string | null | undefined,
+  handle: PromptHandle | undefined,
+): boolean {
+  if (!handle) return true // 未指定：所有指向本节点的连线（image/video/prompt 链）
+  if (handle === 'system') return targetHandle === LLM_SYSTEM_HANDLE
+  return targetHandle !== LLM_SYSTEM_HANDLE // 'user'：默认端点（含历史空 handle）
+}
+
+/**
  * 收集所有指向 nodeId 的上游文本，拼成生成指令。
  * 来源：上游 prompt 节点的文本 + 上游 Any LLM 节点的输出文本（其右侧输出端点接下游作 prompt）。
  * prompt 节点有左侧输入：会**递归**并入它自己的上游文本（上游在前、本节点文本在后），
  * 从而支持「Prompt → Prompt → 图像」这类链式拼接；LLM 节点的输出（result）为终点，不再回溯其上游
  * （其结果已是加工产物，避免与喂给它的 prompt 重复计算）。visited 做环路防护（同一节点只计一次）。
+ *
+ * opts.handle：LLM 节点区分两个输入端点时传入（'user' 收用户 Prompt / 'system' 收系统提示词）；
+ * 图像/视频/prompt 链不传，收全部上游。递归进上游 prompt 节点时不再过滤端点（prompt 只有单一输入）。
  */
 export function collectUpstreamPrompt(
   project: Project,
   nodeId: string,
-  visited: Set<string> = new Set(),
+  opts: { handle?: PromptHandle; visited?: Set<string> } = {},
 ): string {
+  const visited = opts.visited ?? new Set<string>()
   if (visited.has(nodeId)) return ''
   visited.add(nodeId)
   const sourceIds = new Set(
-    project.edges.filter((e) => e.target === nodeId).map((e) => e.source),
+    project.edges
+      .filter((e) => e.target === nodeId && edgeMatchesHandle(e.targetHandle, opts.handle))
+      .map((e) => e.source),
   )
   return project.nodes
     .filter((n) => (n.type === 'prompt' || n.type === 'llm') && sourceIds.has(n.id))
     .map((n) => {
       if (n.type === 'llm') return n.data.result ?? ''
       if (n.type === 'prompt') {
-        // 本 prompt 节点的上游文本（递归）在前，自身文本在后
-        const upstream = collectUpstreamPrompt(project, n.id, visited)
+        // 本 prompt 节点的上游文本（递归、不再区分端点）在前，自身文本在后
+        const upstream = collectUpstreamPrompt(project, n.id, { visited })
         return [upstream, n.data.text].filter(Boolean).join('\n\n')
       }
       return ''

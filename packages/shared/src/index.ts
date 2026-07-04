@@ -108,8 +108,10 @@ export type GenLlmBody = {
   nodeId: string
   /** 模型名（作 chat/completions 的 model；取自节点下拉）。 */
   model: string
-  /** 生成指令（= 上游 Prompt/LLM 节点文本按连线拼接）。 */
+  /** 生成指令（= 连到「Prompt 输入」端点的上游文本按连线拼接）。 */
   prompt: string
+  /** 系统提示词（= 连到「System Prompt 输入」端点的上游文本；为空则不下发 system 消息）。 */
+  systemPrompt?: string
   /** 采样温度 0–2。 */
   temperature: number
   /** 是否开启思考：为 true 时请求体带 reasoning_effort 等原生推理参数。 */
@@ -138,13 +140,18 @@ export type TaskDTO = {
 /** POST /api/aigc | /api/video 建任务成功响应。 */
 export type CreateTaskResponse = { taskId: string }
 
-/** 常用 Prompt 预设 DTO：全局共享库，供 Prompt 节点下拉选用。 */
+/** Prompt 预设分组：'common' 常用 Prompt（作用户消息）/ 'system' System Prompt（作系统提示词）。 */
+export type PromptPresetCategory = 'common' | 'system'
+
+/** Prompt 预设 DTO：全局共享库，供 Prompt 节点下拉选用。按 category 分「常用 / System」两组。 */
 export type PromptPresetDTO = {
   id: string
   /** 简短标题（下拉 / 列表里展示）。 */
   title: string
   /** prompt 正文。 */
   content: string
+  /** 分组：常用 Prompt / System Prompt。 */
+  category: PromptPresetCategory
   createdAt: number
   updatedAt: number
 }
@@ -153,6 +160,8 @@ export type PromptPresetDTO = {
 export type SavePromptPresetBody = {
   title: string
   content: string
+  /** 分组；省略时后端按 'common' 处理（向后兼容）。 */
+  category?: PromptPresetCategory
 }
 
 // ---- 画布 Agent（对话式操作画布：写 Prompt / 建节点 / 生图）----

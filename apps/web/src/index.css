@@ -201,3 +201,21 @@
   stroke: var(--primary);
   stroke-width: 3;
 }
+
+/*
+ * 分组容器节点：清掉 @xyflow/react style.css 对 .react-flow__node-group 的默认样式
+ * （padding/边框/圆角/背景/固定宽 + 选中投影）。否则 RF 默认的那层框体会与 GroupNode
+ * 自绘的实线框错位重影（边框与背景各画一层、不对齐）。GroupNode 自带全部视觉，
+ * 这里只让 RF 包裹层回归「透明零内边距」容器。用 `.react-flow` 前缀提高特异性压过默认规则。
+ */
+.react-flow .react-flow__node-group {
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background-color: transparent;
+}
+.react-flow .react-flow__node-group.selectable.selected,
+.react-flow .react-flow__node-group.selectable:focus,
+.react-flow .react-flow__node-group.selectable:focus-visible {
+  box-shadow: none;
+}

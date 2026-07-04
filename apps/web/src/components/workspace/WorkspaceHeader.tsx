@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Library, LogOut, Settings } from 'lucide-react'
+import { ChevronRight, Home, Library, LogOut, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { SidebarTrigger } from '@/components/ui/sidebar'
@@ -50,6 +50,18 @@ export function WorkspaceHeader({ projectId }: { projectId: string }) {
   return (
     <header className="flex h-14 shrink-0 items-center gap-2 border-b bg-background px-2">
       <SidebarTrigger className="size-9 shrink-0" />
+
+      {/* 层级面包屑：首页（可点返回）> 项目名称 */}
+      <button
+        type="button"
+        onClick={() => navigate('/')}
+        title="返回首页"
+        className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+      >
+        <Home className="size-4" />
+        首页
+      </button>
+      <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />
 
       {editing ? (
         <Input

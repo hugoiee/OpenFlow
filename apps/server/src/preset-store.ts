@@ -1,13 +1,19 @@
 import { db } from './db'
 import { DEFAULT_PROMPT_PRESETS, type DefaultPreset } from './default-presets'
-import type { PromptPresetDTO, SavePromptPresetBody } from '@openflow/shared'
+import type { PromptPresetCategory, PromptPresetDTO, SavePromptPresetBody } from '@openflow/shared'
 
 type PresetRow = {
   id: string
   title: string
   content: string
+  category: string
   created_at: number
   updated_at: number
+}
+
+/** 兜底归一：只认 'system'，其余（含旧数据/异常值）落到 'common'。 */
+function normalizeCategory(value: unknown): PromptPresetCategory {
+  return value === 'system' ? 'system' : 'common'
 }
 
 function rowToDTO(row: PresetRow): PromptPresetDTO {
@@ -15,6 +21,7 @@ function rowToDTO(row: PresetRow): PromptPresetDTO {
     id: row.id,
     title: row.title,
     content: row.content,
+    category: normalizeCategory(row.category),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
@@ -46,12 +53,13 @@ export function createPreset(body: SavePromptPresetBody): PromptPresetDTO {
     id: newId(),
     title: body.title,
     content: body.content,
+    category: normalizeCategory(body.category),
     createdAt: now,
     updatedAt: now,
   }
   db.prepare(
-    'INSERT INTO prompt_presets (id, title, content, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
-  ).run(preset.id, preset.title, preset.content, now, now)
+    'INSERT INTO prompt_presets (id, title, content, category, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+  ).run(preset.id, preset.title, preset.content, preset.category, now, now)
   return preset
 }
 
@@ -63,10 +71,11 @@ export function updatePreset(
   const existing = getPreset(id)
   if (!existing) return undefined
   const now = Date.now()
+  const category = normalizeCategory(body.category)
   db.prepare(
-    'UPDATE prompt_presets SET title = ?, content = ?, updated_at = ? WHERE id = ?',
-  ).run(body.title, body.content, now, id)
-  return { ...existing, title: body.title, content: body.content, updatedAt: now }
+    'UPDATE prompt_presets SET title = ?, content = ?, category = ?, updated_at = ? WHERE id = ?',
+  ).run(body.title, body.content, category, now, id)
+  return { ...existing, title: body.title, content: body.content, category, updatedAt: now }
 }
 
 /** 删除一条预设（不存在也视为成功）。 */
@@ -85,13 +94,13 @@ export function seedDefaultPresets(): void {
   if (n > 0) return
   const now = Date.now()
   const insert = db.prepare(
-    'INSERT INTO prompt_presets (id, title, content, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+    'INSERT INTO prompt_presets (id, title, content, category, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
   )
   const seed = db.transaction((items: DefaultPreset[]) => {
     items.forEach((p, i) => {
       // 递减时间戳：数组首个拿最大 updated_at，配合 listPresets 的 DESC 排序 → 数组顺序即列表顺序
       const ts = now + (items.length - 1 - i)
-      insert.run(newId(), p.title, p.content, ts, ts)
+      insert.run(newId(), p.title, p.content, normalizeCategory(p.category), ts, ts)
     })
   })
   seed(DEFAULT_PROMPT_PRESETS)

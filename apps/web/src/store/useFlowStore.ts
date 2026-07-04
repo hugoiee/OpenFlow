@@ -89,13 +89,15 @@ type FlowState = {
    * 从某个节点的 handle 拉线松开在空白处后新建一个节点并与源节点连线。
    * from.handleType='source'（从输出端拉出）→ 新节点作下游 target（源→新）；
    * from.handleType='target'（从输入端拉出）→ 新节点作上游 source（新→源）。
+   * from.handleId：拉线所在端点的 id（如 Any LLM 的 'system'）——连回精确端点，
+   * 否则多端点节点（如 LLM 的 Prompt/System）会误连到默认端点。空 id（默认端点）传 null。
    * 若新节点在该方向上没有对应 handle（如从输出端拉出却选了无输入口的 Prompt），只建节点不连线。
    */
   addConnectedNode: (input: {
     type: FlowNodeType
     model?: string
     position: { x: number; y: number }
-    from: { nodeId: string; handleType: 'source' | 'target' }
+    from: { nodeId: string; handleType: 'source' | 'target'; handleId?: string | null }
   }) => void
   /** 把当前选中的（未分组的非容器）节点包进一个新建的 group 容器节点，选中容器；<2 个则不动。 */
   groupSelectedNodes: () => void
@@ -430,9 +432,21 @@ export const useFlowStore = create<FlowState>()((set, get) => {
         const edge: Edge | null =
           from.handleType === 'source'
             ? canBeTarget
-              ? { id: newId('e_'), source: from.nodeId, target: node.id, type: 'default' }
+              ? {
+                  id: newId('e_'),
+                  source: from.nodeId,
+                  sourceHandle: from.handleId ?? undefined,
+                  target: node.id,
+                  type: 'default',
+                }
               : null
-            : { id: newId('e_'), source: node.id, target: from.nodeId, type: 'default' }
+            : {
+                id: newId('e_'),
+                source: node.id,
+                target: from.nodeId,
+                targetHandle: from.handleId ?? undefined,
+                type: 'default',
+              }
         return {
           ...p,
           nodes: [...p.nodes, node],

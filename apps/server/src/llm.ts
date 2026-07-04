@@ -24,11 +24,12 @@ function extractReasoning(message: Record<string, unknown> | undefined): string 
 export async function runLlmCompletion(params: {
   model: string
   prompt: string
+  systemPrompt?: string
   temperature: number
   thinking: boolean
   settings: SettingsDTO
 }): Promise<{ text: string; reasoning: string }> {
-  const { model, prompt, temperature, thinking, settings } = params
+  const { model, prompt, systemPrompt, temperature, thinking, settings } = params
   const endpoint = settings.agentEndpoint.trim() || AGENT_ENDPOINT
   if (!endpoint) {
     throw new Error('未配置 LLM 接口地址（复用画布 Agent 设置），请在设置中填写 Agent 接口地址')
@@ -47,7 +48,11 @@ export async function runLlmCompletion(params: {
       },
       body: JSON.stringify({
         model,
-        messages: [{ role: 'user', content: prompt }],
+        // 有系统提示词（连到 System Prompt 端点的上游文本）则置于消息首位
+        messages: [
+          ...(systemPrompt?.trim() ? [{ role: 'system', content: systemPrompt.trim() }] : []),
+          { role: 'user', content: prompt },
+        ],
         temperature,
         // 开启思考：下发 OpenAI 系原生推理参数（网关不支持时会报错，可关掉 Thinking 规避）
         ...(thinking ? { reasoning_effort: 'medium' } : {}),

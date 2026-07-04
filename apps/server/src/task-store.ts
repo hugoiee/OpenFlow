@@ -158,6 +158,7 @@ export function startTask(task: TaskDTO): void {
       const { text, reasoning } = await runLlmCompletion({
         model: p.model,
         prompt: p.prompt,
+        systemPrompt: typeof p.systemPrompt === 'string' ? p.systemPrompt : undefined,
         temperature: typeof p.temperature === 'number' ? p.temperature : 0.7,
         thinking: p.thinking === true,
         settings: s,

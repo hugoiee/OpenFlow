@@ -36,9 +36,14 @@ function NodeInspectorPanel({
   project: Project
 }) {
   const id = node.id
-  // 运行时实际发送的 prompt（= 所有上游 Prompt 节点文本按连线拼接），只读预览
-  const promptPreview = collectUpstreamPrompt(project, id)
+  const isLlm = node.type === 'llm'
+  // 运行时实际发送的 prompt（= 上游 Prompt 节点文本按连线拼接），只读预览。
+  // LLM 节点有两个输入端点：用户 Prompt 只取默认端点（排除 System Prompt 端点）。
+  const promptPreview = collectUpstreamPrompt(project, id, isLlm ? { handle: 'user' } : undefined)
   const hasPrompt = promptPreview.trim().length > 0
+  // System Prompt 预览：仅 LLM 节点，取 System Prompt 端点的上游文本
+  const systemPreview = isLlm ? collectUpstreamPrompt(project, id, { handle: 'system' }) : ''
+  const hasSystem = systemPreview.trim().length > 0
 
   return (
     <aside className="absolute right-0 top-0 z-10 flex h-full w-60 flex-col gap-3 overflow-y-auto border-l bg-background p-4">
@@ -66,10 +71,25 @@ function NodeInspectorPanel({
         <LlmParams id={id} data={node.data} />
       )}
 
+      {/* System Prompt 预览（仅 LLM）：连到 System Prompt 端点的上游文本，只读。 */}
+      {isLlm && (
+        <div className="flex flex-col gap-2">
+          <span className="text-[11px] text-muted-foreground">System Prompt（只读预览）</span>
+          <Textarea
+            value={hasSystem ? systemPreview : ''}
+            readOnly
+            placeholder="未连接 System Prompt 端点"
+            className="field-sizing-fixed h-20 max-h-96 resize-y cursor-default bg-muted/40 text-xs"
+          />
+        </div>
+      )}
+
       {/* 最终 Prompt 预览（置底）：运行时发送的 prompt（上游 Prompt 节点文本按连线拼接）。
           readOnly = 只读不可改，可查看/复制；resize-y 让用户拖拽调高。 */}
       <div className="flex flex-col gap-2">
-        <span className="text-[11px] text-muted-foreground">最终 Prompt（只读预览）</span>
+        <span className="text-[11px] text-muted-foreground">
+          {isLlm ? 'Prompt（只读预览）' : '最终 Prompt（只读预览）'}
+        </span>
         <Textarea
           value={hasPrompt ? promptPreview : ''}
           readOnly

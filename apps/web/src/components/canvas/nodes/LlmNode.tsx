@@ -9,7 +9,7 @@ import { handleStyle } from './handleLayout'
 import { createLlmTaskApi } from '@/lib/api'
 import { pollTask } from '@/lib/taskPolling'
 import { LLM_MODEL_DEFAULT, LLM_NODE_META, LLM_TEMPERATURE_DEFAULT } from '@/lib/nodeCatalog'
-import { collectUpstreamPrompt } from '@/lib/graph'
+import { LLM_SYSTEM_HANDLE, collectUpstreamPrompt } from '@/lib/graph'
 import { type LlmNode as LlmNodeType } from '@/lib/types'
 import { useFlowStore } from '@/store/useFlowStore'
 
@@ -89,11 +89,13 @@ export function LlmNode({ id, data, selected }: NodeProps<LlmNodeType>) {
       fail('未找到当前项目')
       return
     }
-    const prompt = collectUpstreamPrompt(project, id)
+    // 用户 Prompt 走默认输入端点；系统提示词走 System Prompt 端点（可空）
+    const prompt = collectUpstreamPrompt(project, id, { handle: 'user' })
     if (!prompt.trim()) {
-      fail('请先连接一个有内容的 Prompt / LLM 节点')
+      fail('请先在「Prompt 输入」端点连接一个有内容的 Prompt / LLM 节点')
       return
     }
+    const systemPrompt = collectUpstreamPrompt(project, id, { handle: 'system' })
     updateNodeData(id, {
       running: true,
       error: undefined,
@@ -107,6 +109,7 @@ export function LlmNode({ id, data, selected }: NodeProps<LlmNodeType>) {
         nodeId: id,
         model,
         prompt,
+        systemPrompt: systemPrompt.trim() || undefined,
         temperature,
         thinking,
       })
@@ -127,9 +130,36 @@ export function LlmNode({ id, data, selected }: NodeProps<LlmNodeType>) {
         selected ? 'ring-2 ring-primary' : ''
       }`}
     >
-      <Handle type="target" position={Position.Left} className={meta.handle} style={handleStyle()} />
+      {/* 左侧两个输入端点：默认端点（用户 Prompt，紫色）+ System Prompt 端点（绿色） */}
+      <Handle
+        type="target"
+        position={Position.Left}
+        className={meta.handle}
+        style={handleStyle(0)}
+        title="Prompt 输入（用户消息）"
+      />
+      <Handle
+        type="target"
+        id={LLM_SYSTEM_HANDLE}
+        position={Position.Left}
+        className="!bg-emerald-500 dark:!bg-emerald-400"
+        style={handleStyle(1)}
+        title="System Prompt 输入（系统提示词）"
+      />
       <NodeHeader id={id} icon={Sparkles} title={model} selected={selected} />
       <CardContent className="flex flex-col gap-2 px-3">
+        {/* 输入端点图例：与左侧两个端点颜色对应 */}
+        <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+          <span className="flex items-center gap-1">
+            <span className="inline-block size-2 shrink-0 rounded-full bg-violet-500 dark:bg-violet-400" />
+            Prompt
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="inline-block size-2 shrink-0 rounded-full bg-emerald-500 dark:bg-emerald-400" />
+            System Prompt
+          </span>
+        </div>
+
         {/* 思考过程（若返回）：可折叠，默认收起 */}
         {reasoning && !running && (
           <details className="nodrag rounded-md border bg-muted/40 px-2 py-1.5 text-xs">

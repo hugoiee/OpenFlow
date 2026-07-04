@@ -28,8 +28,13 @@ const MINIMAP_STORAGE_KEY = 'openflow-minimap'
 const SNAP_GRID: [number, number] = [20, 20]
 
 // 拉线松开在空白处时，记录连线从哪个节点的哪一端（source=输出端 / target=输入端）发起，
-// 供菜单选中后据方向连线（源→新 或 新→源）。
-type ConnectFrom = { nodeId: string; handleType: 'source' | 'target' }
+// 及该端点的 id（多端点节点如 Any LLM 的 'system' 用来连回精确端点；默认端点为 null）。
+// 供菜单选中后据方向 + 端点连线（源→新 或 新→源）。
+type ConnectFrom = {
+  nodeId: string
+  handleType: 'source' | 'target'
+  handleId: string | null
+}
 
 export function FlowCanvas() {
   const project = useActiveProject()
@@ -178,6 +183,7 @@ export function FlowCanvas() {
     connectStartRef.current = {
       nodeId: params.nodeId,
       handleType: params.handleType,
+      handleId: params.handleId ?? null,
       x: point?.clientX ?? 0,
       y: point?.clientY ?? 0,
     }
@@ -196,6 +202,7 @@ export function FlowCanvas() {
       openMenuAt(point.clientX, point.clientY, {
         nodeId: start.nodeId,
         handleType: start.handleType,
+        handleId: start.handleId,
       })
     },
     [openMenuAt],

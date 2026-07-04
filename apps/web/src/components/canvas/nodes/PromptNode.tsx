@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Handle, NodeResizer, Position, type NodeProps } from '@xyflow/react'
 import { BookmarkPlus, Library, Type } from 'lucide-react'
+import type { PromptPresetCategory } from '@openflow/shared'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
@@ -26,6 +27,12 @@ function defaultTitle(text: string): string {
   return line.length > 24 ? `${line.slice(0, 24)}…` : line
 }
 
+/** 预设分组（选用/存为弹窗共用；顺序即两组展示顺序）。 */
+const PRESET_CATEGORIES: { value: PromptPresetCategory; label: string }[] = [
+  { value: 'common', label: '常用 Prompt' },
+  { value: 'system', label: 'System Prompt' },
+]
+
 // 节点默认/最小尺寸（px）。用「显式像素尺寸」而非 h-full/w-full：后者在 React Flow
 // 测量时会因循环依赖塌回内容最小值，把持久化的 width/height 覆盖掉，导致重开变回原大小。
 const DEFAULT_WIDTH = 264
@@ -42,6 +49,7 @@ export function PromptNode({ id, data, selected, width, height }: NodeProps<Prom
   // 「存为预设」弹窗状态
   const [saveOpen, setSaveOpen] = useState(false)
   const [title, setTitle] = useState('')
+  const [saveCategory, setSaveCategory] = useState<PromptPresetCategory>('common')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -54,6 +62,7 @@ export function PromptNode({ id, data, selected, width, height }: NodeProps<Prom
 
   const openSave = () => {
     setTitle(defaultTitle(data.text))
+    setSaveCategory('common')
     setError('')
     setSaveOpen(true)
   }
@@ -67,7 +76,7 @@ export function PromptNode({ id, data, selected, width, height }: NodeProps<Prom
     setSaving(true)
     setError('')
     try {
-      await addPreset(t, data.text)
+      await addPreset(t, data.text, saveCategory)
       setSaveOpen(false)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -144,50 +153,83 @@ export function PromptNode({ id, data, selected, width, height }: NodeProps<Prom
         style={handleStyle()}
       />
 
-      {/* 选用预设：从全局预设库挑一条，内容替换当前节点文本 */}
+      {/* 选用预设：从全局预设库挑一条，内容替换当前节点文本（按分组两段） */}
       <Dialog open={pickOpen} onOpenChange={setPickOpen}>
         <DialogContent className="nodrag sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>选用常用 Prompt 预设</DialogTitle>
+            <DialogTitle>选用 Prompt 预设</DialogTitle>
             <DialogDescription>选择一个预设，其内容将替换当前节点的文本。</DialogDescription>
           </DialogHeader>
-          <div className="max-h-80 overflow-y-auto">
+          <div className="flex max-h-80 flex-col gap-3 overflow-y-auto">
             {presets.length === 0 ? (
               <p className="py-6 text-center text-sm text-muted-foreground">
                 还没有预设，点右侧「存为预设」或到「预设」库添加。
               </p>
             ) : (
-              <ul className="flex flex-col gap-1">
-                {presets.map((p) => (
-                  <li key={p.id}>
-                    <button
-                      type="button"
-                      onClick={() => applyPreset(p.content)}
-                      className="w-full rounded-md border p-2 text-left transition-colors hover:border-primary hover:bg-accent"
-                    >
-                      <p className="truncate text-sm font-medium">{p.title}</p>
-                      <p className="line-clamp-2 text-xs text-muted-foreground">
-                        {p.content || '（空内容）'}
-                      </p>
-                    </button>
-                  </li>
-                ))}
-              </ul>
+              PRESET_CATEGORIES.map((cat) => {
+                const items = presets.filter((p) => p.category === cat.value)
+                return (
+                  <div key={cat.value} className="flex flex-col gap-1">
+                    <p className="px-0.5 text-xs font-medium text-muted-foreground">
+                      {cat.label}（{items.length}）
+                    </p>
+                    {items.length === 0 ? (
+                      <p className="px-0.5 pb-1 text-xs text-muted-foreground/60">暂无</p>
+                    ) : (
+                      <ul className="flex flex-col gap-1">
+                        {items.map((p) => (
+                          <li key={p.id}>
+                            <button
+                              type="button"
+                              onClick={() => applyPreset(p.content)}
+                              className="w-full rounded-md border p-2 text-left transition-colors hover:border-primary hover:bg-accent"
+                            >
+                              <p className="truncate text-sm font-medium">{p.title}</p>
+                              <p className="line-clamp-2 text-xs text-muted-foreground">
+                                {p.content || '（空内容）'}
+                              </p>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )
+              })
             )}
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* 存为预设：填标题 */}
+      {/* 存为预设：选分组 + 填标题 */}
       <Dialog open={saveOpen} onOpenChange={setSaveOpen}>
         <DialogContent className="nodrag sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>存为常用 Prompt 预设</DialogTitle>
+            <DialogTitle>存为 Prompt 预设</DialogTitle>
             <DialogDescription>
               把当前节点的内容存进全局预设库，之后可在任意 Prompt 节点里一键选用。
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-3 py-1">
+            <div className="flex flex-col gap-1.5">
+              <Label>分组</Label>
+              <div className="flex gap-1">
+                {PRESET_CATEGORIES.map((cat) => (
+                  <button
+                    key={cat.value}
+                    type="button"
+                    onClick={() => setSaveCategory(cat.value)}
+                    className={`flex-1 rounded-md border px-2 py-1 text-xs transition-colors ${
+                      saveCategory === cat.value
+                        ? 'border-primary bg-primary/10 font-medium text-foreground'
+                        : 'text-muted-foreground hover:bg-accent'
+                    }`}
+                  >
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor={`preset-title-${id}`}>标题</Label>
               <Input
