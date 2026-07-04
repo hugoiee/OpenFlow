@@ -3,6 +3,7 @@ import type {
   AgentChatResponse,
   CreateTaskResponse,
   GenImageBody,
+  GenLlmBody,
   GenVideoBody,
   ProjectDTO,
   PromptPresetDTO,
@@ -110,6 +111,14 @@ export async function createImageTaskApi(body: GenImageBody): Promise<string> {
 
 export async function createVideoTaskApi(body: GenVideoBody): Promise<string> {
   const { taskId } = await request<CreateTaskResponse>('/video', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+  return taskId
+}
+
+export async function createLlmTaskApi(body: GenLlmBody): Promise<string> {
+  const { taskId } = await request<CreateTaskResponse>('/llm', {
     method: 'POST',
     body: JSON.stringify(body),
   })

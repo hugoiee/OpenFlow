@@ -6,14 +6,34 @@
 
 import { type Project } from './types'
 
-/** 收集所有指向 nodeId 的上游 prompt 节点文本，拼成生成指令。 */
-export function collectUpstreamPrompt(project: Project, nodeId: string): string {
+/**
+ * 收集所有指向 nodeId 的上游文本，拼成生成指令。
+ * 来源：上游 prompt 节点的文本 + 上游 Any LLM 节点的输出文本（其右侧输出端点接下游作 prompt）。
+ * prompt 节点有左侧输入：会**递归**并入它自己的上游文本（上游在前、本节点文本在后），
+ * 从而支持「Prompt → Prompt → 图像」这类链式拼接；LLM 节点的输出（result）为终点，不再回溯其上游
+ * （其结果已是加工产物，避免与喂给它的 prompt 重复计算）。visited 做环路防护（同一节点只计一次）。
+ */
+export function collectUpstreamPrompt(
+  project: Project,
+  nodeId: string,
+  visited: Set<string> = new Set(),
+): string {
+  if (visited.has(nodeId)) return ''
+  visited.add(nodeId)
   const sourceIds = new Set(
     project.edges.filter((e) => e.target === nodeId).map((e) => e.source),
   )
   return project.nodes
-    .filter((n) => n.type === 'prompt' && sourceIds.has(n.id))
-    .map((n) => (n.type === 'prompt' ? n.data.text : ''))
+    .filter((n) => (n.type === 'prompt' || n.type === 'llm') && sourceIds.has(n.id))
+    .map((n) => {
+      if (n.type === 'llm') return n.data.result ?? ''
+      if (n.type === 'prompt') {
+        // 本 prompt 节点的上游文本（递归）在前，自身文本在后
+        const upstream = collectUpstreamPrompt(project, n.id, visited)
+        return [upstream, n.data.text].filter(Boolean).join('\n\n')
+      }
+      return ''
+    })
     .filter(Boolean)
     .join('\n\n')
 }

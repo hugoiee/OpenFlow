@@ -21,12 +21,20 @@ import {
   NANO_IMAGE_SIZE_DEFAULT,
   NANO_VERSION_DEFAULT,
   IMAGE_SIZE_DEFAULT,
+  LLM_MODEL_DEFAULT,
+  LLM_TEMPERATURE_DEFAULT,
   SEEDANCE_DURATION_DEFAULT,
   SEEDANCE_RATIO_DEFAULT,
   SEEDANCE_RESOLUTION_DEFAULT,
   SEEDANCE_VERSION_DEFAULT,
   VIDEO_TASK_DEFAULT,
 } from '@/lib/nodeCatalog'
+import {
+  GROUP_PADDING,
+  computeBoundingBox,
+  computeGridLayout,
+  detachChildren,
+} from '@/lib/layout'
 import { type FlowNode, type FlowNodeType, type Project } from '@/lib/types'
 
 type HomeView = 'grid' | 'list'
@@ -89,6 +97,12 @@ type FlowState = {
     position: { x: number; y: number }
     from: { nodeId: string; handleType: 'source' | 'target' }
   }) => void
+  /** 把当前选中的（未分组的非容器）节点包进一个新建的 group 容器节点，选中容器；<2 个则不动。 */
+  groupSelectedNodes: () => void
+  /** 取消分组：释放该 group 容器的子节点（坐标转绝对、清 parentId）并移除容器。 */
+  ungroupNode: (groupId: string) => void
+  /** 整理：把当前选中的（未分组的非容器）节点排成等间距网格；<2 个则不动。 */
+  arrangeSelectedNodes: () => void
 }
 
 function createNode(
@@ -105,6 +119,22 @@ function createNode(
       type: 'prompt',
       position,
       data: { label: 'Prompt', text: '' },
+    }
+  }
+  if (type === 'llm') {
+    // Any LLM 节点：带模型/温度/思考默认值；运行状态/结果初始为空。
+    return {
+      id: newId('n_'),
+      type: 'llm',
+      position,
+      data: {
+        label: 'Any LLM',
+        model: model || LLM_MODEL_DEFAULT,
+        temperature: LLM_TEMPERATURE_DEFAULT,
+        thinking: false,
+        running: false,
+        result: '',
+      },
     }
   }
   if (type === 'image') {
@@ -152,6 +182,7 @@ function createNode(
 // Agent 摆放新节点时估算已有节点的高度（React Flow 尚未测量到时的兜底），用于找画布底部空位
 const AGENT_PLACE_FALLBACK_HEIGHT: Record<string, number> = {
   prompt: 190,
+  llm: 280,
   image: 380,
   video: 400,
   asset: 220,
@@ -215,6 +246,9 @@ export const useFlowStore = create<FlowState>()((set, get) => {
           if (node.type === 'video') {
             return { ...node, data: { ...node.data, running: false, error: undefined } }
           }
+          if (node.type === 'llm') {
+            return { ...node, data: { ...node.data, running: false, error: undefined } }
+          }
           // 素材节点：uploading 是瞬时态，载入时复位，避免刷新后卡在「上传中…」
           if (node.type === 'asset') {
             return { ...node, data: { ...node.data, uploading: false } }
@@ -272,7 +306,21 @@ export const useFlowStore = create<FlowState>()((set, get) => {
     },
 
     onNodesChange: (changes) =>
-      patchActive((p) => ({ ...p, nodes: applyNodeChanges(changes, p.nodes) })),
+      patchActive((p) => {
+        // 删除 group 容器前，先把它的子节点释放出来（相对坐标转绝对、清 parentId），
+        // 否则子节点会残留一个指向已删容器的 parentId，渲染错位。
+        const removedGroupIds = new Set(
+          changes
+            .filter(
+              (c): c is { type: 'remove'; id: string } =>
+                c.type === 'remove' &&
+                p.nodes.some((n) => n.id === c.id && n.type === 'group'),
+            )
+            .map((c) => c.id),
+        )
+        const base = removedGroupIds.size ? detachChildren(p.nodes, removedGroupIds) : p.nodes
+        return { ...p, nodes: applyNodeChanges(changes, base) }
+      }),
 
     onEdgesChange: (changes) =>
       patchActive((p) => ({ ...p, edges: applyEdgeChanges(changes, p.edges) })),
@@ -376,9 +424,9 @@ export const useFlowStore = create<FlowState>()((set, get) => {
     addConnectedNode: ({ type, model, position, from }) =>
       patchActive((p) => {
         const node = createNode(type, p.nodes.length, model, position)
-        // 只有 image/video 有输入(target) handle；从输出端拉出却选了无输入口的节点（Prompt）时，
+        // 除 asset（纯源，只出不进）外都有输入(target) handle；从输出端拉出却选了无输入口的节点（asset）时，
         // 无处可连 → 只建节点不连线，避免生成一条挂空的坏边。
-        const canBeTarget = type === 'image' || type === 'video'
+        const canBeTarget = type !== 'asset'
         const edge: Edge | null =
           from.handleType === 'source'
             ? canBeTarget
@@ -389,6 +437,68 @@ export const useFlowStore = create<FlowState>()((set, get) => {
           ...p,
           nodes: [...p.nodes, node],
           edges: edge ? [...p.edges, edge] : p.edges,
+        }
+      }),
+
+    groupSelectedNodes: () =>
+      patchActive((p) => {
+        // 只分组「选中的、非容器、且尚未属于任何组」的节点（不做嵌套分组）
+        const selected = p.nodes.filter(
+          (n) => n.selected && n.type !== 'group' && !n.parentId,
+        )
+        if (selected.length < 2) return p
+        const box = computeBoundingBox(selected)
+        const groupPos = { x: box.x - GROUP_PADDING, y: box.y - GROUP_PADDING }
+        const width = box.width + GROUP_PADDING * 2
+        const height = box.height + GROUP_PADDING * 2
+        const groupId = newId('g_')
+        const groupNode: FlowNode = {
+          id: groupId,
+          type: 'group',
+          position: groupPos,
+          width,
+          height,
+          style: { width, height },
+          selected: true,
+          data: { label: '分组' },
+        }
+        const selIds = new Set(selected.map((n) => n.id))
+        const updated = p.nodes.map((n) => {
+          if (!selIds.has(n.id)) return n.selected ? { ...n, selected: false } : n
+          // 子节点：坐标转为相对父容器，挂 parentId + extent，取消选中
+          return {
+            ...n,
+            parentId: groupId,
+            extent: 'parent',
+            selected: false,
+            position: { x: n.position.x - groupPos.x, y: n.position.y - groupPos.y },
+          } as FlowNode
+        })
+        // 容器必须排在其子节点之前（React Flow 要求 parent 在 child 前）
+        return { ...p, nodes: [groupNode, ...updated] }
+      }),
+
+    ungroupNode: (groupId) =>
+      patchActive((p) => {
+        if (!p.nodes.some((n) => n.id === groupId && n.type === 'group')) return p
+        const detached = detachChildren(p.nodes, new Set([groupId]))
+        return { ...p, nodes: detached.filter((n) => n.id !== groupId) }
+      }),
+
+    arrangeSelectedNodes: () =>
+      patchActive((p) => {
+        const selected = p.nodes.filter(
+          (n) => n.selected && n.type !== 'group' && !n.parentId,
+        )
+        if (selected.length < 2) return p
+        const posById = new Map(
+          computeGridLayout(selected).map((l) => [l.id, l.position] as const),
+        )
+        return {
+          ...p,
+          nodes: p.nodes.map((n) =>
+            posById.has(n.id) ? { ...n, position: posById.get(n.id)! } : n,
+          ),
         }
       }),
   }

@@ -1,5 +1,5 @@
-import { Type, Image as ImageIcon, Banana, Video, type LucideIcon } from 'lucide-react'
-import { IMAGE_MODELS, VIDEO_MODELS } from '@/lib/nodeCatalog'
+import { Type, Image as ImageIcon, Banana, Sparkles, Video, type LucideIcon } from 'lucide-react'
+import { IMAGE_MODELS, LLM_MODEL_DEFAULT, VIDEO_MODELS } from '@/lib/nodeCatalog'
 import { type FlowNodeType } from '@/lib/types'
 
 // 可添加节点的清单项：类型 + 展示名 + 图标（+ 图像/视频类的预置模型）。
@@ -21,7 +21,10 @@ const IMAGE_ICONS: Record<string, LucideIcon> = {
 export const NODE_GROUPS: { label: string; items: NodeMenuItem[] }[] = [
   {
     label: '文本',
-    items: [{ type: 'prompt', label: 'Prompt 节点', icon: Type }],
+    items: [
+      { type: 'prompt', label: 'Prompt 节点', icon: Type },
+      { type: 'llm', label: 'Any LLM', icon: Sparkles, model: LLM_MODEL_DEFAULT },
+    ],
   },
   {
     label: '图像模型',

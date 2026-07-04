@@ -35,7 +35,7 @@ const SYSTEM_PROMPT = `你是 OpenFlow 节点式 AI 画布的内置 Agent。用�
  * 把配置的端点规范成完整 /chat/completions 地址（已带该后缀则原样使用）。
  * 按 URL pathname 判断/追加，保住查询串与锚点（如 Azure 的 ?api-version=、带 token 的网关）。
  */
-function resolveChatCompletionsUrl(endpoint: string): string {
+export function resolveChatCompletionsUrl(endpoint: string): string {
   try {
     const url = new URL(endpoint)
     const path = url.pathname.replace(/\/+$/, '')
@@ -49,7 +49,7 @@ function resolveChatCompletionsUrl(endpoint: string): string {
 }
 
 /** 从 LLM 错误响应里尽量取可读信息。 */
-function extractLlmError(data: unknown): string | undefined {
+export function extractLlmError(data: unknown): string | undefined {
   if (!data || typeof data !== 'object') return undefined
   const o = data as Record<string, unknown>
   for (const v of [o.error, o.message, o.msg]) {

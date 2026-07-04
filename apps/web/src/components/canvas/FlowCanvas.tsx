@@ -16,8 +16,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { nodeTypes } from './nodes'
 import { ZoomSlider } from './ZoomSlider'
 import { CanvasContextMenu } from './CanvasContextMenu'
+import { SelectionContextMenu } from './SelectionContextMenu'
 import { uploadFilesApi } from '@/lib/api'
-import { type FlowNodeType } from '@/lib/types'
+import { type FlowNode, type FlowNodeType } from '@/lib/types'
 import { useActiveProject, useFlowStore } from '@/store/useFlowStore'
 import { useThemeStore } from '@/store/useThemeStore'
 
@@ -41,6 +42,9 @@ export function FlowCanvas() {
   const addConnectedNode = useFlowStore((s) => s.addConnectedNode)
   const removeNode = useFlowStore((s) => s.removeNode)
   const updateNodeData = useFlowStore((s) => s.updateNodeData)
+  const groupSelectedNodes = useFlowStore((s) => s.groupSelectedNodes)
+  const ungroupNode = useFlowStore((s) => s.ungroupNode)
+  const arrangeSelectedNodes = useFlowStore((s) => s.arrangeSelectedNodes)
   // 实际生效的明暗（system 已解析）：让画布底纹 / 控制按钮 / 缩略图 / 连线跟随主题
   const colorMode = useThemeStore((s) => s.resolved)
   const { screenToFlowPosition } = useReactFlow()
@@ -73,6 +77,17 @@ export function FlowCanvas() {
     connectFrom: ConnectFrom | null
   } | null>(null)
 
+  // 选中节点的右键菜单（分组 / 整理 / 取消分组）：右键点在节点或框选区上触发。
+  const [actionMenu, setActionMenu] = useState<{
+    top: number
+    left: number
+    canGroup: boolean
+    canArrange: boolean
+    canUngroup: boolean
+    /** 取消分组要释放的容器 id（选中的容器 + 右键点中的容器）。 */
+    groupIds: string[]
+  } | null>(null)
+
   // 在指定屏幕坐标浮出节点菜单；connectFrom 非空时选中项会与源节点连线
   const openMenuAt = useCallback(
     (clientX: number, clientY: number, connectFrom: ConnectFrom | null) => {
@@ -82,6 +97,7 @@ export function FlowCanvas() {
       // 基本防溢出：菜单约 180×230，靠近右/下边缘时回夹
       const left = Math.max(0, Math.min(clientX - rect.left, rect.width - 180))
       const top = Math.max(0, Math.min(clientY - rect.top, rect.height - 230))
+      setActionMenu(null) // 与选中操作菜单互斥
       setMenu({ top, left, flow, connectFrom })
     },
     [screenToFlowPosition],
@@ -94,6 +110,34 @@ export function FlowCanvas() {
     },
     [openMenuAt],
   )
+
+  const openSelectionMenu = useCallback((event: React.MouseEvent, node?: FlowNode) => {
+    const state = useFlowStore.getState()
+    const proj = state.projects.find((p) => p.id === state.activeProjectId)
+    if (!proj) return
+    const selected = proj.nodes.filter((n) => n.selected)
+    // 可分组/整理的对象：选中的、非容器、且未属于任何组的节点
+    const groupable = selected.filter((n) => n.type !== 'group' && !n.parentId)
+    // 可取消分组的容器：选中的 group 节点 +（若右键点在某个 group 上）该 group
+    const groupIds = new Set(selected.filter((n) => n.type === 'group').map((n) => n.id))
+    if (node?.type === 'group') groupIds.add(node.id)
+    const canGroup = groupable.length >= 2
+    const canArrange = groupable.length >= 2
+    const canUngroup = groupIds.size > 0
+    if (!canGroup && !canArrange && !canUngroup) return
+    event.preventDefault()
+    const rect = wrapperRef.current?.getBoundingClientRect()
+    if (!rect) return
+    const left = Math.max(0, Math.min(event.clientX - rect.left, rect.width - 180))
+    const top = Math.max(0, Math.min(event.clientY - rect.top, rect.height - 140))
+    setMenu(null) // 与加节点菜单互斥
+    setActionMenu({ top, left, canGroup, canArrange, canUngroup, groupIds: [...groupIds] })
+  }, [])
+
+  const closeMenus = useCallback(() => {
+    setMenu(null)
+    setActionMenu(null)
+  }, [])
 
   // Delete Edge on Drop：拖动连线端点若松手在空白处（未落到合法 handle）则删除该连线。
   // reconnect 成功会先触发 onReconnect 把标记置 true；未触发即视为落空 → onReconnectEnd 删除。
@@ -333,8 +377,10 @@ export function FlowCanvas() {
         onReconnect={handleReconnect}
         onReconnectEnd={onReconnectEnd}
         onPaneContextMenu={openContextMenu}
-        onPaneClick={() => setMenu(null)}
-        onMoveStart={() => setMenu(null)}
+        onNodeContextMenu={(e, node) => openSelectionMenu(e, node as FlowNode)}
+        onSelectionContextMenu={(e) => openSelectionMenu(e)}
+        onPaneClick={closeMenus}
+        onMoveStart={closeMenus}
         defaultEdgeOptions={{ type: 'default' }}
         connectionLineType={ConnectionLineType.Bezier}
         colorMode={colorMode}
@@ -390,6 +436,28 @@ export function FlowCanvas() {
             }
             setMenu(null)
           }}
+        />
+      )}
+      {actionMenu && (
+        <SelectionContextMenu
+          top={actionMenu.top}
+          left={actionMenu.left}
+          canGroup={actionMenu.canGroup}
+          canArrange={actionMenu.canArrange}
+          canUngroup={actionMenu.canUngroup}
+          onGroup={() => {
+            groupSelectedNodes()
+            setActionMenu(null)
+          }}
+          onArrange={() => {
+            arrangeSelectedNodes()
+            setActionMenu(null)
+          }}
+          onUngroup={() => {
+            actionMenu.groupIds.forEach((id) => ungroupNode(id))
+            setActionMenu(null)
+          }}
+          onClose={() => setActionMenu(null)}
         />
       )}
     </div>

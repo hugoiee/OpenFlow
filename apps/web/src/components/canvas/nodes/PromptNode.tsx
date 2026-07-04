@@ -130,6 +130,13 @@ export function PromptNode({ id, data, selected, width, height }: NodeProps<Prom
         </div>
       </CardContent>
 
+      {/* 左侧输入：上游 Prompt/LLM 节点可连入，文本沿连线并入本节点（供下游做 Prompt 链） */}
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="!bg-sky-500 dark:!bg-sky-400"
+        style={handleStyle()}
+      />
       <Handle
         type="source"
         position={Position.Right}
