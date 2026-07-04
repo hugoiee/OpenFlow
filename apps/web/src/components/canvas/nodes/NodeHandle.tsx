@@ -35,7 +35,15 @@ export function NodeHandle({
   if (color) (style as Record<string, string>)['--handle-color'] = color
 
   return (
-    <Handle type={type} id={id} position={isLeft ? Position.Left : Position.Right} style={style} title={title}>
+    <Handle
+      type={type}
+      id={id}
+      position={isLeft ? Position.Left : Position.Right}
+      style={style}
+      title={title}
+      // 必填端点用实心（填充）表示，其余为环形
+      className={required ? 'node-handle--solid' : undefined}
+    >
       {label && (
         <span
           className={`node-handle-label ${isLeft ? 'node-handle-label--left' : 'node-handle-label--right'}`}

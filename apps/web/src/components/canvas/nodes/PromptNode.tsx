@@ -35,7 +35,8 @@ const PRESET_CATEGORIES: { value: PromptPresetCategory; label: string }[] = [
 
 // 节点默认/最小尺寸（px）。用「显式像素尺寸」而非 h-full/w-full：后者在 React Flow
 // 测量时会因循环依赖塌回内容最小值，把持久化的 width/height 覆盖掉，导致重开变回原大小。
-const DEFAULT_WIDTH = 264
+// 宽度对齐其他节点（LLM/图像/视频 w-72 = 288px），最小宽度即此值
+const DEFAULT_WIDTH = 288
 const DEFAULT_HEIGHT = 200
 
 export function PromptNode({ id, data, selected, width, height }: NodeProps<PromptNodeType>) {

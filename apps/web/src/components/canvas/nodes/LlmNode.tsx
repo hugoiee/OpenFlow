@@ -166,7 +166,7 @@ export function LlmNode({ id, data, selected }: NodeProps<LlmNodeType>) {
         {/* 输出展示区 */}
         <div className="nodrag overflow-hidden rounded-md border">
           {running ? (
-            <div className="flex flex-col gap-2 p-3">
+            <div className="flex aspect-square w-full flex-col justify-center gap-2 p-3">
               <Skeleton className="h-3 w-full" />
               <Skeleton className="h-3 w-11/12" />
               <Skeleton className="h-3 w-4/5" />
@@ -186,7 +186,7 @@ export function LlmNode({ id, data, selected }: NodeProps<LlmNodeType>) {
               </button>
             </div>
           ) : (
-            <div className="flex min-h-24 w-full items-center justify-center bg-muted p-3 text-[11px] text-muted-foreground">
+            <div className="flex aspect-square w-full items-center justify-center bg-muted p-3 text-[11px] text-muted-foreground">
               暂无输出
             </div>
           )}

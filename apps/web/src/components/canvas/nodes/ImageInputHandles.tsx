@@ -33,8 +33,8 @@ export function AddImageInputButton({ id, count }: { id: string; count: number }
   return (
     <Button
       size="sm"
-      variant="outline"
-      className="nodrag h-8 gap-1.5 px-2 text-xs"
+      variant="ghost"
+      className="nodrag h-8 gap-1.5 px-1.5 text-xs font-normal text-muted-foreground hover:text-foreground"
       title="新增一个图像输入端点"
       onClick={() => updateNodeData(id, { imageInputs: count + 1 })}
     >

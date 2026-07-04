@@ -140,14 +140,21 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
         selected ? 'ring-2 ring-primary' : ''
       }`}
     >
-      {/* 输入：Prompt / 输入图 / 音频 混合走这一个口（默认色） */}
-      <NodeHandle type="target" index={0} label="Input" title="输入（Prompt / 图 / 音频）" />
+      {/* 输入：Prompt（必填，实心）——图/音频也从此口连入（混合） */}
+      <NodeHandle
+        type="target"
+        index={0}
+        tone="prompt"
+        label="Prompt"
+        required
+        title="Prompt 输入（必填；图 / 音频也走此口）"
+      />
       <NodeHeader id={id} icon={Video} title={data.model} selected={selected} />
       <CardContent className="flex flex-col gap-2 px-3">
         {/* 结果展示区 */}
         <div className="nodrag overflow-hidden rounded-md border">
           {running ? (
-            <Skeleton className="aspect-video w-full" />
+            <Skeleton className="aspect-square w-full" />
           ) : result.length > 0 ? (
             <div className="flex flex-col gap-1">
               {result.map((url, i) => (
@@ -166,7 +173,7 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
             </div>
           ) : (
             <div
-              className="flex aspect-video w-full items-center justify-center bg-muted text-[11px] text-muted-foreground"
+              className="flex aspect-square w-full items-center justify-center bg-muted text-[11px] text-muted-foreground"
               style={{
                 backgroundImage:
                   'repeating-conic-gradient(var(--border) 0% 25%, transparent 0% 50%)',

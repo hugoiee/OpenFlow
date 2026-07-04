@@ -155,24 +155,29 @@
  * 与暗色 token 仍是唯一颜色来源，保持不变。用 `.react-flow` 前缀提高特异性，
  * 压过 @xyflow/react style.css 自带的 6px 默认（无需 !important）。
  */
-/* 环形端点：描边=端点色(var(--handle-color)，节点端点经 NodeHandle 下发；未定义回退灰)，
- * 中心填节点底色（像个环），外围一圈浅色投影当「插槽」底衬。 */
+/* 环形端点(12×12)：描边=端点色(var(--handle-color)，节点端点经 NodeHandle 下发；未定义回退灰)，
+ * 中心填节点底色（像个环），外围一圈浅色投影当「插槽」底衬。必填端点(.node-handle--solid)填成实心。 */
 .react-flow .react-flow__handle {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   border: 2px solid var(--handle-color, var(--muted-foreground));
   background: var(--card);
-  box-shadow: 0 0 0 5px color-mix(in srgb, var(--foreground) 7%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--foreground) 6%, transparent);
   border-radius: 9999px;
   transition:
     box-shadow 0.15s ease,
-    border-color 0.15s ease;
+    border-color 0.15s ease,
+    background-color 0.15s ease;
+}
+/* 必填端点：中心填端点色（实心圆）区别于普通环形端点。 */
+.react-flow .react-flow__handle.node-handle--solid {
+  background: var(--handle-color, var(--muted-foreground));
 }
 /* 悬停微放大反馈：用 box-shadow 光环（叠在插槽底衬外，取端点色）。 */
 .react-flow .react-flow__handle.connectionindicator:hover {
   box-shadow:
-    0 0 0 5px color-mix(in srgb, var(--foreground) 7%, transparent),
-    0 0 0 8px color-mix(in srgb, var(--handle-color, var(--primary)) 32%, transparent);
+    0 0 0 3px color-mix(in srgb, var(--foreground) 6%, transparent),
+    0 0 0 6px color-mix(in srgb, var(--handle-color, var(--primary)) 32%, transparent);
 }
 /* 隐形命中区 ~28px，居中于圆点：抓取/落点范围远大于圆点本身。仅在连接态
  * (connectionindicator/connectingfrom) 由 RF 打开 pointer-events 时生效，
