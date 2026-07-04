@@ -77,6 +77,18 @@ type FlowState = {
     model: string
     title?: string
   }) => { promptNodeId: string; imageNodeId: string } | null
+  /**
+   * 从某个节点的 handle 拉线松开在空白处后新建一个节点并与源节点连线。
+   * from.handleType='source'（从输出端拉出）→ 新节点作下游 target（源→新）；
+   * from.handleType='target'（从输入端拉出）→ 新节点作上游 source（新→源）。
+   * 若新节点在该方向上没有对应 handle（如从输出端拉出却选了无输入口的 Prompt），只建节点不连线。
+   */
+  addConnectedNode: (input: {
+    type: FlowNodeType
+    model?: string
+    position: { x: number; y: number }
+    from: { nodeId: string; handleType: 'source' | 'target' }
+  }) => void
 }
 
 function createNode(
@@ -184,7 +196,19 @@ export const useFlowStore = create<FlowState>()((set, get) => {
         name: d.name,
         // image/video 节点的 running/error 是瞬时态：载入时复位为非运行态，避免卡在「生成中…」。
         // 但保留 taskId（与 result）：若任务仍在飞，节点 mount 时凭 taskId 重连轮询（关页面不丢结果）。
-        nodes: (d.nodes as FlowNode[]).map((node) => {
+        nodes: (d.nodes as FlowNode[]).map((rawNode) => {
+          // 清洗坏尺寸：React Flow 可能把 width/height 持久化成 0（测量竞态）。0 会被当作
+          // 显式尺寸套到节点外层容器 → 节点塌成 0 宽、整体不可见（如 Prompt 节点重开看不到）。
+          // 剔除 ≤0 的 width/height/measured，让 RF 重新测量自适应（渲染出来后尺寸自愈为正值）。
+          let node = rawNode
+          const badW = typeof rawNode.width === 'number' && rawNode.width <= 0
+          const badH = typeof rawNode.height === 'number' && rawNode.height <= 0
+          if (badW || badH) {
+            node = { ...rawNode }
+            delete node.width
+            delete node.height
+            delete node.measured
+          }
           if (node.type === 'image') {
             return { ...node, data: { ...node.data, running: false, error: undefined } }
           }
@@ -339,7 +363,7 @@ export const useFlowStore = create<FlowState>()((set, get) => {
         id: newId('e_'),
         source: promptNode.id,
         target: imageNode.id,
-        type: 'straight',
+        type: 'default',
       }
       patchActive((p) => ({
         ...p,
@@ -348,6 +372,25 @@ export const useFlowStore = create<FlowState>()((set, get) => {
       }))
       return { promptNodeId: promptNode.id, imageNodeId: imageNode.id }
     },
+
+    addConnectedNode: ({ type, model, position, from }) =>
+      patchActive((p) => {
+        const node = createNode(type, p.nodes.length, model, position)
+        // 只有 image/video 有输入(target) handle；从输出端拉出却选了无输入口的节点（Prompt）时，
+        // 无处可连 → 只建节点不连线，避免生成一条挂空的坏边。
+        const canBeTarget = type === 'image' || type === 'video'
+        const edge: Edge | null =
+          from.handleType === 'source'
+            ? canBeTarget
+              ? { id: newId('e_'), source: from.nodeId, target: node.id, type: 'default' }
+              : null
+            : { id: newId('e_'), source: node.id, target: from.nodeId, type: 'default' }
+        return {
+          ...p,
+          nodes: [...p.nodes, node],
+          edges: edge ? [...p.edges, edge] : p.edges,
+        }
+      }),
   }
 })
 

@@ -184,3 +184,20 @@
   background: transparent;
   pointer-events: all;
 }
+
+/*
+ * 连线(edge)：整体加粗 + 悬停高亮 + 与「已选中节点」相连的边高亮。
+ * 用 `.react-flow` 前缀提高特异性，压过 @xyflow/react style.css 的默认描边（无需 !important）。
+ * 只改描边颜色/粗细；蚂蚁线流动由 RF 自带的 .animated 关键帧提供（active 边在 FlowCanvas 里打 animated）。
+ */
+.react-flow .react-flow__edge-path {
+  stroke-width: 2;
+  transition:
+    stroke 0.15s ease,
+    stroke-width 0.15s ease;
+}
+.react-flow .react-flow__edge:hover .react-flow__edge-path,
+.react-flow .react-flow__edge.edge-active .react-flow__edge-path {
+  stroke: var(--primary);
+  stroke-width: 3;
+}

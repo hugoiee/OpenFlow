@@ -1,10 +1,11 @@
-import { useEffect } from 'react'
+import { useEffect, type CSSProperties } from 'react'
 import { Navigate, useParams } from 'react-router-dom'
 import { AgentChatPanel, AgentChatToggle } from '@/components/agent/AgentChatPanel'
 import { FlowCanvasWithProvider } from '@/components/canvas/FlowCanvas'
 import { NodeInspector } from '@/components/inspector/NodeInspector'
 import { ProjectSidebar } from '@/components/projects/ProjectSidebar'
-import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
+import { WorkspaceHeader } from '@/components/workspace/WorkspaceHeader'
+import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { useFlowStore } from '@/store/useFlowStore'
 
 export function ProjectWorkspace() {
@@ -25,17 +26,23 @@ export function ProjectWorkspace() {
   if (!id || !exists) return <Navigate to="/" replace />
 
   return (
-    <SidebarProvider className="h-screen min-h-0 overflow-hidden">
+    <SidebarProvider
+      className="h-screen min-h-0 overflow-hidden"
+      style={{ '--sidebar-width': '240px' } as CSSProperties}
+    >
       <ProjectSidebar />
-      {/* flex-row：画布区弹性占满，Agent 聊天面板固定宽度靠右；NodeInspector 仍吸附画布区右缘 */}
-      <SidebarInset className="flex min-h-0 flex-row overflow-hidden">
-        <div className="relative min-w-0 flex-1">
-          <SidebarTrigger className="absolute left-2 top-2 z-20 size-10" />
-          <FlowCanvasWithProvider />
-          <NodeInspector />
-          <AgentChatToggle />
+      {/* flex-col：顶栏通栏置顶；其下 flex-row = 画布区 + Agent 面板，二者顶边均落在 header 之下 */}
+      <SidebarInset className="flex min-h-0 flex-col overflow-hidden">
+        <WorkspaceHeader projectId={id} />
+        <div className="flex min-h-0 flex-1 flex-row overflow-hidden">
+          {/* 画布区：NodeInspector / AgentChatToggle 相对本容器定位，与 Agent 面板并排不重叠 */}
+          <div className="relative min-w-0 flex-1">
+            <FlowCanvasWithProvider />
+            <NodeInspector />
+            <AgentChatToggle />
+          </div>
+          <AgentChatPanel projectId={id} />
         </div>
-        <AgentChatPanel projectId={id} />
       </SidebarInset>
     </SidebarProvider>
   )

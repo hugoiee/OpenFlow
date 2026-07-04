@@ -83,7 +83,7 @@ apps/web/src/
   components/workspace/ProjectWorkspace.tsx  Sidebar + 画布 + Agent 面板；SidebarInset 为 flex-row：画布区（relative flex-1，内含 SidebarTrigger/NodeInspector/AgentChatToggle 绝对定位）+ AgentChatPanel 固定宽靠右（NodeInspector 吸附画布区右缘，与聊天面板并排不重叠）；未 loaded 前不跳首页
   components/projects/ProjectSidebar.tsx     工作区 Sidebar：返回首页 + 节点列表（按文本/图像/视频三类分组，点按添加对应节点并预设模型；不再显示项目列表）
   components/canvas/
-    FlowCanvas.tsx             React Flow 封装；连线默认 straight（直线，旧 smoothstep 载入时归一成直线）；colorMode 跟随主题（useThemeStore.resolved，画布底纹/控制按钮/缩略图随暗色）；onDragOver/onDrop 接桌面拖入文件（按 MIME 分图像/音频，screenToFlowPosition 定位：图片落图像/视频节点→追加输入图、音频落视频节点→追加输入音频，否则建素材节点上传写回 URL）
+    FlowCanvas.tsx             React Flow 封装；连线默认 bezier 曲线（default，旧 straight/smoothstep 载入时归一成曲线）+ 加粗；悬停高亮、与「已选中节点」相连的边高亮 + 蚂蚁线流动（渲染时按 node.selected 派生 animated/edge-active，不入库；样式在 index.css）；colorMode 跟随主题（useThemeStore.resolved，画布底纹/控制按钮/缩略图随暗色）；onDragOver/onDrop 接桌面拖入文件（按 MIME 分图像/音频，screenToFlowPosition 定位：图片落图像/视频节点→追加输入图、音频落视频节点→追加输入音频，否则建素材节点上传写回 URL）
     nodes/PromptNode.tsx       Prompt 节点（Card + Textarea，source Handle 在右）
     nodes/ImageNode.tsx        图像生成节点：输入图(可上传)/按模型(Image 2 走尺寸/质量/张数；Nano Banana 走 version/宽高比/尺寸)；运行收集上游 Prompt 文本→createImageTaskApi 建任务→pollTask 轮询→展示结果图；带 taskId 载入时 useEffect 重连轮询（关页面不丢结果；重连/Agent 触发路径失败 **silent 不弹 alert** 只节点内联报错，点击运行路径失败仍弹窗）；Handle 左进右出（req_from 署名走全局设置，节点不再单设）
     nodes/SeedanceNode.tsx     视频生成节点（seedance）：输入图(可上传)/输入音频(可上传，走 /api/upload-media)/version/mode/分辨率/时长；运行时音频 = 上游音频素材(连线)+ 本节点手动填/传 URL 合并作 audios→createVideoTaskApi 建任务→pollTask 轮询→<video> 展示；带 taskId 载入时 useEffect 重连轮询；Handle 左进右出（req_from 署名走全局设置，节点不再单设）
@@ -107,7 +107,7 @@ apps/desktop/
 - **生成调用**：图像 `/api/aigc`、视频 `/api/video` 现为**异步任务**——建任务行、立刻返回 `taskId`，AIGC 由 `task-store` 进程内 runner 后台跑（不阻塞响应）；前端把 `taskId` 存进节点 data（随项目防抖 PUT 落库），凭 `pollTask` 轮询 `/api/tasks/:id` 至终态。**关页面/刷新不丢结果**：重开后节点带 `taskId` 载入 → useEffect 重连轮询拿回结果；进程重启时残留 running 任务由 `reconcileInterruptedTasks()` 标 failed。文件上传 `/api/upload`（图片/音频按 `kind` 分流）仍是同步代理转发。以上均经后端绕 CORS；req_from 由后端从全局设置注入，**为空则直接返回 400 拒发、无兜底默认（`AIGC_REQ_FROM` 已不再使用）**。**端点地址优先取全局设置里的 `aigcEndpoint`/`uploadEndpoint`/`uploadMediaEndpoint`，为空才回退 env（`AIGC_ENDPOINT`/`UPLOAD_ENDPOINT`/`UPLOAD_MEDIA_ENDPOINT`）再回退内置默认**——便于打包分发后由用户自填，不写死内网 IP。
 - **启动门槛**：`ReqFromGate` 在设置加载后若 req_from 为空则全屏阻断，必须填写署名才放行。
 - **路由**：`react-router-dom` `HashRouter`。
-- **画布**：React Flow（`@xyflow/react`），节点是普通 React 组件；连线 straight（直线）。
+- **画布**：React Flow（`@xyflow/react`），节点是普通 React 组件；连线 bezier 曲线（加粗；悬停高亮、选中节点相连的边高亮 + 蚂蚁线）。
 - **UI**：shadcn/ui（Tailwind v4）。新增组件 `pnpm dlx shadcn@latest add <name>`（在 apps/web 内）。**深色模式**：class 策略（`.dark` 挂 `<html>`，Tailwind `@custom-variant dark`），组件一律用语义 token（bg-background/text-muted-foreground 等）自动适配，勿写死明色/暗色；主题偏好经 `useThemeStore` 存 localStorage，`index.html` 内联脚本首帧前挂类防白闪；`index.css` 末尾 `.dark { color-scheme: dark }` 让原生控件（滚动条 / `<audio>` / `<video>`）跟随。
 - **路径别名**：`@/*` → `apps/web/src/*`。
 - **共享类型**：跨前后端的纯数据契约放 `packages/shared`；后端不引 `@xyflow/react`，nodes/edges 当不透明 JSON。
@@ -128,7 +128,7 @@ apps/desktop/
 ## 编码规范
 
 - 组件文件 PascalCase，函数组件具名导出。
-- 新增节点类型需同步更新 `apps/web/src/lib/types.ts`、`nodes/index.ts`、`createNode()`(store)、`ProjectSidebar` 的 `NODE_GROUPS`；图像/视频类的预置模型在 `lib/nodeCatalog.ts`。（例外：`asset` 素材节点不走侧栏/`createNode`，由 `FlowCanvas` 拖拽经 `addAssetNode()` 创建。）
+- 新增节点类型需同步更新 `apps/web/src/lib/types.ts`、`nodes/index.ts`、`createNode()`(store)、`lib/nodeMenu.ts` 的 `NODE_GROUPS`（侧栏拖拽建节点 + 画布右键菜单点选建节点共用）；图像/视频类的预置模型在 `lib/nodeCatalog.ts`。（例外：`asset` 素材节点不走侧栏/`createNode`，由 `FlowCanvas` 拖拽经 `addAssetNode()` 创建。）
 - 节点内可交互元素加 `nodrag` class。
 - 不手改 `apps/web/src/components/ui/*`、`src/hooks/use-mobile.ts` 与 `index.css` 的 shadcn 主题块（生成内容，已在 eslint globalIgnores 排除）。
 - 改后端 SQLite 表结构时注意已有数据兼容。

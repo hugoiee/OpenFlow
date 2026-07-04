@@ -35,7 +35,7 @@ function NodeInspectorPanel({
   const hasPrompt = promptPreview.trim().length > 0
 
   return (
-    <aside className="absolute right-0 top-0 z-10 flex h-full w-80 flex-col gap-3 overflow-y-auto border-l bg-background p-4">
+    <aside className="absolute right-0 top-0 z-10 flex h-full w-60 flex-col gap-3 overflow-y-auto border-l bg-background p-4">
       <div className="flex flex-col gap-0.5">
         <span className="text-xs text-muted-foreground">{node.data.label}</span>
         <h2 className="text-sm font-semibold">{node.data.model}</h2>

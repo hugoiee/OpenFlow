@@ -3,6 +3,7 @@ import { Image as ImageIcon, Music } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { NodeHeader } from './NodeHeader'
+import { handleStyle } from './handleLayout'
 import { ASSET_NODE_META } from '@/lib/nodeCatalog'
 import { type AssetNode as AssetNodeType } from '@/lib/types'
 
@@ -56,7 +57,12 @@ export function AssetNode({ id, data, selected }: NodeProps<AssetNodeType>) {
           </p>
         )}
       </CardContent>
-      <Handle type="source" position={Position.Right} className={meta.handle} />
+      <Handle
+        type="source"
+        position={Position.Right}
+        className={meta.handle}
+        style={handleStyle()}
+      />
     </Card>
   )
 }
