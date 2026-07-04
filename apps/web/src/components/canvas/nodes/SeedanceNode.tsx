@@ -6,6 +6,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { DownloadDialog, type DownloadTarget } from '@/components/canvas/DownloadDialog'
 import { NodeHeader } from './NodeHeader'
+import { handleStyle } from './handleLayout'
 import { createVideoTaskApi } from '@/lib/api'
 import { pollTask } from '@/lib/taskPolling'
 import {
@@ -142,7 +143,12 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
         selected ? 'ring-2 ring-primary' : ''
       }`}
     >
-      <Handle type="target" position={Position.Left} className={meta.handle} />
+      <Handle
+        type="target"
+        position={Position.Left}
+        className={meta.handle}
+        style={handleStyle()}
+      />
       <NodeHeader id={id} icon={Video} title={data.model} selected={selected} />
       <CardContent className="flex flex-col gap-2 px-3">
         {/* 结果展示区 */}
@@ -190,7 +196,12 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
         )}
       </CardContent>
       <DownloadDialog open={dialogOpen} onOpenChange={setDialogOpen} target={downloadTarget} />
-      <Handle type="source" position={Position.Right} className={meta.handle} />
+      <Handle
+        type="source"
+        position={Position.Right}
+        className={meta.handle}
+        style={handleStyle()}
+      />
     </Card>
   )
 }

@@ -1,12 +1,15 @@
 import {
   Background,
   MiniMap,
+  ConnectionLineType,
   ReactFlow,
   ReactFlowProvider,
   SelectionMode,
   useReactFlow,
   type Connection,
   type Edge,
+  type OnConnectStart,
+  type OnConnectEnd,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -23,6 +26,10 @@ const SNAP_STORAGE_KEY = 'openflow-snap-grid'
 const MINIMAP_STORAGE_KEY = 'openflow-minimap'
 const SNAP_GRID: [number, number] = [20, 20]
 
+// 拉线松开在空白处时，记录连线从哪个节点的哪一端（source=输出端 / target=输入端）发起，
+// 供菜单选中后据方向连线（源→新 或 新→源）。
+type ConnectFrom = { nodeId: string; handleType: 'source' | 'target' }
+
 export function FlowCanvas() {
   const project = useActiveProject()
   const onNodesChange = useFlowStore((s) => s.onNodesChange)
@@ -31,6 +38,7 @@ export function FlowCanvas() {
   const onReconnect = useFlowStore((s) => s.onReconnect)
   const addAssetNode = useFlowStore((s) => s.addAssetNode)
   const addNode = useFlowStore((s) => s.addNode)
+  const addConnectedNode = useFlowStore((s) => s.addConnectedNode)
   const removeNode = useFlowStore((s) => s.removeNode)
   const updateNodeData = useFlowStore((s) => s.updateNodeData)
   // 实际生效的明暗（system 已解析）：让画布底纹 / 控制按钮 / 缩略图 / 连线跟随主题
@@ -61,20 +69,30 @@ export function FlowCanvas() {
     top: number
     left: number
     flow: { x: number; y: number }
+    // 非空表示菜单由「拉线松开在空白处」触发，选中后按此方向与源节点连线
+    connectFrom: ConnectFrom | null
   } | null>(null)
+
+  // 在指定屏幕坐标浮出节点菜单；connectFrom 非空时选中项会与源节点连线
+  const openMenuAt = useCallback(
+    (clientX: number, clientY: number, connectFrom: ConnectFrom | null) => {
+      const rect = wrapperRef.current?.getBoundingClientRect()
+      if (!rect) return
+      const flow = screenToFlowPosition({ x: clientX, y: clientY })
+      // 基本防溢出：菜单约 180×230，靠近右/下边缘时回夹
+      const left = Math.max(0, Math.min(clientX - rect.left, rect.width - 180))
+      const top = Math.max(0, Math.min(clientY - rect.top, rect.height - 230))
+      setMenu({ top, left, flow, connectFrom })
+    },
+    [screenToFlowPosition],
+  )
 
   const openContextMenu = useCallback(
     (event: React.MouseEvent | MouseEvent) => {
       event.preventDefault()
-      const rect = wrapperRef.current?.getBoundingClientRect()
-      if (!rect) return
-      const flow = screenToFlowPosition({ x: event.clientX, y: event.clientY })
-      // 基本防溢出：菜单约 180×230，靠近右/下边缘时回夹
-      const left = Math.max(0, Math.min(event.clientX - rect.left, rect.width - 180))
-      const top = Math.max(0, Math.min(event.clientY - rect.top, rect.height - 230))
-      setMenu({ top, left, flow })
+      openMenuAt(event.clientX, event.clientY, null)
     },
-    [screenToFlowPosition],
+    [openMenuAt],
   )
 
   // Delete Edge on Drop：拖动连线端点若松手在空白处（未落到合法 handle）则删除该连线。
@@ -101,6 +119,42 @@ export function FlowCanvas() {
       edgeReconnectSuccessful.current = true
     },
     [onEdgesChange],
+  )
+
+  // Add Node On Edge Drop：从 handle 拉线松开在空白处 → 在落点浮出节点菜单，选中即建节点并连线。
+  // onConnectStart 记下起点（节点/端别 + 起点屏幕坐标）；onConnectEnd 若未连到合法 handle 即视为落空。
+  const connectStartRef = useRef<(ConnectFrom & { x: number; y: number }) | null>(null)
+
+  const onConnectStart = useCallback<OnConnectStart>((event, params) => {
+    if (!params.nodeId || !params.handleType) {
+      connectStartRef.current = null
+      return
+    }
+    const point = 'clientX' in event ? event : event.changedTouches[0]
+    connectStartRef.current = {
+      nodeId: params.nodeId,
+      handleType: params.handleType,
+      x: point?.clientX ?? 0,
+      y: point?.clientY ?? 0,
+    }
+  }, [])
+
+  const onConnectEnd = useCallback<OnConnectEnd>(
+    (event, connectionState) => {
+      const start = connectStartRef.current
+      connectStartRef.current = null
+      // 不弹菜单的情形：已连到合法 handle（onConnect 处理）/ 松手落在某个节点上（非空白）/ 并非从节点发起
+      if (connectionState.isValid || connectionState.toNode || !start) return
+      const point = 'clientX' in event ? event : event.changedTouches[0]
+      if (!point) return
+      // 仅在确实拉出一段距离后才弹菜单（点一下 handle 不算，避免误触）
+      if (Math.hypot(point.clientX - start.x, point.clientY - start.y) < 8) return
+      openMenuAt(point.clientX, point.clientY, {
+        nodeId: start.nodeId,
+        handleType: start.handleType,
+      })
+    },
+    [openMenuAt],
   )
 
   // 允许把桌面文件 / 侧栏节点拖入画布（默认浏览器会拦截 drop，需 preventDefault）
@@ -242,10 +296,20 @@ export function FlowCanvas() {
 
   if (!project) return null
 
-  // 用 straight 让连线走两端点间最短直线；旧的 smoothstep 折线也一并归一成直线
-  const edges = project.edges.map((e) =>
-    e.type && e.type !== 'smoothstep' ? e : { ...e, type: 'straight' },
+  // 连线统一走贝塞尔曲线（default）：旧的 straight/smoothstep 一并归一成曲线。
+  // 派生视图态（不入库）：与「已选中节点」相连的边高亮（edge-active）+ 走蚂蚁线（animated）。
+  const selectedNodeIds = new Set(
+    project.nodes.filter((n) => n.selected).map((n) => n.id),
   )
+  const edges = project.edges.map((e) => {
+    const active = selectedNodeIds.has(e.source) || selectedNodeIds.has(e.target)
+    return {
+      ...e,
+      type: 'default',
+      animated: active,
+      className: active ? 'edge-active' : undefined,
+    }
+  })
 
   return (
     <div
@@ -263,13 +327,16 @@ export function FlowCanvas() {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        onConnectStart={onConnectStart}
+        onConnectEnd={onConnectEnd}
         onReconnectStart={onReconnectStart}
         onReconnect={handleReconnect}
         onReconnectEnd={onReconnectEnd}
         onPaneContextMenu={openContextMenu}
         onPaneClick={() => setMenu(null)}
         onMoveStart={() => setMenu(null)}
-        defaultEdgeOptions={{ type: 'straight' }}
+        defaultEdgeOptions={{ type: 'default' }}
+        connectionLineType={ConnectionLineType.Bezier}
         colorMode={colorMode}
         snapToGrid={snapToGrid}
         snapGrid={SNAP_GRID}
@@ -310,7 +377,17 @@ export function FlowCanvas() {
           left={menu.left}
           onClose={() => setMenu(null)}
           onPick={(item) => {
-            addNode(item.type, item.model, menu.flow)
+            if (menu.connectFrom) {
+              // 由「拉线松开在空白处」触发：建节点并按方向与源节点连线
+              addConnectedNode({
+                type: item.type,
+                model: item.model,
+                position: menu.flow,
+                from: menu.connectFrom,
+              })
+            } else {
+              addNode(item.type, item.model, menu.flow)
+            }
             setMenu(null)
           }}
         />

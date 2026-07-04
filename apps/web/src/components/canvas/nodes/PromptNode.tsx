@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { NodeHeader } from './NodeHeader'
+import { handleStyle } from './handleLayout'
 import { useFlowStore } from '@/store/useFlowStore'
 import { usePromptPresetStore } from '@/store/usePromptPresetStore'
 import type { PromptNode as PromptNodeType } from '@/lib/types'
@@ -133,6 +134,7 @@ export function PromptNode({ id, data, selected, width, height }: NodeProps<Prom
         type="source"
         position={Position.Right}
         className="!bg-sky-500 dark:!bg-sky-400"
+        style={handleStyle()}
       />
 
       {/* 选用预设：从全局预设库挑一条，内容替换当前节点文本 */}
