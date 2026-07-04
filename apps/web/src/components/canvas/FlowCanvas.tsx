@@ -9,13 +9,17 @@ import {
   type Edge,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { useCallback, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { nodeTypes } from './nodes'
 import { ZoomSlider } from './ZoomSlider'
 import { uploadFilesApi } from '@/lib/api'
 import { type FlowNodeType } from '@/lib/types'
 import { useActiveProject, useFlowStore } from '@/store/useFlowStore'
 import { useThemeStore } from '@/store/useThemeStore'
+
+// 节点吸附偏好的 localStorage 键；网格步长与 <Background> 默认点距（20）一致，吸附落点对齐可见网格
+const SNAP_STORAGE_KEY = 'openflow-snap-grid'
+const SNAP_GRID: [number, number] = [20, 20]
 
 export function FlowCanvas() {
   const project = useActiveProject()
@@ -30,6 +34,15 @@ export function FlowCanvas() {
   // 实际生效的明暗（system 已解析）：让画布底纹 / 控制按钮 / 缩略图 / 连线跟随主题
   const colorMode = useThemeStore((s) => s.resolved)
   const { screenToFlowPosition } = useReactFlow()
+
+  // 节点吸附（snap-to-grid）：偏好存 localStorage，首次默认开启；由 ZoomSlider 磁吸按钮切换
+  const [snapToGrid, setSnapToGrid] = useState(
+    () => localStorage.getItem(SNAP_STORAGE_KEY) !== '0',
+  )
+  useEffect(() => {
+    localStorage.setItem(SNAP_STORAGE_KEY, snapToGrid ? '1' : '0')
+  }, [snapToGrid])
+  const toggleSnap = useCallback(() => setSnapToGrid((v) => !v), [])
 
   // Delete Edge on Drop：拖动连线端点若松手在空白处（未落到合法 handle）则删除该连线。
   // reconnect 成功会先触发 onReconnect 把标记置 true；未触发即视为落空 → onReconnectEnd 删除。
@@ -217,6 +230,8 @@ export function FlowCanvas() {
         onReconnectEnd={onReconnectEnd}
         defaultEdgeOptions={{ type: 'straight' }}
         colorMode={colorMode}
+        snapToGrid={snapToGrid}
+        snapGrid={SNAP_GRID}
         minZoom={0.1}
         maxZoom={4}
         // 松开连线时的吸附半径（默认 20）；调大让「落在附近」也能连上，配合放大的命中区更好连
@@ -230,10 +245,19 @@ export function FlowCanvas() {
         panActivationKeyCode="Space"
       >
         <Background />
-        {/* 横向缩放滑块：画布顶部，紧贴左上角 SidebarTrigger 右侧并排 */}
-        <ZoomSlider position="top-left" style={{ top: 8, left: 60, margin: 0 }} />
-        {/* 缩略图移到左下角 */}
-        <MiniMap pannable zoomable position="bottom-left" />
+        {/* 左下角竖向堆叠：缩略图在上，缩放条紧贴其下方 */}
+        <MiniMap
+          pannable
+          zoomable
+          position="bottom-left"
+          style={{ bottom: 60, left: 15, margin: 0 }}
+        />
+        <ZoomSlider
+          position="bottom-left"
+          style={{ bottom: 12, left: 15, margin: 0 }}
+          snapEnabled={snapToGrid}
+          onToggleSnap={toggleSnap}
+        />
       </ReactFlow>
     </div>
   )

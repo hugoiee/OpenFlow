@@ -1,4 +1,4 @@
-import { Maximize, Minus, Plus } from 'lucide-react'
+import { Magnet, Maximize, Minus, Plus } from 'lucide-react'
 import {
   Panel,
   useReactFlow,
@@ -17,9 +17,14 @@ import { cn } from '@/lib/utils'
 export function ZoomSlider({
   className,
   orientation = 'horizontal',
+  snapEnabled,
+  onToggleSnap,
   ...props
 }: Omit<PanelProps, 'children'> & {
   orientation?: 'horizontal' | 'vertical'
+  /** 节点吸附（snap-to-grid）是否开启；提供 onToggleSnap 时才渲染磁吸按钮。 */
+  snapEnabled?: boolean
+  onToggleSnap?: () => void
 }) {
   const { zoom } = useViewport()
   const { zoomTo, zoomIn, zoomOut, fitView } = useReactFlow()
@@ -70,6 +75,18 @@ export function ZoomSlider({
       <Button variant="ghost" size="icon" onClick={() => fitView({ duration: 300 })}>
         <Maximize className="h-4 w-4" />
       </Button>
+      {onToggleSnap && (
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-pressed={snapEnabled}
+          title="网格吸附"
+          onClick={onToggleSnap}
+          className={cn(snapEnabled && 'bg-accent text-accent-foreground')}
+        >
+          <Magnet className="h-4 w-4" />
+        </Button>
+      )}
     </Panel>
   )
 }

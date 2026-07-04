@@ -23,7 +23,7 @@ export function AgentChatToggle() {
       title="画布 Agent"
       onClick={() => setPanelOpen(true)}
       className={`absolute bottom-4 z-20 size-11 rounded-full shadow-lg ${
-        inspectorOpen ? 'right-[21rem]' : 'right-4'
+        inspectorOpen ? 'right-64' : 'right-4'
       }`}
     >
       <Bot className="size-5" />
@@ -90,7 +90,7 @@ export function AgentChatPanel({ projectId }: { projectId: string }) {
   }
 
   return (
-    <aside className="flex h-full w-[360px] shrink-0 flex-col border-l bg-background">
+    <aside className="flex h-full w-60 shrink-0 flex-col border-l bg-background">
       <div className="flex items-center gap-2 border-b px-4 py-3">
         <Bot className="size-4" />
         <span className="text-sm font-medium">画布 Agent</span>

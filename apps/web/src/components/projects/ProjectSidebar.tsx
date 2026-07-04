@@ -1,16 +1,12 @@
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import {
   Home,
-  Settings,
-  LogOut,
   Type,
   Image as ImageIcon,
   Banana,
   Video,
-  Library,
   type LucideIcon,
 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
 import {
   Sidebar,
   SidebarContent,
@@ -21,13 +17,10 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@/components/ui/sidebar'
-import { SettingsDialog } from '@/components/settings/SettingsDialog'
-import { PromptPresetsDialog } from '@/components/presets/PromptPresetsDialog'
-import { ThemeToggle } from '@/components/theme/ThemeToggle'
+import { AppLogo } from '@/components/workspace/AppLogo'
 import { IMAGE_MODELS, VIDEO_MODELS } from '@/lib/nodeCatalog'
 import { type FlowNodeType } from '@/lib/types'
 import { useFlowStore } from '@/store/useFlowStore'
-import { useSettingsStore } from '@/store/useSettingsStore'
 
 type NodeItem = { type: FlowNodeType; label: string; icon: LucideIcon; model?: string }
 
@@ -67,69 +60,12 @@ const NODE_GROUPS: { label: string; items: NodeItem[] }[] = [
 export function ProjectSidebar() {
   const navigate = useNavigate()
   const addNode = useFlowStore((s) => s.addNode)
-  const defaultReqFrom = useSettingsStore((s) => s.defaultReqFrom)
-  const saveReqFrom = useSettingsStore((s) => s.saveReqFrom)
-
-  // 退出：清空 req_from → ReqFromGate 会重新全屏阻断；同时回到起始页
-  const handleLogout = async () => {
-    try {
-      await saveReqFrom('')
-      navigate('/')
-    } catch (e) {
-      console.error('[openflow] 退出失败', e)
-    }
-  }
 
   return (
     <Sidebar>
-      <SidebarHeader>
-        <div className="flex items-center justify-between px-1">
-          <Link
-            to="/"
-            className="text-lg font-semibold hover:opacity-70"
-            title="返回首页"
-          >
-            OpenFlow
-          </Link>
-          <div className="flex items-center gap-0.5">
-            <ThemeToggle className="size-10" />
-            <PromptPresetsDialog>
-              <Button size="icon" variant="ghost" className="size-10" title="常用 Prompt 预设">
-                <Library className="size-4" />
-              </Button>
-            </PromptPresetsDialog>
-            <SettingsDialog>
-              <Button size="icon" variant="ghost" className="size-10" title="API 设置">
-                <Settings className="size-4" />
-              </Button>
-            </SettingsDialog>
-          </div>
-        </div>
-        {defaultReqFrom && (
-          <div className="mt-1 flex items-center gap-1">
-            <SettingsDialog>
-              <button
-                type="button"
-                title="邮箱前缀（req_from）· 点击修改"
-                className="flex h-10 min-w-0 flex-1 items-center gap-1.5 rounded-md px-1 py-0.5 text-left text-xs text-muted-foreground transition-colors hover:bg-sidebar-accent"
-              >
-                <span className="shrink-0">邮箱前缀</span>
-                <span className="truncate font-medium text-sidebar-foreground">
-                  {defaultReqFrom}
-                </span>
-              </button>
-            </SettingsDialog>
-            <Button
-              size="icon"
-              variant="ghost"
-              className="size-6 shrink-0 text-muted-foreground"
-              title="退出（清空邮箱前缀）"
-              onClick={handleLogout}
-            >
-              <LogOut className="size-3.5" />
-            </Button>
-          </div>
-        )}
+      {/* 头部只放品牌 logo；主题/预设/设置/账号已迁至工作区顶栏 WorkspaceHeader */}
+      <SidebarHeader className="h-14 flex-row items-center px-2">
+        <AppLogo />
       </SidebarHeader>
 
       <SidebarContent>
