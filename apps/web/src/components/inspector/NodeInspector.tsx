@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Textarea } from '@/components/ui/textarea'
 import { useResizableWidth } from '@/hooks/useResizableWidth'
 import { buildImageRequest, buildLlmRequest, buildVideoRequest } from '@/lib/requestBody'
@@ -36,6 +37,24 @@ const ENDPOINT: Record<'image' | 'video' | 'llm', string> = {
   llm: 'POST /api/llm',
 }
 
+/** 表格视图里单个字段值的渲染：数组逐行展开（空显灰占位）、布尔转 true/false、其余按文本换行。 */
+function RequestValue({ value }: { value: unknown }) {
+  if (Array.isArray(value)) {
+    if (value.length === 0) return <span className="text-muted-foreground/60">[ 空 ]</span>
+    return (
+      <div className="flex flex-col gap-0.5">
+        {value.map((item, i) => (
+          <span key={i} className="break-all">
+            {String(item)}
+          </span>
+        ))}
+      </div>
+    )
+  }
+  if (typeof value === 'boolean') return <span>{value ? 'true' : 'false'}</span>
+  return <span className="whitespace-pre-wrap break-words">{String(value)}</span>
+}
+
 function NodeInspectorPanel({
   node,
   project,
@@ -54,6 +73,17 @@ function NodeInspectorPanel({
         ? buildVideoRequest(project, node)
         : buildLlmRequest(project, node)
   const requestJson = JSON.stringify(requestBody, null, 2)
+  // 请求预览的显示方式：JSON / 表格（存 localStorage，跨节点/刷新保留）
+  const [view, setView] = useState<'json' | 'table'>(() =>
+    localStorage.getItem('openflow-request-view') === 'table' ? 'table' : 'json',
+  )
+  const pickView = (v: 'json' | 'table') => {
+    setView(v)
+    localStorage.setItem('openflow-request-view', v)
+  }
+  const entries = Object.entries(requestBody as Record<string, unknown>).filter(
+    ([, v]) => v !== undefined,
+  )
 
   return (
     <aside
@@ -90,18 +120,55 @@ function NodeInspectorPanel({
         <LlmParams id={id} data={node.data} />
       )}
 
-      {/* 请求 JSON 预览（置底）：点击生成时真正发送的请求体（只读；resize-y 可拖拽调高）。 */}
+      {/* 请求预览（置底）：点击生成时真正发送的请求体，只读。JSON / 表格 两种查看方式可切换。 */}
       <div className="flex flex-col gap-2">
-        <span className="text-[11px] text-muted-foreground">
-          请求 JSON（{ENDPOINT[node.type]}）
-        </span>
-        <Textarea
-          value={requestJson}
-          readOnly
-          // field-sizing-fixed 固定起始高度 + 内部滚动；resize-y 可拖拽调高；
-          // 等宽字体 + cursor-default + bg-muted 表明这是只读的请求负载，仅供查看/复制。
-          className="field-sizing-fixed h-72 max-h-[36rem] resize-y cursor-default whitespace-pre bg-muted/40 font-mono text-[11px] leading-relaxed"
-        />
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[11px] text-muted-foreground">请求（{ENDPOINT[node.type]}）</span>
+          {/* 切换显示方式：JSON / 表格 */}
+          <div className="flex shrink-0 rounded-md border p-0.5">
+            {(['json', 'table'] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => pickView(v)}
+                className={`rounded-sm px-2 py-0.5 text-[10px] transition-colors ${
+                  view === v
+                    ? 'bg-primary/10 font-medium text-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {v === 'json' ? 'JSON' : '表格'}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {view === 'json' ? (
+          <Textarea
+            value={requestJson}
+            readOnly
+            // field-sizing-fixed 固定起始高度 + 内部滚动；resize-y 可拖拽调高；
+            // 等宽字体 + cursor-default + bg-muted 表明这是只读的请求负载，仅供查看/复制。
+            className="field-sizing-fixed h-72 max-h-[36rem] resize-y cursor-default whitespace-pre bg-muted/40 font-mono text-[11px] leading-relaxed"
+          />
+        ) : (
+          <div className="overflow-hidden rounded-md border bg-muted/40 text-[11px]">
+            <table className="w-full border-collapse">
+              <tbody>
+                {entries.map(([k, v]) => (
+                  <tr key={k} className="border-b border-border/60 align-top last:border-b-0">
+                    <td className="w-px whitespace-nowrap border-r border-border/60 px-2 py-1 font-medium text-muted-foreground">
+                      {k}
+                    </td>
+                    <td className="px-2 py-1">
+                      <RequestValue value={v} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </aside>
   )
