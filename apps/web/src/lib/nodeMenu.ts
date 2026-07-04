@@ -1,13 +1,15 @@
-import { Type, Image as ImageIcon, Banana, Sparkles, Video, type LucideIcon } from 'lucide-react'
-import { IMAGE_MODELS, LLM_MODEL_DEFAULT, VIDEO_MODELS } from '@/lib/nodeCatalog'
+import { Type, Image as ImageIcon, Banana, Sparkles, Clapperboard, Images, type LucideIcon } from 'lucide-react'
+import { IMAGE_MODELS, LLM_MODEL_DEFAULT, VIDEO_MODELS, type VideoVariant } from '@/lib/nodeCatalog'
 import { type FlowNodeType } from '@/lib/types'
 
-// 可添加节点的清单项：类型 + 展示名 + 图标（+ 图像/视频类的预置模型）。
+// 可添加节点的清单项：类型 + 展示名 + 图标（+ 图像/视频类的预置模型 + 视频变体）。
 export type NodeMenuItem = {
   type: FlowNodeType
   label: string
   icon: LucideIcon
   model?: string
+  /** 视频节点变体：首尾帧 / 参考图（video 类型专用）。 */
+  videoVariant?: VideoVariant
 }
 
 // 各图像模型的图标（缺省回退到通用图像图标）。
@@ -37,11 +39,22 @@ export const NODE_GROUPS: { label: string; items: NodeMenuItem[] }[] = [
   },
   {
     label: '视频模型',
-    items: VIDEO_MODELS.map((m) => ({
-      type: 'video' as const,
-      label: m,
-      icon: Video,
-      model: m,
-    })),
+    // Seedance 拆成两个变体节点：首尾帧 / 参考图（都只连 Prompt 时退化为文生视频）
+    items: [
+      {
+        type: 'video' as const,
+        label: `${VIDEO_MODELS[0]} 首尾帧`,
+        icon: Clapperboard,
+        model: VIDEO_MODELS[0],
+        videoVariant: 'frames' as const,
+      },
+      {
+        type: 'video' as const,
+        label: `${VIDEO_MODELS[0]} 参考图`,
+        icon: Images,
+        model: VIDEO_MODELS[0],
+        videoVariant: 'reference' as const,
+      },
+    ],
   },
 ]

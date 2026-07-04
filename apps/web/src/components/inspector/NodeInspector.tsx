@@ -1,5 +1,6 @@
 import { Textarea } from '@/components/ui/textarea'
-import { collectUpstreamPrompt } from '@/lib/graph'
+import { useResizableWidth } from '@/hooks/useResizableWidth'
+import { buildImageRequest, buildLlmRequest, buildVideoRequest } from '@/lib/requestBody'
 import {
   type ImageNode as ImageNodeT,
   type LlmNode as LlmNodeT,
@@ -28,6 +29,13 @@ export function NodeInspector() {
   return <NodeInspectorPanel key={node.id} node={node} project={project} />
 }
 
+/** 各节点类型「点击生成」时打到的接口路径（预览标签用）。 */
+const ENDPOINT: Record<'image' | 'video' | 'llm', string> = {
+  image: 'POST /api/aigc',
+  video: 'POST /api/video',
+  llm: 'POST /api/llm',
+}
+
 function NodeInspectorPanel({
   node,
   project,
@@ -36,22 +44,28 @@ function NodeInspectorPanel({
   project: Project
 }) {
   const id = node.id
-  const isLlm = node.type === 'llm'
-  // 运行时实际发送的 prompt（= 上游 Prompt 节点文本按连线拼接），只读预览。
-  // LLM / 图像节点左侧有多个输入端点：Prompt 只取默认 Prompt 端点（排除 System / 图像端点）。
-  const usesPromptHandle = node.type === 'llm' || node.type === 'image'
-  const promptPreview = collectUpstreamPrompt(
-    project,
-    id,
-    usesPromptHandle ? { handle: 'user' } : undefined,
-  )
-  const hasPrompt = promptPreview.trim().length > 0
-  // System Prompt 预览：仅 LLM 节点，取 System Prompt 端点的上游文本
-  const systemPreview = isLlm ? collectUpstreamPrompt(project, id, { handle: 'system' }) : ''
-  const hasSystem = systemPreview.trim().length > 0
+  // 面板宽度可调：当前设计宽度 240px 作为下限
+  const { width, onPointerDownResize } = useResizableWidth('openflow-inspector-width', 240)
+  // 「点击生成时发送的请求体」——与各节点 handleRun 同源（build*Request），保证预览=实发。
+  const requestBody =
+    node.type === 'image'
+      ? buildImageRequest(project, node)
+      : node.type === 'video'
+        ? buildVideoRequest(project, node)
+        : buildLlmRequest(project, node)
+  const requestJson = JSON.stringify(requestBody, null, 2)
 
   return (
-    <aside className="absolute right-0 top-0 z-10 flex h-full w-60 flex-col gap-3 overflow-y-auto border-l bg-background p-4">
+    <aside
+      style={{ width }}
+      className="absolute right-0 top-0 z-10 flex h-full flex-col gap-3 overflow-y-auto border-l bg-background p-4"
+    >
+      {/* 左缘拖拽调宽 */}
+      <div
+        onPointerDown={onPointerDownResize}
+        title="拖拽调整宽度"
+        className="absolute left-0 top-0 z-30 h-full w-1.5 cursor-col-resize hover:bg-primary/30"
+      />
       <div className="flex flex-col gap-0.5">
         <span className="text-xs text-muted-foreground">{node.data.label}</span>
         <h2 className="text-sm font-semibold">{node.data.model}</h2>
@@ -76,32 +90,17 @@ function NodeInspectorPanel({
         <LlmParams id={id} data={node.data} />
       )}
 
-      {/* System Prompt 预览（仅 LLM）：连到 System Prompt 端点的上游文本，只读。 */}
-      {isLlm && (
-        <div className="flex flex-col gap-2">
-          <span className="text-[11px] text-muted-foreground">System Prompt（只读预览）</span>
-          <Textarea
-            value={hasSystem ? systemPreview : ''}
-            readOnly
-            placeholder="未连接 System Prompt 端点"
-            className="field-sizing-fixed h-20 max-h-96 resize-y cursor-default bg-muted/40 text-xs"
-          />
-        </div>
-      )}
-
-      {/* 最终 Prompt 预览（置底）：运行时发送的 prompt（上游 Prompt 节点文本按连线拼接）。
-          readOnly = 只读不可改，可查看/复制；resize-y 让用户拖拽调高。 */}
+      {/* 请求 JSON 预览（置底）：点击生成时真正发送的请求体（只读；resize-y 可拖拽调高）。 */}
       <div className="flex flex-col gap-2">
         <span className="text-[11px] text-muted-foreground">
-          {isLlm ? 'Prompt（只读预览）' : '最终 Prompt（只读预览）'}
+          请求 JSON（{ENDPOINT[node.type]}）
         </span>
         <Textarea
-          value={hasPrompt ? promptPreview : ''}
+          value={requestJson}
           readOnly
-          placeholder="未连接含内容的 Prompt 节点"
           // field-sizing-fixed 固定起始高度 + 内部滚动；resize-y 可拖拽调高；
-          // cursor-default + bg-muted 弱化「可编辑」暗示，配合 readOnly 表明仅供查看。
-          className="field-sizing-fixed h-24 max-h-96 resize-y cursor-default bg-muted/40 text-xs"
+          // 等宽字体 + cursor-default + bg-muted 表明这是只读的请求负载，仅供查看/复制。
+          className="field-sizing-fixed h-72 max-h-[36rem] resize-y cursor-default whitespace-pre bg-muted/40 font-mono text-[11px] leading-relaxed"
         />
       </div>
     </aside>

@@ -2,23 +2,26 @@
 // 约定：文本/Prompt 连接用粉色，图像连接用绿色，其余（音频/视频/未定义）用默认色。
 
 import type { FlowNode } from './types'
-import { IMAGE_INPUT_HANDLE_PREFIX, LLM_SYSTEM_HANDLE } from './graph'
+import { AUDIO_INPUT_HANDLE_PREFIX, IMAGE_INPUT_HANDLE_PREFIX, LLM_SYSTEM_HANDLE } from './graph'
 
-/** 两种已定义连接类型的颜色（端点与连线同色）。 */
+/** 已定义连接类型的颜色（端点与连线同色）。 */
 export const HANDLE_COLORS = {
   /** 文本 / Prompt 连接。 */
   text: '#F1A0FA',
   /** 图像连接。 */
   image: '#6EDDB3',
+  /** 音频连接。 */
+  audio: '#8AB4F8',
 } as const
 
-/** 端点色调：prompt/text=粉，image=绿，default=不着色（用默认灰）。 */
-export type HandleTone = 'prompt' | 'image' | 'default'
+/** 端点色调：prompt/text=粉，image=绿，audio=蓝，default=不着色（用默认灰）。 */
+export type HandleTone = 'prompt' | 'image' | 'audio' | 'default'
 
 /** 色调 → 具体颜色（default 返回 undefined，回退 CSS 默认）。 */
 export function toneColor(tone: HandleTone): string | undefined {
   if (tone === 'prompt') return HANDLE_COLORS.text
   if (tone === 'image') return HANDLE_COLORS.image
+  if (tone === 'audio') return HANDLE_COLORS.audio
   return undefined
 }
 
@@ -33,15 +36,16 @@ export function sourceKind(node: FlowNode | undefined): SourceKind {
   return 'other' // video / group 等
 }
 
-/** 连线颜色 = 其源节点输出的数据类型色（文本粉 / 图像绿 / 其余默认）。 */
+/** 连线颜色 = 其源节点输出的数据类型色（文本粉 / 图像绿 / 音频蓝 / 其余默认）。 */
 export function edgeColorForSource(node: FlowNode | undefined): string | undefined {
   const k = sourceKind(node)
   if (k === 'text') return HANDLE_COLORS.text
   if (k === 'image') return HANDLE_COLORS.image
+  if (k === 'audio') return HANDLE_COLORS.audio
   return undefined
 }
 
-/** 目标端点接受的数据种类（按 targetHandle + 目标节点类型判定）。null=不限（视频/未定义）。 */
+/** 目标端点接受的数据种类（按 targetHandle + 目标节点类型判定）。null=不限（未定义）。 */
 export function targetAccepts(
   targetNode: FlowNode | undefined,
   targetHandle: string | null | undefined,
@@ -49,12 +53,21 @@ export function targetAccepts(
   if (typeof targetHandle === 'string' && targetHandle.startsWith(IMAGE_INPUT_HANDLE_PREFIX)) {
     return 'image' // 图像输入端点只接图像
   }
+  if (typeof targetHandle === 'string' && targetHandle.startsWith(AUDIO_INPUT_HANDLE_PREFIX)) {
+    return 'audio' // 音频输入端点只接音频
+  }
   if (targetHandle === LLM_SYSTEM_HANDLE) return 'text' // System Prompt 只接文本
-  // 默认（空 handle）端点：Prompt/LLM/图像 节点的默认口都是 Prompt（只接文本）
-  if (targetNode && (targetNode.type === 'prompt' || targetNode.type === 'llm' || targetNode.type === 'image')) {
+  // 默认（空 handle）端点：Prompt/LLM/图像/视频 节点的默认口都是 Prompt（只接文本）
+  if (
+    targetNode &&
+    (targetNode.type === 'prompt' ||
+      targetNode.type === 'llm' ||
+      targetNode.type === 'image' ||
+      targetNode.type === 'video')
+  ) {
     return 'text'
   }
-  return null // 视频节点等混合输入：不限制
+  return null
 }
 
 /**

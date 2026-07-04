@@ -7,19 +7,17 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { DownloadDialog, type DownloadTarget } from '@/components/canvas/DownloadDialog'
 import { NodeHeader } from './NodeHeader'
 import { NodeHandle } from './NodeHandle'
+import {
+  AddAudioInputButton,
+  AddImageInputButton,
+  AudioInputHandles,
+  ImageInputHandles,
+} from './ImageInputHandles'
 import { createVideoTaskApi } from '@/lib/api'
 import { pollTask } from '@/lib/taskPolling'
-import {
-  SEEDANCE_DURATION_DEFAULT,
-  SEEDANCE_RATIO_DEFAULT,
-  SEEDANCE_RESOLUTION_DEFAULT,
-  SEEDANCE_VERSION_DEFAULT,
-  deriveVideoTask,
-  videoApiModel,
-  videoTaskImages,
-  videoTaskMode,
-} from '@/lib/nodeCatalog'
-import { collectUpstreamAudio, collectUpstreamImages, collectUpstreamPrompt } from '@/lib/graph'
+import { audioInputCount, imageInputCount, imageInputHandleId } from '@/lib/graph'
+import { VIDEO_VARIANT_DEFAULT } from '@/lib/nodeCatalog'
+import { buildVideoRequest } from '@/lib/requestBody'
 import { type VideoNode as VideoNodeType } from '@/lib/types'
 import { useFlowStore } from '@/store/useFlowStore'
 
@@ -39,15 +37,17 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
     setDialogOpen(true)
   }
 
-  // 兼容旧 video 节点（早期只有 {label, model}）：缺失字段给默认值；以下派生供 handleRun 取参。
-  const imagesText = data.imagesText ?? ''
-  const audiosText = data.audiosText ?? ''
-  const version = data.version ?? SEEDANCE_VERSION_DEFAULT
-  const resolution = data.resolution ?? SEEDANCE_RESOLUTION_DEFAULT
-  const ratio = data.ratio ?? SEEDANCE_RATIO_DEFAULT
-  const duration = data.duration ?? SEEDANCE_DURATION_DEFAULT
   const result = data.result ?? []
   const running = data.running ?? false
+
+  // 变体：frames（首尾帧）/ reference（参考图）。旧数据按 legacy videoTask 推断。
+  const variant = data.videoVariant ?? (data.videoTask === 'reference' ? 'reference' : VIDEO_VARIANT_DEFAULT)
+  const isReference = variant === 'reference'
+  const imageInputs = imageInputCount(data.imageInputs)
+  const audioInputs = audioInputCount(data.audioInputs)
+  // 左侧端点竖向排位：Prompt(0) → 图像端点 → 音频端点。frames 固定 2 张图，reference 为 imageInputs
+  const imageSlots = isReference ? imageInputs : 2
+  const audioBaseIndex = 1 + imageSlots
 
   const fail = (message: string) => {
     updateNodeData(id, { running: false, error: message, taskId: undefined })
@@ -88,41 +88,20 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
       fail('未找到当前项目')
       return
     }
-    const prompt = collectUpstreamPrompt(project, id)
-    if (!prompt.trim()) {
+    const node = project.nodes.find((n) => n.id === id)
+    if (node?.type !== 'video') {
+      fail('未找到当前节点')
+      return
+    }
+    // 请求体与 Inspector 的「请求 JSON 预览」同源（buildVideoRequest），保证预览=实发
+    const body = buildVideoRequest(project, node)
+    if (!body.prompt.trim()) {
       fail('请先连接一个有内容的 Prompt 节点')
       return
     }
-    // 输入图 = 上游 image 节点的连线结果（图片1…）在前，手动填/传的在后
-    const manualImages = imagesText
-      .split('\n')
-      .map((s) => s.trim())
-      .filter(Boolean)
-    const combined = [...collectUpstreamImages(project, id), ...manualImages]
-    // 任务 → 后端 mode + 真正提交的有序图（文生=空 / 首帧=前1 / 首尾帧=前2 / 参考=全部）
-    const task = deriveVideoTask(data.videoTask, data.mode, combined.length)
-    // 输入音频 = 上游音频素材节点经连线传入（在前）+ 本节点手动填/传的 URL（在后），一并作 audio_list
-    const manualAudios = audiosText
-      .split('\n')
-      .map((s) => s.trim())
-      .filter(Boolean)
-    const audios = [...collectUpstreamAudio(project, id), ...manualAudios]
     updateNodeData(id, { running: true, error: undefined, result: [], taskId: undefined })
     try {
-      const taskId = await createVideoTaskApi({
-        projectId: project.id,
-        nodeId: id,
-        model: videoApiModel(data.model),
-        version,
-        mode: videoTaskMode(task),
-        prompt,
-        images: videoTaskImages(task, combined),
-        audios,
-        resolution,
-        // adaptive（自适应）=不约束宽高比，等价旧行为，故不传；仅在选了固定比例时下发
-        ratio: ratio === SEEDANCE_RATIO_DEFAULT ? undefined : ratio,
-        duration,
-      })
+      const taskId = await createVideoTaskApi(body)
       attachedRef.current = taskId
       updateNodeData(id, { taskId })
       const controller = new AbortController()
@@ -140,16 +119,23 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
         selected ? 'ring-2 ring-primary' : ''
       }`}
     >
-      {/* 输入：Prompt（必填，实心）——图/音频也从此口连入（混合） */}
-      <NodeHandle
-        type="target"
-        index={0}
-        tone="prompt"
-        label="Prompt"
-        required
-        title="Prompt 输入（必填；图 / 音频也走此口）"
+      {/* 左侧输入端点：Prompt（必填，粉实心）+ 图像端点（绿）+ 音频端点（蓝） */}
+      <NodeHandle type="target" index={0} tone="prompt" label="Prompt" required title="Prompt 输入（必填）" />
+      {isReference ? (
+        <ImageInputHandles count={imageInputs} baseIndex={1} />
+      ) : (
+        <>
+          <NodeHandle type="target" id={imageInputHandleId(0)} index={1} tone="image" label="First Frame" title="首帧" />
+          <NodeHandle type="target" id={imageInputHandleId(1)} index={2} tone="image" label="Last Frame" title="尾帧" />
+        </>
+      )}
+      <AudioInputHandles count={audioInputs} baseIndex={audioBaseIndex} />
+      <NodeHeader
+        id={id}
+        icon={Video}
+        title={`${data.model} · ${isReference ? '参考图' : '首尾帧'}`}
+        selected={selected}
       />
-      <NodeHeader id={id} icon={Video} title={data.model} selected={selected} />
       <CardContent className="flex flex-col gap-2 px-3">
         {/* 结果展示区 */}
         <div className="nodrag overflow-hidden rounded-md border">
@@ -185,9 +171,14 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
           )}
         </div>
 
-        <Button size="sm" onClick={handleRun} disabled={running} className="nodrag w-full">
-          {running ? '生成中…' : '生成'}
-        </Button>
+        {/* 添加图像/音频输入（text button）+ 生成 并排 */}
+        <div className="flex flex-wrap items-center gap-1">
+          {isReference && <AddImageInputButton id={id} count={imageInputs} />}
+          <AddAudioInputButton id={id} count={audioInputs} />
+          <Button size="sm" onClick={handleRun} disabled={running} className="nodrag ml-auto h-8">
+            {running ? '生成中…' : '生成'}
+          </Button>
+        </div>
 
         {data.error && (
           <p className="nodrag rounded-md bg-destructive/10 p-2 text-[11px] text-destructive">

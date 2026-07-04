@@ -10,15 +10,8 @@ import { NodeHandle } from './NodeHandle'
 import { AddImageInputButton, ImageInputHandles } from './ImageInputHandles'
 import { createImageTaskApi } from '@/lib/api'
 import { pollTask } from '@/lib/taskPolling'
-import {
-  IMAGE_SIZE_DEFAULT,
-  IMAGE_SIZE_OPTIONS,
-  NANO_ASPECT_DEFAULT,
-  NANO_IMAGE_SIZE_DEFAULT,
-  NANO_VERSION_DEFAULT,
-  imageApiModel,
-} from '@/lib/nodeCatalog'
-import { collectUpstreamImages, collectUpstreamPrompt, imageInputCount } from '@/lib/graph'
+import { imageInputCount } from '@/lib/graph'
+import { buildImageRequest } from '@/lib/requestBody'
 import { type ImageNode as ImageNodeType } from '@/lib/types'
 import { useFlowStore } from '@/store/useFlowStore'
 
@@ -38,19 +31,6 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
     setDialogOpen(true)
   }
 
-  // 兼容旧数据：早期 image 节点只有 {label, model}，缺失字段给默认值，避免崩。
-  // 以下派生供 handleRun 取参（参数 UI 已移到 Inspector，但运行时仍从 data 读取）。
-  const imagesText = data.imagesText ?? ''
-  const isNano = imageApiModel(data.model) === 'nano-banana'
-  const storedSize = data.size ?? IMAGE_SIZE_DEFAULT
-  const size = (IMAGE_SIZE_OPTIONS as readonly string[]).includes(storedSize)
-    ? storedSize
-    : IMAGE_SIZE_DEFAULT
-  const quality = data.quality ?? 'auto'
-  const n = data.n ?? 1
-  const version = data.version ?? NANO_VERSION_DEFAULT
-  const aspectRatio = data.aspectRatio ?? NANO_ASPECT_DEFAULT
-  const imageSize = data.imageSize ?? NANO_IMAGE_SIZE_DEFAULT
   const result = data.result ?? []
   const running = data.running ?? false
   const imageInputs = imageInputCount(data.imageInputs)
@@ -100,31 +80,20 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
       fail('未找到当前项目')
       return
     }
-    // Prompt 只取默认 Prompt 端点（排除图像端点）；图像走各图像输入端点
-    const prompt = collectUpstreamPrompt(project, id, { handle: 'user' })
-    if (!prompt.trim()) {
+    const node = project.nodes.find((n) => n.id === id)
+    if (node?.type !== 'image') {
+      fail('未找到当前节点')
+      return
+    }
+    // 请求体与 Inspector 的「请求 JSON 预览」同源（buildImageRequest），保证预览=实发
+    const body = buildImageRequest(project, node)
+    if (!body.prompt.trim()) {
       fail('请先连接一个有内容的 Prompt 节点')
       return
     }
-    // 输入图 = 上游 image 节点/素材按图像端点编号（图1、图2…）在前，手动填/传的在后
-    const manualImages = imagesText
-      .split('\n')
-      .map((s) => s.trim())
-      .filter(Boolean)
-    const images = [...collectUpstreamImages(project, id), ...manualImages]
     updateNodeData(id, { running: true, error: undefined, result: [], taskId: undefined })
     try {
-      const taskId = await createImageTaskApi({
-        projectId: project.id,
-        nodeId: id,
-        model: imageApiModel(data.model),
-        prompt,
-        images,
-        // 按模型分组传参，未用到的一组留默认值/空（后端按 model 取舍）
-        ...(isNano
-          ? { version, aspectRatio, imageSize, size: '', n: 1, quality: '' }
-          : { size, n, quality }),
-      })
+      const taskId = await createImageTaskApi(body)
       // 立刻存下 taskId：点击后 1s 刷新也已存下，可重连（关页面不丢结果）
       attachedRef.current = taskId
       updateNodeData(id, { taskId })

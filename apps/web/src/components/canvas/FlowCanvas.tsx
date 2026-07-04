@@ -293,12 +293,13 @@ export function FlowCanvas() {
     if (nodePayload) {
       event.preventDefault()
       try {
-        const { type, model } = JSON.parse(nodePayload) as {
+        const { type, model, videoVariant } = JSON.parse(nodePayload) as {
           type: FlowNodeType
           model?: string
+          videoVariant?: 'frames' | 'reference'
         }
         const pos = screenToFlowPosition({ x: event.clientX, y: event.clientY })
-        addNode(type, model, pos)
+        addNode(type, model, pos, videoVariant)
       } catch (e) {
         console.error('[openflow] 拖入节点解析失败', e)
       }
@@ -455,9 +456,10 @@ export function FlowCanvas() {
                 model: item.model,
                 position: menu.flow,
                 from: menu.connectFrom,
+                videoVariant: item.videoVariant,
               })
             } else {
-              addNode(item.type, item.model, menu.flow)
+              addNode(item.type, item.model, menu.flow, item.videoVariant)
             }
             setMenu(null)
           }}

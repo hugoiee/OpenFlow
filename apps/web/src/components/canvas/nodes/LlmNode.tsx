@@ -9,13 +9,9 @@ import { NodeHandle } from './NodeHandle'
 import { AddImageInputButton, ImageInputHandles } from './ImageInputHandles'
 import { createLlmTaskApi } from '@/lib/api'
 import { pollTask } from '@/lib/taskPolling'
-import { LLM_MODEL_DEFAULT, LLM_TEMPERATURE_DEFAULT } from '@/lib/nodeCatalog'
-import {
-  LLM_SYSTEM_HANDLE,
-  collectUpstreamImages,
-  collectUpstreamPrompt,
-  imageInputCount,
-} from '@/lib/graph'
+import { LLM_MODEL_DEFAULT } from '@/lib/nodeCatalog'
+import { LLM_SYSTEM_HANDLE, imageInputCount } from '@/lib/graph'
+import { buildLlmRequest } from '@/lib/requestBody'
 import { type LlmNode as LlmNodeType } from '@/lib/types'
 import { useFlowStore } from '@/store/useFlowStore'
 
@@ -27,7 +23,6 @@ export function LlmNode({ id, data, selected }: NodeProps<LlmNodeType>) {
   const updateNodeData = useFlowStore((s) => s.updateNodeData)
 
   const model = data.model || LLM_MODEL_DEFAULT
-  const temperature = data.temperature ?? LLM_TEMPERATURE_DEFAULT
   const thinking = data.thinking ?? false
   const result = data.result ?? ''
   const reasoning = data.reasoning ?? ''
@@ -94,15 +89,17 @@ export function LlmNode({ id, data, selected }: NodeProps<LlmNodeType>) {
       fail('未找到当前项目')
       return
     }
-    // 用户 Prompt 走默认输入端点；系统提示词走 System Prompt 端点（可空）
-    const prompt = collectUpstreamPrompt(project, id, { handle: 'user' })
-    if (!prompt.trim()) {
+    const node = project.nodes.find((n) => n.id === id)
+    if (node?.type !== 'llm') {
+      fail('未找到当前节点')
+      return
+    }
+    // 请求体与 Inspector 的「请求 JSON 预览」同源（buildLlmRequest），保证预览=实发
+    const body = buildLlmRequest(project, node)
+    if (!body.prompt.trim()) {
       fail('请先在「Prompt 输入」端点连接一个有内容的 Prompt / LLM 节点')
       return
     }
-    const systemPrompt = collectUpstreamPrompt(project, id, { handle: 'system' })
-    // 多模态：各图像输入端点连入的上游图（按端点编号排序），有则发给视觉模型
-    const images = collectUpstreamImages(project, id)
     updateNodeData(id, {
       running: true,
       error: undefined,
@@ -111,16 +108,7 @@ export function LlmNode({ id, data, selected }: NodeProps<LlmNodeType>) {
       taskId: undefined,
     })
     try {
-      const taskId = await createLlmTaskApi({
-        projectId: project.id,
-        nodeId: id,
-        model,
-        prompt,
-        systemPrompt: systemPrompt.trim() || undefined,
-        images: images.length ? images : undefined,
-        temperature,
-        thinking,
-      })
+      const taskId = await createLlmTaskApi(body)
       attachedRef.current = taskId
       updateNodeData(id, { taskId })
       const controller = new AbortController()

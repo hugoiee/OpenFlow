@@ -27,7 +27,8 @@ import {
   SEEDANCE_RATIO_DEFAULT,
   SEEDANCE_RESOLUTION_DEFAULT,
   SEEDANCE_VERSION_DEFAULT,
-  VIDEO_TASK_DEFAULT,
+  VIDEO_VARIANT_DEFAULT,
+  type VideoVariant,
 } from '@/lib/nodeCatalog'
 import {
   GROUP_PADDING,
@@ -68,7 +69,12 @@ type FlowState = {
   onConnect: (connection: Connection) => void
   /** 拖动连线端点重连到新的 handle（Delete Edge on Drop：拖到空白处则由 FlowCanvas 删除该边）。 */
   onReconnect: (oldEdge: Edge, newConnection: Connection) => void
-  addNode: (type: FlowNodeType, model?: string, position?: { x: number; y: number }) => void
+  addNode: (
+    type: FlowNodeType,
+    model?: string,
+    position?: { x: number; y: number },
+    videoVariant?: VideoVariant,
+  ) => void
   /** 在指定画布坐标新建一个素材节点（上传中态），返回新节点 id。 */
   addAssetNode: (kind: 'image' | 'audio', position: { x: number; y: number }) => string
   /** 删除某个节点（如素材上传失败时移除占位节点）。 */
@@ -99,6 +105,7 @@ type FlowState = {
     model?: string
     position: { x: number; y: number }
     from: { nodeId: string; handleType: 'source' | 'target'; handleId?: string | null }
+    videoVariant?: VideoVariant
   }) => void
   /** 把当前选中的（未分组的非容器）节点包进一个新建的 group 容器节点，选中容器；<2 个则不动。 */
   groupSelectedNodes: () => void
@@ -113,6 +120,7 @@ function createNode(
   count: number,
   model = '',
   positionOverride?: { x: number; y: number },
+  videoVariant?: VideoVariant,
 ): FlowNode {
   // 拖入时用指针落点；点按时让新节点错落排布，避免完全重叠
   const position = positionOverride ?? { x: 80 + (count % 4) * 60, y: 80 + count * 50 }
@@ -162,7 +170,7 @@ function createNode(
       },
     }
   }
-  // 视频生成节点（seedance）：带具名模型 + 可调选项默认值；运行状态/结果初始为空
+  // 视频生成节点（seedance）：变体（首尾帧/参考图）+ 具名模型 + 可调选项默认值；运行/结果初始为空
   return {
     id: newId('n_'),
     type: 'video',
@@ -170,9 +178,11 @@ function createNode(
     data: {
       label: '视频',
       model,
+      videoVariant: videoVariant ?? VIDEO_VARIANT_DEFAULT,
+      imageInputs: 1,
+      audioInputs: 1,
       imagesText: '',
       version: SEEDANCE_VERSION_DEFAULT,
-      videoTask: VIDEO_TASK_DEFAULT,
       resolution: SEEDANCE_RESOLUTION_DEFAULT,
       ratio: SEEDANCE_RATIO_DEFAULT,
       duration: SEEDANCE_DURATION_DEFAULT,
@@ -334,10 +344,10 @@ export const useFlowStore = create<FlowState>()((set, get) => {
     onReconnect: (oldEdge, newConnection) =>
       patchActive((p) => ({ ...p, edges: reconnectEdge(oldEdge, newConnection, p.edges) })),
 
-    addNode: (type, model, position) =>
+    addNode: (type, model, position, videoVariant) =>
       patchActive((p) => ({
         ...p,
-        nodes: [...p.nodes, createNode(type, p.nodes.length, model, position)],
+        nodes: [...p.nodes, createNode(type, p.nodes.length, model, position, videoVariant)],
       })),
 
     addAssetNode: (kind, position) => {
@@ -424,9 +434,9 @@ export const useFlowStore = create<FlowState>()((set, get) => {
       return { promptNodeId: promptNode.id, imageNodeId: imageNode.id }
     },
 
-    addConnectedNode: ({ type, model, position, from }) =>
+    addConnectedNode: ({ type, model, position, from, videoVariant }) =>
       patchActive((p) => {
-        const node = createNode(type, p.nodes.length, model, position)
+        const node = createNode(type, p.nodes.length, model, position, videoVariant)
         const fromNode = p.nodes.find((n) => n.id === from.nodeId)
         // 除 asset（纯源，只出不进）外都有输入(target) handle；从输出端拉出却选了无输入口的节点（asset）时，
         // 无处可连 → 只建节点不连线，避免生成一条挂空的坏边。

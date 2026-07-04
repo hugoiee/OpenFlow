@@ -13,10 +13,16 @@ import { type Project } from './types'
  */
 export const LLM_SYSTEM_HANDLE = 'system'
 
-/** 图像输入端点 handle id 前缀：LLM/图像节点的第 i 个图像端点为 `image-${i}`（i 从 0 起，展示编号 i+1）。 */
+/** 图像输入端点 handle id 前缀：第 i 个图像端点为 `image-${i}`（i 从 0 起，展示编号 i+1）。 */
 export const IMAGE_INPUT_HANDLE_PREFIX = 'image-'
 export function imageInputHandleId(index: number): string {
   return `${IMAGE_INPUT_HANDLE_PREFIX}${index}`
+}
+
+/** 音频输入端点 handle id 前缀：第 i 个音频端点为 `audio-${i}`（视频节点用）。 */
+export const AUDIO_INPUT_HANDLE_PREFIX = 'audio-'
+export function audioInputHandleId(index: number): string {
+  return `${AUDIO_INPUT_HANDLE_PREFIX}${index}`
 }
 
 /** 节点图像输入端点数量（含旧数据兜底）：至少 1。 */
@@ -24,10 +30,15 @@ export function imageInputCount(imageInputs: number | undefined): number {
   return Math.max(1, imageInputs ?? 1)
 }
 
-/** 从 targetHandle 解析图像端点排序键：'image-N'→N（编号顺序）；其余（含旧的空 handle）→ -1（排最前，兼容旧连线）。 */
-function imageInputSlot(targetHandle: string | null | undefined): number {
-  if (typeof targetHandle === 'string' && targetHandle.startsWith(IMAGE_INPUT_HANDLE_PREFIX)) {
-    const n = Number(targetHandle.slice(IMAGE_INPUT_HANDLE_PREFIX.length))
+/** 节点音频输入端点数量（含旧数据兜底）：至少 1。 */
+export function audioInputCount(audioInputs: number | undefined): number {
+  return Math.max(1, audioInputs ?? 1)
+}
+
+/** 从 targetHandle 解析编号端点排序键：`${prefix}N`→N；其余（含旧的空 handle）→ -1（排最前，兼容旧连线）。 */
+function handleSlot(targetHandle: string | null | undefined, prefix: string): number {
+  if (typeof targetHandle === 'string' && targetHandle.startsWith(prefix)) {
+    const n = Number(targetHandle.slice(prefix.length))
     return Number.isFinite(n) ? n : -1
   }
   return -1
@@ -95,7 +106,7 @@ export function collectUpstreamImages(project: Project, nodeId: string): string[
   project.edges.forEach((e, order) => {
     if (e.target !== nodeId) return
     const src = project.nodes.find((n) => n.id === e.source)
-    const slot = imageInputSlot(e.targetHandle)
+    const slot = handleSlot(e.targetHandle, IMAGE_INPUT_HANDLE_PREFIX)
     if (src?.type === 'image') {
       for (const url of (src.data.result ?? []).filter(Boolean)) {
         entries.push({ slot, order, url })
@@ -111,16 +122,18 @@ export function collectUpstreamImages(project: Project, nodeId: string): string[
 
 /**
  * 收集所有指向 nodeId 的上游音频素材节点的 URL（作为视频节点的 audio_list）。
- * 按连线（edges）顺序展平；URL 为空的素材不贡献。
+ * 按「音频输入端点编号」排序（audio-0、audio-1…），旧的空 handle 连线排最前（兼容）；
+ * 同端点内按连线顺序展平；URL 为空的素材不贡献。
  */
 export function collectUpstreamAudio(project: Project, nodeId: string): string[] {
-  const out: string[] = []
-  for (const e of project.edges) {
-    if (e.target !== nodeId) continue
+  const entries: { slot: number; order: number; url: string }[] = []
+  project.edges.forEach((e, order) => {
+    if (e.target !== nodeId) return
     const src = project.nodes.find((n) => n.id === e.source)
     if (src?.type === 'asset' && src.data.kind === 'audio' && src.data.url) {
-      out.push(src.data.url)
+      entries.push({ slot: handleSlot(e.targetHandle, AUDIO_INPUT_HANDLE_PREFIX), order, url: src.data.url })
     }
-  }
-  return out
+  })
+  entries.sort((a, b) => a.slot - b.slot || a.order - b.order)
+  return entries.map((e) => e.url)
 }
