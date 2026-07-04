@@ -77,7 +77,10 @@ export function PromptNode({ id, data, selected, width, height }: NodeProps<Prom
 
   return (
     <Card
-      style={{ width: width ?? DEFAULT_WIDTH, height: height ?? DEFAULT_HEIGHT }}
+      // 用 || 而非 ??：React Flow 可能把 width/height 持久化成 0（测量竞态），
+      // ?? 不拦 0 → Card 塌成 0 宽度、整个节点不可见。|| 让 0/NaN 也回退默认，
+      // 渲染出默认尺寸后 React Flow 会重新测量并把尺寸写正（自愈）。
+      style={{ width: width || DEFAULT_WIDTH, height: height || DEFAULT_HEIGHT }}
       className={`group/node flex flex-col gap-2 py-3 shadow-sm transition-shadow ${
         selected ? 'ring-2 ring-primary' : ''
       }`}

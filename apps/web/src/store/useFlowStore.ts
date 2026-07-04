@@ -184,7 +184,19 @@ export const useFlowStore = create<FlowState>()((set, get) => {
         name: d.name,
         // image/video 节点的 running/error 是瞬时态：载入时复位为非运行态，避免卡在「生成中…」。
         // 但保留 taskId（与 result）：若任务仍在飞，节点 mount 时凭 taskId 重连轮询（关页面不丢结果）。
-        nodes: (d.nodes as FlowNode[]).map((node) => {
+        nodes: (d.nodes as FlowNode[]).map((rawNode) => {
+          // 清洗坏尺寸：React Flow 可能把 width/height 持久化成 0（测量竞态）。0 会被当作
+          // 显式尺寸套到节点外层容器 → 节点塌成 0 宽、整体不可见（如 Prompt 节点重开看不到）。
+          // 剔除 ≤0 的 width/height/measured，让 RF 重新测量自适应（渲染出来后尺寸自愈为正值）。
+          let node = rawNode
+          const badW = typeof rawNode.width === 'number' && rawNode.width <= 0
+          const badH = typeof rawNode.height === 'number' && rawNode.height <= 0
+          if (badW || badH) {
+            node = { ...rawNode }
+            delete node.width
+            delete node.height
+            delete node.measured
+          }
           if (node.type === 'image') {
             return { ...node, data: { ...node.data, running: false, error: undefined } }
           }
