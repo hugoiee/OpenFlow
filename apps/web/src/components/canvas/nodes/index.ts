@@ -4,6 +4,7 @@ import { LlmNode } from './LlmNode'
 import { ImageNode } from './ImageNode'
 import { SeedanceNode } from './SeedanceNode'
 import { AssetNode } from './AssetNode'
+import { GroupNode } from './GroupNode'
 
 export const nodeTypes: NodeTypes = {
   prompt: PromptNode,
@@ -11,4 +12,5 @@ export const nodeTypes: NodeTypes = {
   image: ImageNode,
   video: SeedanceNode,
   asset: AssetNode,
+  group: GroupNode,
 }

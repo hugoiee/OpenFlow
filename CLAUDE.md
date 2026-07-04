@@ -2,7 +2,7 @@
 
 节点式 AI 工作流画布编辑器：支持多个项目，每个项目是一块画布，可在画布上添加节点
 （节点列表按输出形态分三类：**文本** Prompt 节点 + Any LLM 节点 / **图像** 生成节点 / **视频** 生成节点）并用连线把
-节点连接起来。**Any LLM 节点**：把上游 Prompt/LLM 文本喂给一个 OpenAI 兼容模型产出文本（左入右出，输出经连线可作下游节点的 prompt）；
+节点连接起来。**选中多个节点右键**可对其**分组**（建一个容器节点包住、一起移动/改名/取消分组）或**整理**（网格排列）。**Any LLM 节点**：把上游 Prompt/LLM 文本喂给一个 OpenAI 兼容模型产出文本（左入右出，输出经连线可作下游节点的 prompt）；
 节点卡片展示回答（思考文本若返回则折叠展示），选中时右侧 Inspector 面板调 Model（预置下拉）/ Temperature（滑块）/ Thinking（开关，开启发 reasoning_effort 原生推理参数）；
 调用**复用画布 Agent 的 endpoint/key**（不需 req_from），走异步任务（同图像/视频，刷新不丢结果）。还支持从桌面**拖入图像/音频文件**：拖到空白处经 /api/upload 上传后生成 **素材节点**（图像素材 / 音频素材，纯「源」节点，
 连下游图像/视频节点作输入——图像素材作输入图、音频素材作视频 audio_list）；拖到已有图像/视频节点上则把图片直接追加进其输入图，拖音频到视频节点则追加进其输入音频（audio_list）。
@@ -66,6 +66,7 @@ apps/web/src/
   main.tsx                     入口：先 migrateLocalStorage() 迁移旧数据，再 load store，最后渲染（HashRouter）
   App.tsx                      用 ReqFromGate 包裹路由（/ → 首页，/project/:id → 工作区，* → 回首页）
   store/useFlowStore.ts        Zustand（无 persist）：启动 loadProjects() 拉后端；增删改调 API；
+                               groupSelectedNodes/ungroupNode/arrangeSelectedNodes：选中多节点分组（建 group 容器 + 子节点设 parentId/extent、坐标转相对、容器排在子节点前）/ 取消分组（detachChildren 释放子节点转绝对 + 删容器）/ 整理（computeGridLayout 网格排列）；onNodesChange 拦截 group 删除时先 detachChildren 释放子节点（防 parentId 悬空错位）；
                                画布编辑本地即时更新 + 防抖(500ms) PUT 保存激活项目；homeView 存 localStorage；
                                addAssetNode(kind,position)/removeNode(id) 供拖拽建/撤素材节点；addAgentGeneration({prompt,model,title?}) 供 Agent 在现有内容下方建「Prompt→图像」节点对并连线、返回两节点 id（摆放按 measured.height/兜底高度找底部空位）；updateNodeDataInProject(projectId,nodeId,data) 显式按项目写节点 data（异步回调防「等待期间切走画布」丢写）；载入时复位 asset 的 uploading 与 image/video 的 running/error（但**保留 taskId/result**，供节点重连未完成任务）
   store/useSettingsStore.ts    Zustand（无 persist）：loadSettings() 拉 defaultReqFrom + 三端点 + agent 三项；saveSettings(部分字段) PUT 后回拉；saveReqFrom() 为其薄封装（其余字段由后端合并保留，供 ReqFromGate）
@@ -76,7 +77,8 @@ apps/web/src/
   lib/taskPolling.ts           pollTask(taskId,{onUpdate?,signal})：递归 setTimeout 轮询任务至终态（起 1500ms×1.3 退避封顶 5000ms；瞬时错误重试；signal abort 可取消）
   lib/graph.ts                 连线采集：collectUpstreamPrompt（上游 prompt 文本 + 上游 Any LLM 节点输出文本；prompt 有左侧输入→递归并入其上游文本实现 Prompt 链，LLM 结果为终点不回溯，visited 防环）/ collectUpstreamImages（上游 image 结果 + 图像素材 URL 作输入图）/ collectUpstreamAudio（上游音频素材 URL 作 audio_list）
   lib/migrate.ts               首次启动把旧 localStorage（openflow-store）项目数据一次性导入后端，打 openflow-migrated 标记
-  lib/types.ts                 React Flow 强类型节点（FlowNode = Prompt/Llm/Image/Video/Asset；LlmNodeData{model,temperature,thinking,running,result,reasoning,error,taskId}；AssetNodeData{kind:image|audio,url,fileName,uploading,error}；Project）
+  lib/types.ts                 React Flow 强类型节点（FlowNode = Prompt/Llm/Image/Video/Asset/Group；LlmNodeData{model,temperature,thinking,running,result,reasoning,error,taskId}；AssetNodeData{kind:image|audio,url,fileName,uploading,error}；GroupNodeData{label}(分组容器)；Project）
+  lib/layout.ts                节点布局纯计算（供分组/整理复用）：nodeSize(measured→width/height→按类型兜底) / computeBoundingBox(绝对包围盒) / computeGridLayout(按位置排序后 ceil(√n) 列的等间距网格) / detachChildren(子节点相对坐标转绝对、清 parentId/extent) + GROUP_PADDING/ARRANGE_GAP
   lib/nodeCatalog.ts           图像/视频预置模型 + 模型→AIGC model_name 映射(IMAGE_API_MODEL/imageApiModel、VIDEO_API_MODEL/videoApiModel) + 各模型可调项选项(图像尺寸/质量/张数、Nano version/宽高比/尺寸、Seedance version/mode/分辨率/时长) + Any LLM 预置模型 LLM_MODELS + Temperature 范围 + 配色文案（侧栏与节点共用，含素材节点 ASSET_NODE_META：图像=琥珀 / 音频=天蓝；LLM_NODE_META：紫色）
   components/ui/               shadcn/ui vendored（不参与 lint/format，勿手改）
   components/gate/ReqFromGate.tsx 启动强制填写 req_from：设置已加载且全局署名为空时全屏阻断弹窗，填写保存后放行（已填则不出现）
@@ -87,13 +89,16 @@ apps/web/src/
   components/workspace/ProjectWorkspace.tsx  Sidebar + 画布 + Agent 面板；SidebarInset 为 flex-row：画布区（relative flex-1，内含 SidebarTrigger/NodeInspector/AgentChatToggle 绝对定位）+ AgentChatPanel 固定宽靠右（NodeInspector 吸附画布区右缘，与聊天面板并排不重叠）；未 loaded 前不跳首页
   components/projects/ProjectSidebar.tsx     工作区 Sidebar：返回首页 + 节点列表（按文本/图像/视频三类分组，点按添加对应节点并预设模型；不再显示项目列表）
   components/canvas/
-    FlowCanvas.tsx             React Flow 封装；连线默认 bezier 曲线（default，旧 straight/smoothstep 载入时归一成曲线）+ 加粗；悬停高亮、与「已选中节点」相连的边高亮 + 蚂蚁线流动（渲染时按 node.selected 派生 animated/edge-active，不入库；样式在 index.css）；colorMode 跟随主题（useThemeStore.resolved，画布底纹/控制按钮/缩略图随暗色）；onDragOver/onDrop 接桌面拖入文件（按 MIME 分图像/音频，screenToFlowPosition 定位：图片落图像/视频节点→追加输入图、音频落视频节点→追加输入音频，否则建素材节点上传写回 URL）
+    FlowCanvas.tsx             React Flow 封装；连线默认 bezier 曲线（default，旧 straight/smoothstep 载入时归一成曲线）+ 加粗；悬停高亮、与「已选中节点」相连的边高亮 + 蚂蚁线流动（渲染时按 node.selected 派生 animated/edge-active，不入库；样式在 index.css）；colorMode 跟随主题（useThemeStore.resolved，画布底纹/控制按钮/缩略图随暗色）；onDragOver/onDrop 接桌面拖入文件（按 MIME 分图像/音频，screenToFlowPosition 定位：图片落图像/视频节点→追加输入图、音频落视频节点→追加输入音频，否则建素材节点上传写回 URL）；onPaneContextMenu 出加节点菜单，onNodeContextMenu/onSelectionContextMenu 在选中多节点时出「选中操作」菜单（分组/整理/取消分组，两菜单互斥）
+    CanvasContextMenu.tsx      画布空白右键菜单：分组节点清单，点选即在落点加节点（含拉线松开在空白处的建节点+连线）
+    SelectionContextMenu.tsx   选中节点右键菜单：分组 / 整理（网格排列）/ 取消分组（按选中情况显隐；≥2 非容器节点才可分组/整理，选中/点中容器才可取消分组）
     nodes/PromptNode.tsx       Prompt 节点（Card + Textarea）：左侧 target Handle 输入 + 右侧 source Handle 输出（左入右出，天蓝）；上游 Prompt/LLM 文本可连入，经 collectUpstreamPrompt 递归并入下游（Prompt 链）
     nodes/LlmNode.tsx          Any LLM 节点：卡片展示回答文本（思考文本若返回则 <details> 折叠）+ 复制按钮；运行收集上游 Prompt/LLM 文本→createLlmTaskApi 建任务→pollTask 轮询→展示；带 taskId 载入时 useEffect 重连轮询（重连路径失败 silent、点击运行失败弹窗）；Handle 左进右出（紫色）；Model/Temperature/Thinking 参数在右侧 Inspector 编辑
     nodes/ImageNode.tsx        图像生成节点：输入图(可上传)/按模型(Image 2 走尺寸/质量/张数；Nano Banana 走 version/宽高比/尺寸)；运行收集上游 Prompt 文本→createImageTaskApi 建任务→pollTask 轮询→展示结果图；带 taskId 载入时 useEffect 重连轮询（关页面不丢结果；重连/Agent 触发路径失败 **silent 不弹 alert** 只节点内联报错，点击运行路径失败仍弹窗）；Handle 左进右出（req_from 署名走全局设置，节点不再单设）
     nodes/SeedanceNode.tsx     视频生成节点（seedance）：输入图(可上传)/输入音频(可上传，走 /api/upload-media)/version/mode/分辨率/时长；运行时音频 = 上游音频素材(连线)+ 本节点手动填/传 URL 合并作 audios→createVideoTaskApi 建任务→pollTask 轮询→<video> 展示；带 taskId 载入时 useEffect 重连轮询；Handle 左进右出（req_from 署名走全局设置，节点不再单设）
     nodes/AssetNode.tsx        素材节点（桌面拖入）：图像素材显示缩略图 / 音频素材显示 <audio>；上传中骨架、失败内联；仅右侧 source Handle（纯源，连下游作输入）
-    nodes/index.ts             nodeTypes 注册表（prompt → PromptNode / llm → LlmNode / image → ImageNode / video → SeedanceNode / asset → AssetNode）
+    nodes/GroupNode.tsx        分组容器节点：半透明虚线框包住子节点（子节点 parentId 指向它、渲染在其上方，拖框子节点跟随）；顶部工具条改名 + 取消分组；NodeResizer 可调大小；无连接点
+    nodes/index.ts             nodeTypes 注册表（prompt → PromptNode / llm → LlmNode / image → ImageNode / video → SeedanceNode / asset → AssetNode / group → GroupNode）
 apps/desktop/
   src/main.ts                  Electron 主进程：dataDir=userData → startServer(内嵌后端)；生产固定端口 42617（保证 localStorage origin 稳定，主题/homeView 偏好可跨启动保留；被占用才回退随机端口）+ 托管 SPA 后 loadURL(localhost)，开发连 VITE_DEV_SERVER_URL(5173)；窗口 backgroundColor 跟随 nativeTheme 明暗（防暗色用户启动白闪）；含 OPENFLOW_SELFTEST 无界面自检分支
   src/preload.ts               预加载：contextIsolation，仅暴露 window.openflow.desktop 标记（渲染进程只用 fetch 访问本地 /api）
@@ -133,7 +138,7 @@ apps/desktop/
 ## 编码规范
 
 - 组件文件 PascalCase，函数组件具名导出。
-- 新增节点类型需同步更新 `apps/web/src/lib/types.ts`、`nodes/index.ts`、`createNode()`(store)、`lib/nodeMenu.ts` 的 `NODE_GROUPS`（侧栏拖拽建节点 + 画布右键菜单点选建节点共用）；图像/视频类的预置模型在 `lib/nodeCatalog.ts`。（例外：`asset` 素材节点不走侧栏/`createNode`，由 `FlowCanvas` 拖拽经 `addAssetNode()` 创建。）
+- 新增节点类型需同步更新 `apps/web/src/lib/types.ts`、`nodes/index.ts`、`createNode()`(store)、`lib/nodeMenu.ts` 的 `NODE_GROUPS`（侧栏拖拽建节点 + 画布右键菜单点选建节点共用）；图像/视频类的预置模型在 `lib/nodeCatalog.ts`。（例外：`asset` 素材节点不走侧栏/`createNode`，由 `FlowCanvas` 拖拽经 `addAssetNode()` 创建；`group` 分组容器也不走侧栏/`createNode`，由 `groupSelectedNodes()` action 按选中节点包围盒创建，故未加入 `FlowNodeType`/`NODE_GROUPS`。）
 - 节点内可交互元素加 `nodrag` class。
 - 不手改 `apps/web/src/components/ui/*`、`src/hooks/use-mobile.ts` 与 `index.css` 的 shadcn 主题块（生成内容，已在 eslint globalIgnores 排除）。
 - 改后端 SQLite 表结构时注意已有数据兼容。

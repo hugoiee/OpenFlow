@@ -113,13 +113,22 @@ export type ImageNodeData = {
   taskId?: string
 }
 
+/**
+ * 分组容器节点：包住若干子节点（子节点 parentId 指向它），拖动容器时子节点跟随。
+ * 由「选中多个节点 → 右键分组」创建，不走侧栏/createNode（同 asset 例外）。
+ */
+export type GroupNodeData = {
+  label: string
+}
+
 /** React Flow 节点类型（带上各自的 data）。 */
 export type PromptNode = Node<PromptNodeData, 'prompt'>
 export type LlmNode = Node<LlmNodeData, 'llm'>
 export type ImageNode = Node<ImageNodeData, 'image'>
 export type VideoNode = Node<GenerationNodeData, 'video'>
 export type AssetNode = Node<AssetNodeData, 'asset'>
-export type FlowNode = PromptNode | LlmNode | ImageNode | VideoNode | AssetNode
+export type GroupNode = Node<GroupNodeData, 'group'>
+export type FlowNode = PromptNode | LlmNode | ImageNode | VideoNode | AssetNode | GroupNode
 
 /** 一个项目 = 一块画布。 */
 export type Project = {
