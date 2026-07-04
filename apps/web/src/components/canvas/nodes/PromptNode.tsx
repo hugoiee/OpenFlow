@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Handle, Position, type NodeProps } from '@xyflow/react'
+import { Handle, NodeResizer, Position, type NodeProps } from '@xyflow/react'
 import { BookmarkPlus, Library, Type } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -25,7 +25,12 @@ function defaultTitle(text: string): string {
   return line.length > 24 ? `${line.slice(0, 24)}…` : line
 }
 
-export function PromptNode({ id, data, selected }: NodeProps<PromptNodeType>) {
+// 节点默认/最小尺寸（px）。用「显式像素尺寸」而非 h-full/w-full：后者在 React Flow
+// 测量时会因循环依赖塌回内容最小值，把持久化的 width/height 覆盖掉，导致重开变回原大小。
+const DEFAULT_WIDTH = 264
+const DEFAULT_HEIGHT = 200
+
+export function PromptNode({ id, data, selected, width, height }: NodeProps<PromptNodeType>) {
   const updateNodeData = useFlowStore((s) => s.updateNodeData)
   const presets = usePromptPresetStore((s) => s.presets)
   const addPreset = usePromptPresetStore((s) => s.addPreset)
@@ -72,21 +77,31 @@ export function PromptNode({ id, data, selected }: NodeProps<PromptNodeType>) {
 
   return (
     <Card
-      className={`group/node inline-flex w-auto flex-col gap-2 py-3 shadow-sm transition-shadow ${
+      style={{ width: width ?? DEFAULT_WIDTH, height: height ?? DEFAULT_HEIGHT }}
+      className={`group/node flex flex-col gap-2 py-3 shadow-sm transition-shadow ${
         selected ? 'ring-2 ring-primary' : ''
       }`}
     >
+      {/* 节点整体可调节大小：拖角/边 → 写入节点 width/height（随项目持久化，重开不丢） */}
+      <NodeResizer
+        isVisible={selected}
+        minWidth={DEFAULT_WIDTH}
+        minHeight={DEFAULT_HEIGHT}
+        lineClassName="!border-primary/60"
+        handleClassName="!size-2.5 !rounded-sm !border-2 !border-background !bg-primary"
+      />
       <NodeHeader id={id} icon={Type} title={data.label} selected={selected} />
-      <CardContent className="flex flex-col gap-2 px-3">
+      {/* flex-1 + min-h-0：内容区吃掉除页头/工具条外的剩余高度，输入框随之填满 */}
+      <CardContent className="flex min-h-0 flex-1 flex-col gap-2 px-3">
         <Textarea
           value={data.text}
           onChange={(e) => updateNodeData(id, { text: e.target.value })}
           placeholder="在这里写 prompt…"
-          className="nodrag field-sizing-fixed h-24 min-h-24 w-56 min-w-56 resize overflow-hidden text-sm"
+          className="nodrag field-sizing-fixed min-h-0 w-full flex-1 resize-none text-sm"
         />
 
         {/* 预设工具条：选用预设 / 存为预设 */}
-        <div className="flex items-center gap-1">
+        <div className="flex shrink-0 items-center gap-1">
           <Button
             size="sm"
             variant="outline"
