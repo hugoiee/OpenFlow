@@ -1,12 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import {
-  Home,
-  Type,
-  Image as ImageIcon,
-  Banana,
-  Video,
-  type LucideIcon,
-} from 'lucide-react'
+import { Home } from 'lucide-react'
 import {
   Sidebar,
   SidebarContent,
@@ -18,48 +11,10 @@ import {
   SidebarMenuItem,
 } from '@/components/ui/sidebar'
 import { AppLogo } from '@/components/workspace/AppLogo'
-import { IMAGE_MODELS, VIDEO_MODELS } from '@/lib/nodeCatalog'
-import { type FlowNodeType } from '@/lib/types'
-import { useFlowStore } from '@/store/useFlowStore'
-
-type NodeItem = { type: FlowNodeType; label: string; icon: LucideIcon; model?: string }
-
-// 各图像模型的图标（缺省回退到通用图像图标）。
-const IMAGE_ICONS: Record<string, LucideIcon> = {
-  'Image 2': ImageIcon,
-  'Nano Banana': Banana,
-}
-
-// 节点列表按输出形态分三类：文本 / 图像 / 视频。
-// 图像、视频项各对应一个具名预置模型，点按即添加对应节点并预设该模型。
-const NODE_GROUPS: { label: string; items: NodeItem[] }[] = [
-  {
-    label: '文本',
-    items: [{ type: 'prompt', label: 'Prompt 节点', icon: Type }],
-  },
-  {
-    label: '图像模型',
-    items: IMAGE_MODELS.map((m) => ({
-      type: 'image' as const,
-      label: m,
-      icon: IMAGE_ICONS[m] ?? ImageIcon,
-      model: m,
-    })),
-  },
-  {
-    label: '视频模型',
-    items: VIDEO_MODELS.map((m) => ({
-      type: 'video' as const,
-      label: m,
-      icon: Video,
-      model: m,
-    })),
-  },
-]
+import { NODE_GROUPS } from '@/lib/nodeMenu'
 
 export function ProjectSidebar() {
   const navigate = useNavigate()
-  const addNode = useFlowStore((s) => s.addNode)
 
   return (
     <Sidebar>
@@ -104,8 +59,7 @@ export function ProjectSidebar() {
                         )
                         e.dataTransfer.effectAllowed = 'copy'
                       }}
-                      onClick={() => addNode(item.type, item.model)}
-                      title={`拖入画布或点按添加 ${item.label}`}
+                      title={`拖入画布添加 ${item.label}`}
                       className="group flex aspect-[4/3] cursor-grab flex-col items-center justify-center gap-2 rounded-xl border border-sidebar-border bg-sidebar-accent/40 px-2 text-center transition-colors hover:border-sidebar-ring hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring active:cursor-grabbing"
                     >
                       <Icon className="size-6 text-muted-foreground transition-colors group-hover:text-sidebar-accent-foreground" />

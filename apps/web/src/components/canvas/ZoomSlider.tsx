@@ -1,4 +1,4 @@
-import { Magnet, Maximize, Minus, Plus } from 'lucide-react'
+import { Magnet, Map as MapIcon, Maximize, Minus, Plus } from 'lucide-react'
 import {
   Panel,
   useReactFlow,
@@ -19,12 +19,17 @@ export function ZoomSlider({
   orientation = 'horizontal',
   snapEnabled,
   onToggleSnap,
+  minimapEnabled,
+  onToggleMinimap,
   ...props
 }: Omit<PanelProps, 'children'> & {
   orientation?: 'horizontal' | 'vertical'
   /** 节点吸附（snap-to-grid）是否开启；提供 onToggleSnap 时才渲染磁吸按钮。 */
   snapEnabled?: boolean
   onToggleSnap?: () => void
+  /** 缩略图是否显示；提供 onToggleMinimap 时才渲染缩略图开关按钮。 */
+  minimapEnabled?: boolean
+  onToggleMinimap?: () => void
 }) {
   const { zoom } = useViewport()
   const { zoomTo, zoomIn, zoomOut, fitView } = useReactFlow()
@@ -85,6 +90,18 @@ export function ZoomSlider({
           className={cn(snapEnabled && 'bg-accent text-accent-foreground')}
         >
           <Magnet className="h-4 w-4" />
+        </Button>
+      )}
+      {onToggleMinimap && (
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-pressed={minimapEnabled}
+          title="缩略图"
+          onClick={onToggleMinimap}
+          className={cn(minimapEnabled && 'bg-accent text-accent-foreground')}
+        >
+          <MapIcon className="h-4 w-4" />
         </Button>
       )}
     </Panel>

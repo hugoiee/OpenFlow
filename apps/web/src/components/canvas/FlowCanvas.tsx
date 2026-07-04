@@ -12,6 +12,7 @@ import '@xyflow/react/dist/style.css'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { nodeTypes } from './nodes'
 import { ZoomSlider } from './ZoomSlider'
+import { CanvasContextMenu } from './CanvasContextMenu'
 import { uploadFilesApi } from '@/lib/api'
 import { type FlowNodeType } from '@/lib/types'
 import { useActiveProject, useFlowStore } from '@/store/useFlowStore'
@@ -19,6 +20,7 @@ import { useThemeStore } from '@/store/useThemeStore'
 
 // 节点吸附偏好的 localStorage 键；网格步长与 <Background> 默认点距（20）一致，吸附落点对齐可见网格
 const SNAP_STORAGE_KEY = 'openflow-snap-grid'
+const MINIMAP_STORAGE_KEY = 'openflow-minimap'
 const SNAP_GRID: [number, number] = [20, 20]
 
 export function FlowCanvas() {
@@ -43,6 +45,37 @@ export function FlowCanvas() {
     localStorage.setItem(SNAP_STORAGE_KEY, snapToGrid ? '1' : '0')
   }, [snapToGrid])
   const toggleSnap = useCallback(() => setSnapToGrid((v) => !v), [])
+
+  // 缩略图显隐：偏好存 localStorage，首次默认显示；由 ZoomSlider 缩略图按钮切换
+  const [minimapOpen, setMinimapOpen] = useState(
+    () => localStorage.getItem(MINIMAP_STORAGE_KEY) !== '0',
+  )
+  useEffect(() => {
+    localStorage.setItem(MINIMAP_STORAGE_KEY, minimapOpen ? '1' : '0')
+  }, [minimapOpen])
+  const toggleMinimap = useCallback(() => setMinimapOpen((v) => !v), [])
+
+  // 画布右键菜单：记录光标处（相对画布容器的 top/left）+ 落点（flow 坐标），点选即在该处建节点
+  const wrapperRef = useRef<HTMLDivElement>(null)
+  const [menu, setMenu] = useState<{
+    top: number
+    left: number
+    flow: { x: number; y: number }
+  } | null>(null)
+
+  const openContextMenu = useCallback(
+    (event: React.MouseEvent | MouseEvent) => {
+      event.preventDefault()
+      const rect = wrapperRef.current?.getBoundingClientRect()
+      if (!rect) return
+      const flow = screenToFlowPosition({ x: event.clientX, y: event.clientY })
+      // 基本防溢出：菜单约 180×230，靠近右/下边缘时回夹
+      const left = Math.max(0, Math.min(event.clientX - rect.left, rect.width - 180))
+      const top = Math.max(0, Math.min(event.clientY - rect.top, rect.height - 230))
+      setMenu({ top, left, flow })
+    },
+    [screenToFlowPosition],
+  )
 
   // Delete Edge on Drop：拖动连线端点若松手在空白处（未落到合法 handle）则删除该连线。
   // reconnect 成功会先触发 onReconnect 把标记置 true；未触发即视为落空 → onReconnectEnd 删除。
@@ -215,7 +248,12 @@ export function FlowCanvas() {
   )
 
   return (
-    <div className="relative h-full w-full" onDragOver={onDragOver} onDrop={onDrop}>
+    <div
+      ref={wrapperRef}
+      className="relative h-full w-full"
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+    >
       <ReactFlow
         // key 让切换项目时画布完全重挂载，避免残留视图状态
         key={project.id}
@@ -228,6 +266,9 @@ export function FlowCanvas() {
         onReconnectStart={onReconnectStart}
         onReconnect={handleReconnect}
         onReconnectEnd={onReconnectEnd}
+        onPaneContextMenu={openContextMenu}
+        onPaneClick={() => setMenu(null)}
+        onMoveStart={() => setMenu(null)}
         defaultEdgeOptions={{ type: 'straight' }}
         colorMode={colorMode}
         snapToGrid={snapToGrid}
@@ -246,19 +287,34 @@ export function FlowCanvas() {
       >
         <Background />
         {/* 左下角竖向堆叠：缩略图在上，缩放条紧贴其下方 */}
-        <MiniMap
-          pannable
-          zoomable
-          position="bottom-left"
-          style={{ bottom: 60, left: 15, margin: 0 }}
-        />
+        {minimapOpen && (
+          <MiniMap
+            pannable
+            zoomable
+            position="bottom-left"
+            style={{ bottom: 60, left: 15, margin: 0 }}
+          />
+        )}
         <ZoomSlider
           position="bottom-left"
           style={{ bottom: 12, left: 15, margin: 0 }}
           snapEnabled={snapToGrid}
           onToggleSnap={toggleSnap}
+          minimapEnabled={minimapOpen}
+          onToggleMinimap={toggleMinimap}
         />
       </ReactFlow>
+      {menu && (
+        <CanvasContextMenu
+          top={menu.top}
+          left={menu.left}
+          onClose={() => setMenu(null)}
+          onPick={(item) => {
+            addNode(item.type, item.model, menu.flow)
+            setMenu(null)
+          }}
+        />
+      )}
     </div>
   )
 }
