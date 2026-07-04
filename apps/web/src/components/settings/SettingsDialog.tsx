@@ -18,6 +18,9 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
   const aigcEndpoint = useSettingsStore((s) => s.aigcEndpoint)
   const uploadEndpoint = useSettingsStore((s) => s.uploadEndpoint)
   const uploadMediaEndpoint = useSettingsStore((s) => s.uploadMediaEndpoint)
+  const agentEndpoint = useSettingsStore((s) => s.agentEndpoint)
+  const hasAgentApiKey = useSettingsStore((s) => s.hasAgentApiKey)
+  const agentModel = useSettingsStore((s) => s.agentModel)
   const saveSettings = useSettingsStore((s) => s.saveSettings)
 
   const [open, setOpen] = useState(false)
@@ -25,6 +28,9 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
   const [aigc, setAigc] = useState('')
   const [upload, setUpload] = useState('')
   const [uploadMedia, setUploadMedia] = useState('')
+  const [agentUrl, setAgentUrl] = useState('')
+  const [agentKey, setAgentKey] = useState('')
+  const [agentModelName, setAgentModelName] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -35,6 +41,9 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
       setAigc(aigcEndpoint)
       setUpload(uploadEndpoint)
       setUploadMedia(uploadMediaEndpoint)
+      setAgentUrl(agentEndpoint)
+      setAgentKey('') // 密钥不回显（后端不回明文）；留空=保持已存值
+      setAgentModelName(agentModel)
       setError('')
     }
     setOpen(next)
@@ -49,6 +58,10 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
         aigcEndpoint: aigc.trim(),
         uploadEndpoint: upload.trim(),
         uploadMediaEndpoint: uploadMedia.trim(),
+        agentEndpoint: agentUrl.trim(),
+        // 密钥字段为空 = 用户没改：省略以保持后端已存值（后端合并写只覆盖出现的字段）
+        ...(agentKey.trim() ? { agentApiKey: agentKey.trim() } : {}),
+        agentModel: agentModelName.trim(),
       })
       setOpen(false)
     } catch (e) {
@@ -107,6 +120,37 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
               value={uploadMedia}
               onChange={(e) => setUploadMedia(e.target.value)}
               placeholder="留空用默认，如 http://host:port/api/upload-media"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="agentEndpoint">Agent 接口地址（OpenAI 兼容）</Label>
+            <Input
+              id="agentEndpoint"
+              value={agentUrl}
+              onChange={(e) => setAgentUrl(e.target.value)}
+              placeholder="如 https://api.openai.com/v1（自动补 /chat/completions）"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="agentApiKey">Agent API Key</Label>
+            <Input
+              id="agentApiKey"
+              type="password"
+              value={agentKey}
+              onChange={(e) => setAgentKey(e.target.value)}
+              placeholder={hasAgentApiKey ? '已保存（输入新值可更换，留空保持不变）' : '无鉴权网关可留空'}
+            />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="agentModel">Agent 模型名</Label>
+            <Input
+              id="agentModel"
+              value={agentModelName}
+              onChange={(e) => setAgentModelName(e.target.value)}
+              placeholder="如 gpt-4o / doubao-seed-1.6"
             />
           </div>
 

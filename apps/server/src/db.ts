@@ -31,7 +31,10 @@ db.exec(`
     default_req_from TEXT NOT NULL DEFAULT '',
     aigc_endpoint TEXT NOT NULL DEFAULT '',
     upload_endpoint TEXT NOT NULL DEFAULT '',
-    upload_media_endpoint TEXT NOT NULL DEFAULT ''
+    upload_media_endpoint TEXT NOT NULL DEFAULT '',
+    agent_endpoint TEXT NOT NULL DEFAULT '',
+    agent_api_key TEXT NOT NULL DEFAULT '',
+    agent_model TEXT NOT NULL DEFAULT ''
   );
 
   -- 异步生成任务：点「生成」后后端建行并后台跑 AIGC，前端凭 taskId 轮询/刷新重连。
@@ -68,6 +71,9 @@ for (const col of [
   'aigc_endpoint',
   'upload_endpoint',
   'upload_media_endpoint',
+  'agent_endpoint',
+  'agent_api_key',
+  'agent_model',
 ]) {
   if (!settingsColNames.has(col)) {
     db.exec(`ALTER TABLE settings ADD COLUMN ${col} TEXT NOT NULL DEFAULT ''`)

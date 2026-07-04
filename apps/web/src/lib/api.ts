@@ -1,4 +1,6 @@
 import type {
+  AgentChatBody,
+  AgentChatResponse,
   CreateTaskResponse,
   GenImageBody,
   GenVideoBody,
@@ -112,6 +114,15 @@ export async function createVideoTaskApi(body: GenVideoBody): Promise<string> {
     body: JSON.stringify(body),
   })
   return taskId
+}
+
+// ---- 画布 Agent 对话 ----
+// 同步接口：后端调 LLM 返回 { reply, actions } 计划；画布动作由前端执行（见 lib/agentExecutor.ts）。
+export function agentChatApi(body: AgentChatBody): Promise<AgentChatResponse> {
+  return request<AgentChatResponse>('/agent/chat', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
 }
 
 // ---- 任务查询（轮询 / 重连）----

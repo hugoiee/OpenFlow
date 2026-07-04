@@ -55,18 +55,22 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
   const result = data.result ?? []
   const running = data.running ?? false
 
-  // 生成失败：节点底部内联显示 + 弹窗提示
-  const fail = (message: string) => {
+  // 生成失败：节点底部内联显示；silent=false 时再弹窗提示。
+  // 重连路径（刷新重开 / Agent 触发）走 silent——非点击场景连环 alert 会阻塞整个应用。
+  const fail = (message: string, opts?: { silent?: boolean }) => {
     updateNodeData(id, { running: false, error: message, taskId: undefined })
-    window.alert(`图像生成失败：${message}`)
+    if (!opts?.silent) window.alert(`图像生成失败：${message}`)
   }
 
   // 应用任务终态：成功填结果、失败报错，一并清 taskId（重连锚点用毕）。
-  const applyTaskResult = (task: { status: string; result: string[]; error?: string }) => {
+  const applyTaskResult = (
+    task: { status: string; result: string[]; error?: string },
+    opts?: { silent?: boolean },
+  ) => {
     if (task.status === 'succeeded') {
       updateNodeData(id, { running: false, result: task.result, taskId: undefined })
     } else {
-      fail(task.error || '任务失败')
+      fail(task.error || '任务失败', opts)
     }
   }
 
@@ -80,10 +84,10 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
     const controller = new AbortController()
     updateNodeData(id, { running: true, error: undefined })
     pollTask(taskId, { signal: controller.signal })
-      .then(applyTaskResult)
+      .then((task) => applyTaskResult(task, { silent: true }))
       .catch((e) => {
         if (e instanceof DOMException && e.name === 'AbortError') return
-        fail(e instanceof Error ? e.message : String(e))
+        fail(e instanceof Error ? e.message : String(e), { silent: true })
       })
     return () => controller.abort()
     // eslint-disable-next-line react-hooks/exhaustive-deps

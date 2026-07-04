@@ -65,6 +65,18 @@ type FlowState = {
   /** 删除某个节点（如素材上传失败时移除占位节点）。 */
   removeNode: (nodeId: string) => void
   updateNodeData: (nodeId: string, data: Partial<FlowNode['data']>) => void
+  /** 同 updateNodeData，但显式指定项目：供异步回调（如 Agent 建任务后写 taskId）使用，不受「当前激活项目」切换影响。 */
+  updateNodeDataInProject: (
+    projectId: string,
+    nodeId: string,
+    data: Partial<FlowNode['data']>,
+  ) => void
+  /** Agent：在现有内容下方新建一组「Prompt → 图像」节点并连线，返回两节点 id（无激活项目返回 null）。 */
+  addAgentGeneration: (input: {
+    prompt: string
+    model: string
+    title?: string
+  }) => { promptNodeId: string; imageNodeId: string } | null
 }
 
 function createNode(
@@ -125,6 +137,14 @@ function createNode(
   }
 }
 
+// Agent 摆放新节点时估算已有节点的高度（React Flow 尚未测量到时的兜底），用于找画布底部空位
+const AGENT_PLACE_FALLBACK_HEIGHT: Record<string, number> = {
+  prompt: 190,
+  image: 380,
+  video: 400,
+  asset: 220,
+}
+
 // 画布高频编辑 → 防抖把激活项目整体 PUT 回后端
 const saveTimers: Record<string, ReturnType<typeof setTimeout>> = {}
 function scheduleSave(project: Project) {
@@ -138,7 +158,7 @@ function scheduleSave(project: Project) {
   }, 500)
 }
 
-export const useFlowStore = create<FlowState>()((set) => {
+export const useFlowStore = create<FlowState>()((set, get) => {
   // 更新当前项目并安排防抖保存
   const patchActive = (updater: (project: Project) => Project) =>
     set((state) => {
@@ -277,6 +297,57 @@ export const useFlowStore = create<FlowState>()((set) => {
           n.id === nodeId ? ({ ...n, data: { ...n.data, ...data } } as FlowNode) : n,
         ),
       })),
+
+    updateNodeDataInProject: (projectId, nodeId, data) =>
+      set((state) => {
+        const projects = state.projects.map((p) =>
+          p.id === projectId
+            ? {
+                ...p,
+                nodes: p.nodes.map((n) =>
+                  n.id === nodeId ? ({ ...n, data: { ...n.data, ...data } } as FlowNode) : n,
+                ),
+              }
+            : p,
+        )
+        const target = projects.find((p) => p.id === projectId)
+        if (target) scheduleSave(target)
+        return { projects }
+      }),
+
+    addAgentGeneration: ({ prompt, model, title }) => {
+      const { activeProjectId, projects } = get()
+      const project = projects.find((p) => p.id === activeProjectId)
+      if (!project) return null
+      // 摆到现有内容下方，成对横排：Prompt 在左、图像节点在右（连续多组自然向下堆叠）
+      const bottom = project.nodes.reduce((max, n) => {
+        const height =
+          n.measured?.height ?? AGENT_PLACE_FALLBACK_HEIGHT[n.type ?? 'prompt'] ?? 220
+        return Math.max(max, n.position.y + height)
+      }, 0)
+      const y = project.nodes.length > 0 ? bottom + 60 : 80
+      const cleanTitle = title?.trim()
+      const promptNode: FlowNode = {
+        id: newId('n_'),
+        type: 'prompt',
+        position: { x: 80, y },
+        data: { label: cleanTitle || 'Prompt', text: prompt },
+      }
+      const imageNode = createNode('image', project.nodes.length, model, { x: 420, y })
+      if (cleanTitle) imageNode.data.label = cleanTitle
+      const edge: Edge = {
+        id: newId('e_'),
+        source: promptNode.id,
+        target: imageNode.id,
+        type: 'straight',
+      }
+      patchActive((p) => ({
+        ...p,
+        nodes: [...p.nodes, promptNode, imageNode],
+        edges: [...p.edges, edge],
+      }))
+      return { promptNodeId: promptNode.id, imageNodeId: imageNode.id }
+    },
   }
 })
 

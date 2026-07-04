@@ -18,6 +18,14 @@ export type SettingsDTO = {
   uploadEndpoint: string
   /** 音频上传端点；为空时回退 env UPLOAD_MEDIA_ENDPOINT / 内置默认。 */
   uploadMediaEndpoint: string
+  /** 画布 Agent 的 LLM 端点（OpenAI 兼容 /chat/completions）；为空时回退 env AGENT_ENDPOINT。 */
+  agentEndpoint: string
+  /** 画布 Agent 的 LLM API Key（可空：无鉴权网关不需要）；为空时回退 env AGENT_API_KEY。GET /api/settings 不回明文（恒为空串），以 hasAgentApiKey 表示已配置。 */
+  agentApiKey: string
+  /** 画布 Agent 的 LLM 模型名（如 gpt-4o / doubao-xxx）；为空时回退 env AGENT_MODEL。 */
+  agentModel: string
+  /** 服务端是否已存有 Agent API Key（GET 响应专用；明文不回传）。 */
+  hasAgentApiKey?: boolean
 }
 
 /** PUT /api/settings 请求体：省略的字段保持原值（合并写入）。 */
@@ -30,6 +38,12 @@ export type SaveSettingsBody = {
   uploadEndpoint?: string
   /** 音频上传端点（空串=清空回退默认；省略=保持原值）。 */
   uploadMediaEndpoint?: string
+  /** Agent LLM 端点（空串=清空回退 env；省略=保持原值）。 */
+  agentEndpoint?: string
+  /** Agent LLM API Key（空串=清空回退 env；省略=保持原值）。 */
+  agentApiKey?: string
+  /** Agent LLM 模型名（空串=清空回退 env；省略=保持原值）。 */
+  agentModel?: string
 }
 
 /** POST /api/aigc 请求体（图像生成，经后端代理到 AIGC 接口）。req_from 由后端从全局设置注入。 */
@@ -123,4 +137,37 @@ export type PromptPresetDTO = {
 export type SavePromptPresetBody = {
   title: string
   content: string
+}
+
+// ---- 画布 Agent（对话式操作画布：写 Prompt / 建节点 / 生图）----
+
+/** Agent 会话消息（OpenAI 兼容 role）。前端持有整段历史，后端无会话态。 */
+export type AgentMessage = {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+/** POST /api/agent/chat 请求体：projectId 仅作上下文标识，会话历史整段随请求带上。 */
+export type AgentChatBody = {
+  projectId: string
+  messages: AgentMessage[]
+}
+
+/**
+ * Agent 规划的一次生图动作：前端据此在画布创建 Prompt 节点（写入 prompt）、
+ * 创建图像节点（按 model）、连线并触发生成。
+ */
+export type AgentImageAction = {
+  /** 已润色的完整生图提示词（写进 Prompt 节点）。 */
+  prompt: string
+  /** 图像模型展示名：'Image 2' | 'Nano Banana'（前端映射到 AIGC model_name）。 */
+  model: string
+  /** 这组节点的简短标题（画布上好辨认；可空）。 */
+  title?: string
+}
+
+/** POST /api/agent/chat 响应：给用户的答复 + 画布动作计划（闲聊/追问时 actions 为空）。 */
+export type AgentChatResponse = {
+  reply: string
+  actions: AgentImageAction[]
 }

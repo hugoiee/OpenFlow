@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { Navigate, useParams } from 'react-router-dom'
+import { AgentChatPanel, AgentChatToggle } from '@/components/agent/AgentChatPanel'
 import { FlowCanvasWithProvider } from '@/components/canvas/FlowCanvas'
 import { NodeInspector } from '@/components/inspector/NodeInspector'
 import { ProjectSidebar } from '@/components/projects/ProjectSidebar'
@@ -26,10 +27,15 @@ export function ProjectWorkspace() {
   return (
     <SidebarProvider className="h-screen min-h-0 overflow-hidden">
       <ProjectSidebar />
-      <SidebarInset className="relative min-h-0">
-        <SidebarTrigger className="absolute left-2 top-2 z-20 size-10" />
-        <FlowCanvasWithProvider />
-        <NodeInspector />
+      {/* flex-row：画布区弹性占满，Agent 聊天面板固定宽度靠右；NodeInspector 仍吸附画布区右缘 */}
+      <SidebarInset className="flex min-h-0 flex-row overflow-hidden">
+        <div className="relative min-w-0 flex-1">
+          <SidebarTrigger className="absolute left-2 top-2 z-20 size-10" />
+          <FlowCanvasWithProvider />
+          <NodeInspector />
+          <AgentChatToggle />
+        </div>
+        <AgentChatPanel projectId={id} />
       </SidebarInset>
     </SidebarProvider>
   )

@@ -11,6 +11,12 @@ type SettingsState = {
   uploadEndpoint: string
   /** 音频上传端点；为空=后端回退默认。 */
   uploadMediaEndpoint: string
+  /** 画布 Agent 的 LLM 端点（OpenAI 兼容）；为空=后端回退 env。 */
+  agentEndpoint: string
+  /** 服务端是否已配置 Agent API Key（明文不回传，只有这个标记）。 */
+  hasAgentApiKey: boolean
+  /** 画布 Agent 的 LLM 模型名；为空=后端回退 env。 */
+  agentModel: string
   loaded: boolean
   loadSettings: () => Promise<void>
   /** 保存设置（部分字段即可，省略的后端保持原值）；保存后回拉刷新。 */
@@ -24,6 +30,9 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   aigcEndpoint: '',
   uploadEndpoint: '',
   uploadMediaEndpoint: '',
+  agentEndpoint: '',
+  hasAgentApiKey: false,
+  agentModel: '',
   loaded: false,
 
   loadSettings: async () => {
@@ -33,6 +42,9 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
       aigcEndpoint: dto.aigcEndpoint,
       uploadEndpoint: dto.uploadEndpoint,
       uploadMediaEndpoint: dto.uploadMediaEndpoint,
+      agentEndpoint: dto.agentEndpoint,
+      hasAgentApiKey: dto.hasAgentApiKey ?? false,
+      agentModel: dto.agentModel,
       loaded: true,
     })
   },
