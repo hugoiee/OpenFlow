@@ -1,16 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
-import { Handle, Position, type NodeProps } from '@xyflow/react'
+import { type NodeProps } from '@xyflow/react'
 import { Banana, Download, Image as ImageIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { DownloadDialog, type DownloadTarget } from '@/components/canvas/DownloadDialog'
 import { NodeHeader } from './NodeHeader'
-import { handleStyle } from './handleLayout'
+import { NodeHandle } from './NodeHandle'
+import { AddImageInputButton, ImageInputHandles } from './ImageInputHandles'
 import { createImageTaskApi } from '@/lib/api'
 import { pollTask } from '@/lib/taskPolling'
 import {
-  GEN_NODE_META,
   IMAGE_SIZE_DEFAULT,
   IMAGE_SIZE_OPTIONS,
   NANO_ASPECT_DEFAULT,
@@ -18,11 +18,9 @@ import {
   NANO_VERSION_DEFAULT,
   imageApiModel,
 } from '@/lib/nodeCatalog'
-import { collectUpstreamImages, collectUpstreamPrompt } from '@/lib/graph'
+import { collectUpstreamImages, collectUpstreamPrompt, imageInputCount } from '@/lib/graph'
 import { type ImageNode as ImageNodeType } from '@/lib/types'
 import { useFlowStore } from '@/store/useFlowStore'
-
-const meta = GEN_NODE_META.image
 
 /**
  * 图像生成节点：卡片只展示生成结果（运行态 / 结果图 / 空占位）。
@@ -55,6 +53,7 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
   const imageSize = data.imageSize ?? NANO_IMAGE_SIZE_DEFAULT
   const result = data.result ?? []
   const running = data.running ?? false
+  const imageInputs = imageInputCount(data.imageInputs)
 
   // 生成失败：节点底部内联显示；silent=false 时再弹窗提示。
   // 重连路径（刷新重开 / Agent 触发）走 silent——非点击场景连环 alert 会阻塞整个应用。
@@ -101,12 +100,13 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
       fail('未找到当前项目')
       return
     }
-    const prompt = collectUpstreamPrompt(project, id)
+    // Prompt 只取默认 Prompt 端点（排除图像端点）；图像走各图像输入端点
+    const prompt = collectUpstreamPrompt(project, id, { handle: 'user' })
     if (!prompt.trim()) {
       fail('请先连接一个有内容的 Prompt 节点')
       return
     }
-    // 输入图 = 上游 image 节点的连线结果（图片1…）在前，手动填/传的在后
+    // 输入图 = 上游 image 节点/素材按图像端点编号（图1、图2…）在前，手动填/传的在后
     const manualImages = imagesText
       .split('\n')
       .map((s) => s.trim())
@@ -143,12 +143,9 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
         selected ? 'ring-2 ring-primary' : ''
       }`}
     >
-      <Handle
-        type="target"
-        position={Position.Left}
-        className={meta.handle}
-        style={handleStyle()}
-      />
+      {/* 左侧输入端点：Prompt（粉，index 0）+ 图像输入端点（绿，image-0..，Image 1..N） */}
+      <NodeHandle type="target" index={0} tone="prompt" label="Prompt" required title="Prompt 输入" />
+      <ImageInputHandles count={imageInputs} baseIndex={1} />
       <NodeHeader
         id={id}
         icon={data.model === 'Nano Banana' ? Banana : ImageIcon}
@@ -196,9 +193,13 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
           )}
         </div>
 
-        <Button size="sm" onClick={handleRun} disabled={running} className="nodrag w-full">
-          {running ? '生成中…' : '生成'}
-        </Button>
+        {/* 添加图像输入 + 生成 并排 */}
+        <div className="flex items-center gap-2">
+          <AddImageInputButton id={id} count={imageInputs} />
+          <Button size="sm" onClick={handleRun} disabled={running} className="nodrag ml-auto h-8">
+            {running ? '生成中…' : '生成'}
+          </Button>
+        </div>
 
         {/* 生成失败信息：固定在节点最下方 */}
         {data.error && (
@@ -208,12 +209,8 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
         )}
       </CardContent>
       <DownloadDialog open={dialogOpen} onOpenChange={setDialogOpen} target={downloadTarget} />
-      <Handle
-        type="source"
-        position={Position.Right}
-        className={meta.handle}
-        style={handleStyle()}
-      />
+      {/* 输出：Image（绿） */}
+      <NodeHandle type="source" index={0} tone="image" label="Image" title="图像输出" />
     </Card>
   )
 }

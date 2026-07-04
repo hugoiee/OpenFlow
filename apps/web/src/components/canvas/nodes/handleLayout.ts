@@ -5,10 +5,15 @@ import type { CSSProperties } from 'react'
 const HANDLE_TOP_START = 48
 const HANDLE_GAP = 28
 
+/** 同一侧从上往下第 `index` 个端点（从 0 起）的竖向像素位置（供 Handle 定位 + 端点旁标签对齐共用）。 */
+export function handleTop(index = 0): number {
+  return HANDLE_TOP_START + index * HANDLE_GAP
+}
+
 /**
  * 同一侧（左/右）从上往下第 `index` 个端点（从 0 起）的竖向定位样式，直接铺给 `<Handle style>`。
  * 覆盖 React Flow 默认的 `top: 50%` 垂直居中；水平贴边与居中平移仍由 handle-left/-right 类负责。
  */
 export function handleStyle(index = 0): CSSProperties {
-  return { top: HANDLE_TOP_START + index * HANDLE_GAP }
+  return { top: handleTop(index) }
 }

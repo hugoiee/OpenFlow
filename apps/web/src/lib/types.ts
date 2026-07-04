@@ -22,6 +22,8 @@ export type LlmNodeData = {
   temperature: number
   /** 是否开启思考（发送 reasoning_effort 等原生推理参数）。 */
   thinking: boolean
+  /** 左侧图像输入端点数量（编号 1..N；默认 1，「添加图像输入」按钮递增）。多模态时把连入的图片发给模型。 */
+  imageInputs?: number
   /** 是否正在生成。 */
   running?: boolean
   /** 生成的回答文本（未运行时为空）。 */
@@ -88,8 +90,10 @@ export type ImageNodeData = {
   label: string
   /** 具名模型展示名（如 Image 2）。 */
   model: string
-  /** 输入图片 URL，每行一个（纯文生图时为空）。 */
+  /** 输入图片 URL，每行一个（纯文生图时为空）。手填 URL 会并到连线收集的输入图之后。 */
   imagesText: string
+  /** 左侧图像输入端点数量（编号 1..N；默认 1，「添加图像输入」按钮递增）。 */
+  imageInputs?: number
   /** 出图尺寸，如 1024x1024 / auto。 */
   size: string
   /** 出图张数。 */

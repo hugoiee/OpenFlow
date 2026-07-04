@@ -112,6 +112,8 @@ export type GenLlmBody = {
   prompt: string
   /** 系统提示词（= 连到「System Prompt 输入」端点的上游文本；为空则不下发 system 消息）。 */
   systemPrompt?: string
+  /** 多模态输入图 URL（= 连到各「图像输入」端点的上游图；有则作 image_url 内容发给视觉模型）。 */
+  images?: string[]
   /** 采样温度 0–2。 */
   temperature: number
   /** 是否开启思考：为 true 时请求体带 reasoning_effort 等原生推理参数。 */

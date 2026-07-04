@@ -8,6 +8,7 @@ import {
   useReactFlow,
   type Connection,
   type Edge,
+  type IsValidConnection,
   type OnConnectStart,
   type OnConnectEnd,
 } from '@xyflow/react'
@@ -18,6 +19,7 @@ import { ZoomSlider } from './ZoomSlider'
 import { CanvasContextMenu } from './CanvasContextMenu'
 import { SelectionContextMenu } from './SelectionContextMenu'
 import { uploadFilesApi } from '@/lib/api'
+import { edgeColorForSource, isValidTypedConnection } from '@/lib/handleTypes'
 import { type FlowNode, type FlowNodeType } from '@/lib/types'
 import { useActiveProject, useFlowStore } from '@/store/useFlowStore'
 import { useThemeStore } from '@/store/useThemeStore'
@@ -189,6 +191,17 @@ export function FlowCanvas() {
     }
   }, [])
 
+  // 连接校验：图像端点只接图像源、Prompt/System 端点只接文本源（视频等混合口不限）。
+  // 防止把 Prompt 误连到图像端点（文本被吞）或把图像误连到文本端点（漏进多模态）。
+  const isValidConnection = useCallback<IsValidConnection>((conn) => {
+    const state = useFlowStore.getState()
+    const proj = state.projects.find((p) => p.id === state.activeProjectId)
+    if (!proj) return true
+    const src = proj.nodes.find((n) => n.id === conn.source)
+    const tgt = proj.nodes.find((n) => n.id === conn.target)
+    return isValidTypedConnection(src, tgt, conn.targetHandle)
+  }, [])
+
   const onConnectEnd = useCallback<OnConnectEnd>(
     (event, connectionState) => {
       const start = connectStartRef.current
@@ -352,13 +365,17 @@ export function FlowCanvas() {
   const selectedNodeIds = new Set(
     project.nodes.filter((n) => n.selected).map((n) => n.id),
   )
+  // 连线着色：按源节点输出的数据类型（文本粉 / 图像绿 / 其余默认，与端点同色）。
+  const nodeById = new Map(project.nodes.map((n) => [n.id, n]))
   const edges = project.edges.map((e) => {
     const active = selectedNodeIds.has(e.source) || selectedNodeIds.has(e.target)
+    const color = edgeColorForSource(nodeById.get(e.source))
     return {
       ...e,
       type: 'default',
       animated: active,
       className: active ? 'edge-active' : undefined,
+      ...(color ? { style: { ...e.style, stroke: color } } : {}),
     }
   })
 
@@ -378,6 +395,7 @@ export function FlowCanvas() {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        isValidConnection={isValidConnection}
         onConnectStart={onConnectStart}
         onConnectEnd={onConnectEnd}
         onReconnectStart={onReconnectStart}

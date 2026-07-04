@@ -35,6 +35,7 @@ import {
   computeGridLayout,
   detachChildren,
 } from '@/lib/layout'
+import { isValidTypedConnection } from '@/lib/handleTypes'
 import { type FlowNode, type FlowNodeType, type Project } from '@/lib/types'
 
 type HomeView = 'grid' | 'list'
@@ -426,27 +427,32 @@ export const useFlowStore = create<FlowState>()((set, get) => {
     addConnectedNode: ({ type, model, position, from }) =>
       patchActive((p) => {
         const node = createNode(type, p.nodes.length, model, position)
+        const fromNode = p.nodes.find((n) => n.id === from.nodeId)
         // 除 asset（纯源，只出不进）外都有输入(target) handle；从输出端拉出却选了无输入口的节点（asset）时，
         // 无处可连 → 只建节点不连线，避免生成一条挂空的坏边。
         const canBeTarget = type !== 'asset'
-        const edge: Edge | null =
-          from.handleType === 'source'
-            ? canBeTarget
-              ? {
-                  id: newId('e_'),
-                  source: from.nodeId,
-                  sourceHandle: from.handleId ?? undefined,
-                  target: node.id,
-                  type: 'default',
-                }
-              : null
-            : {
-                id: newId('e_'),
-                source: node.id,
-                target: from.nodeId,
-                targetHandle: from.handleId ?? undefined,
-                type: 'default',
-              }
+        let edge: Edge | null = null
+        if (from.handleType === 'source') {
+          // 从输出端拉出：源=既有节点，目标=新节点默认输入口；类型不匹配（如图像→新 LLM 的 Prompt 口）则只建节点
+          if (canBeTarget && isValidTypedConnection(fromNode, node, undefined)) {
+            edge = {
+              id: newId('e_'),
+              source: from.nodeId,
+              sourceHandle: from.handleId ?? undefined,
+              target: node.id,
+              type: 'default',
+            }
+          }
+        } else if (isValidTypedConnection(node, fromNode, from.handleId)) {
+          // 从输入端拉出：源=新节点，目标=既有节点的该端点；类型不匹配（如从图像端点拉出却选 Prompt）则只建节点
+          edge = {
+            id: newId('e_'),
+            source: node.id,
+            target: from.nodeId,
+            targetHandle: from.handleId ?? undefined,
+            type: 'default',
+          }
+        }
         return {
           ...p,
           nodes: [...p.nodes, node],

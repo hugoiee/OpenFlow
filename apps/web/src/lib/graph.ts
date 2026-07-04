@@ -13,7 +13,27 @@ import { type Project } from './types'
  */
 export const LLM_SYSTEM_HANDLE = 'system'
 
-/** 收集时的端点过滤：不传=全部；'user'=默认端点（非 system，含历史空 handle）；'system'=系统提示词端点。 */
+/** 图像输入端点 handle id 前缀：LLM/图像节点的第 i 个图像端点为 `image-${i}`（i 从 0 起，展示编号 i+1）。 */
+export const IMAGE_INPUT_HANDLE_PREFIX = 'image-'
+export function imageInputHandleId(index: number): string {
+  return `${IMAGE_INPUT_HANDLE_PREFIX}${index}`
+}
+
+/** 节点图像输入端点数量（含旧数据兜底）：至少 1。 */
+export function imageInputCount(imageInputs: number | undefined): number {
+  return Math.max(1, imageInputs ?? 1)
+}
+
+/** 从 targetHandle 解析图像端点排序键：'image-N'→N（编号顺序）；其余（含旧的空 handle）→ -1（排最前，兼容旧连线）。 */
+function imageInputSlot(targetHandle: string | null | undefined): number {
+  if (typeof targetHandle === 'string' && targetHandle.startsWith(IMAGE_INPUT_HANDLE_PREFIX)) {
+    const n = Number(targetHandle.slice(IMAGE_INPUT_HANDLE_PREFIX.length))
+    return Number.isFinite(n) ? n : -1
+  }
+  return -1
+}
+
+/** 收集时的端点过滤：不传=全部；'user'=默认 Prompt 端点（空 handle）；'system'=系统提示词端点。 */
 type PromptHandle = 'user' | 'system'
 
 /** 边的 targetHandle 是否命中所选输入端点。 */
@@ -21,9 +41,9 @@ function edgeMatchesHandle(
   targetHandle: string | null | undefined,
   handle: PromptHandle | undefined,
 ): boolean {
-  if (!handle) return true // 未指定：所有指向本节点的连线（image/video/prompt 链）
+  if (!handle) return true // 未指定：所有指向本节点的连线（video/prompt 链）
   if (handle === 'system') return targetHandle === LLM_SYSTEM_HANDLE
-  return targetHandle !== LLM_SYSTEM_HANDLE // 'user'：默认端点（含历史空 handle）
+  return !targetHandle // 'user'：仅默认 Prompt 端点（空 handle）；排除 system 与 image-* 端点
 }
 
 /**
@@ -67,20 +87,26 @@ export function collectUpstreamPrompt(
 /**
  * 收集所有指向 nodeId 的上游图像 URL（作为下游输入图）。
  * 来源：上游 image 生成节点的结果图 + 上游图像素材节点的 URL。
- * 按连线（edges）顺序展平；为空的来源不贡献。video 输出不作为图像输入。
+ * 按「图像输入端点编号」排序（image-0、image-1…），旧的空 handle 连线排最前（兼容）；
+ * 同一端点内按连线顺序展平；为空的来源不贡献。video 输出不作为图像输入。
  */
 export function collectUpstreamImages(project: Project, nodeId: string): string[] {
-  const out: string[] = []
-  for (const e of project.edges) {
-    if (e.target !== nodeId) continue
+  const entries: { slot: number; order: number; url: string }[] = []
+  project.edges.forEach((e, order) => {
+    if (e.target !== nodeId) return
     const src = project.nodes.find((n) => n.id === e.source)
+    const slot = imageInputSlot(e.targetHandle)
     if (src?.type === 'image') {
-      out.push(...(src.data.result ?? []).filter(Boolean))
+      for (const url of (src.data.result ?? []).filter(Boolean)) {
+        entries.push({ slot, order, url })
+      }
     } else if (src?.type === 'asset' && src.data.kind === 'image' && src.data.url) {
-      out.push(src.data.url)
+      entries.push({ slot, order, url: src.data.url })
     }
-  }
-  return out
+  })
+  // 端点编号在前、同端点按连线顺序：稳定排序保证多图输入次序可控（图1、图2…）
+  entries.sort((a, b) => a.slot - b.slot || a.order - b.order)
+  return entries.map((e) => e.url)
 }
 
 /**

@@ -25,17 +25,28 @@ export async function runLlmCompletion(params: {
   model: string
   prompt: string
   systemPrompt?: string
+  images?: string[]
   temperature: number
   thinking: boolean
   settings: SettingsDTO
 }): Promise<{ text: string; reasoning: string }> {
-  const { model, prompt, systemPrompt, temperature, thinking, settings } = params
+  const { model, prompt, systemPrompt, images, temperature, thinking, settings } = params
   const endpoint = settings.agentEndpoint.trim() || AGENT_ENDPOINT
   if (!endpoint) {
     throw new Error('未配置 LLM 接口地址（复用画布 Agent 设置），请在设置中填写 Agent 接口地址')
   }
   if (!model.trim()) throw new Error('未选择模型')
   const apiKey = settings.agentApiKey.trim() || AGENT_API_KEY
+
+  // 多模态：有输入图时把 user 消息内容改成 [文本, image_url…]（OpenAI 兼容视觉格式）；否则纯文本
+  const imageUrls = (images ?? []).map((u) => u.trim()).filter(Boolean)
+  const userContent =
+    imageUrls.length > 0
+      ? [
+          { type: 'text', text: prompt },
+          ...imageUrls.map((imgUrl) => ({ type: 'image_url', image_url: { url: imgUrl } })),
+        ]
+      : prompt
 
   const url = resolveChatCompletionsUrl(endpoint)
   let res: Response
@@ -51,7 +62,7 @@ export async function runLlmCompletion(params: {
         // 有系统提示词（连到 System Prompt 端点的上游文本）则置于消息首位
         messages: [
           ...(systemPrompt?.trim() ? [{ role: 'system', content: systemPrompt.trim() }] : []),
-          { role: 'user', content: prompt },
+          { role: 'user', content: userContent },
         ],
         temperature,
         // 开启思考：下发 OpenAI 系原生推理参数（网关不支持时会报错，可关掉 Thinking 规避）

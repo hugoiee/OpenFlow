@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Handle, NodeResizer, Position, type NodeProps } from '@xyflow/react'
+import { NodeResizer, type NodeProps } from '@xyflow/react'
 import { BookmarkPlus, Library, Type } from 'lucide-react'
 import type { PromptPresetCategory } from '@openflow/shared'
 import { Button } from '@/components/ui/button'
@@ -16,7 +16,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { NodeHeader } from './NodeHeader'
-import { handleStyle } from './handleLayout'
+import { NodeHandle } from './NodeHandle'
 import { useFlowStore } from '@/store/useFlowStore'
 import { usePromptPresetStore } from '@/store/usePromptPresetStore'
 import type { PromptNode as PromptNodeType } from '@/lib/types'
@@ -139,19 +139,9 @@ export function PromptNode({ id, data, selected, width, height }: NodeProps<Prom
         </div>
       </CardContent>
 
-      {/* 左侧输入：上游 Prompt/LLM 节点可连入，文本沿连线并入本节点（供下游做 Prompt 链） */}
-      <Handle
-        type="target"
-        position={Position.Left}
-        className="!bg-sky-500 dark:!bg-sky-400"
-        style={handleStyle()}
-      />
-      <Handle
-        type="source"
-        position={Position.Right}
-        className="!bg-sky-500 dark:!bg-sky-400"
-        style={handleStyle()}
-      />
+      {/* 左入右出（粉，文本/Prompt）：上游 Prompt/LLM 可连入做 Prompt 链，输出接下游作 prompt */}
+      <NodeHandle type="target" index={0} tone="prompt" label="Prompt" title="Prompt 输入" />
+      <NodeHandle type="source" index={0} tone="prompt" label="Prompt" title="Prompt 输出" />
 
       {/* 选用预设：从全局预设库挑一条，内容替换当前节点文本（按分组两段） */}
       <Dialog open={pickOpen} onOpenChange={setPickOpen}>

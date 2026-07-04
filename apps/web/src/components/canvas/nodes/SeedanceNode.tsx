@@ -1,16 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
-import { Handle, Position, type NodeProps } from '@xyflow/react'
+import { type NodeProps } from '@xyflow/react'
 import { Download, Video } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { DownloadDialog, type DownloadTarget } from '@/components/canvas/DownloadDialog'
 import { NodeHeader } from './NodeHeader'
-import { handleStyle } from './handleLayout'
+import { NodeHandle } from './NodeHandle'
 import { createVideoTaskApi } from '@/lib/api'
 import { pollTask } from '@/lib/taskPolling'
 import {
-  GEN_NODE_META,
   SEEDANCE_DURATION_DEFAULT,
   SEEDANCE_RATIO_DEFAULT,
   SEEDANCE_RESOLUTION_DEFAULT,
@@ -23,8 +22,6 @@ import {
 import { collectUpstreamAudio, collectUpstreamImages, collectUpstreamPrompt } from '@/lib/graph'
 import { type VideoNode as VideoNodeType } from '@/lib/types'
 import { useFlowStore } from '@/store/useFlowStore'
-
-const meta = GEN_NODE_META.video
 
 /**
  * Seedance 视频生成节点：卡片只展示生成结果（运行态 / 结果视频 / 空占位）。
@@ -143,12 +140,8 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
         selected ? 'ring-2 ring-primary' : ''
       }`}
     >
-      <Handle
-        type="target"
-        position={Position.Left}
-        className={meta.handle}
-        style={handleStyle()}
-      />
+      {/* 输入：Prompt / 输入图 / 音频 混合走这一个口（默认色） */}
+      <NodeHandle type="target" index={0} label="Input" title="输入（Prompt / 图 / 音频）" />
       <NodeHeader id={id} icon={Video} title={data.model} selected={selected} />
       <CardContent className="flex flex-col gap-2 px-3">
         {/* 结果展示区 */}
@@ -196,12 +189,8 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
         )}
       </CardContent>
       <DownloadDialog open={dialogOpen} onOpenChange={setDialogOpen} target={downloadTarget} />
-      <Handle
-        type="source"
-        position={Position.Right}
-        className={meta.handle}
-        style={handleStyle()}
-      />
+      {/* 输出：Video（默认色） */}
+      <NodeHandle type="source" index={0} label="Video" title="视频输出" />
     </Card>
   )
 }

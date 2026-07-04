@@ -1,19 +1,23 @@
 import { useEffect, useRef, useState } from 'react'
-import { Handle, Position, type NodeProps } from '@xyflow/react'
+import { type NodeProps } from '@xyflow/react'
 import { Copy, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { NodeHeader } from './NodeHeader'
-import { handleStyle } from './handleLayout'
+import { NodeHandle } from './NodeHandle'
+import { AddImageInputButton, ImageInputHandles } from './ImageInputHandles'
 import { createLlmTaskApi } from '@/lib/api'
 import { pollTask } from '@/lib/taskPolling'
-import { LLM_MODEL_DEFAULT, LLM_NODE_META, LLM_TEMPERATURE_DEFAULT } from '@/lib/nodeCatalog'
-import { LLM_SYSTEM_HANDLE, collectUpstreamPrompt } from '@/lib/graph'
+import { LLM_MODEL_DEFAULT, LLM_TEMPERATURE_DEFAULT } from '@/lib/nodeCatalog'
+import {
+  LLM_SYSTEM_HANDLE,
+  collectUpstreamImages,
+  collectUpstreamPrompt,
+  imageInputCount,
+} from '@/lib/graph'
 import { type LlmNode as LlmNodeType } from '@/lib/types'
 import { useFlowStore } from '@/store/useFlowStore'
-
-const meta = LLM_NODE_META
 
 /**
  * Any LLM 节点：卡片展示文本输出（运行态 / 回答 + 折叠思考 / 空占位）。
@@ -28,6 +32,7 @@ export function LlmNode({ id, data, selected }: NodeProps<LlmNodeType>) {
   const result = data.result ?? ''
   const reasoning = data.reasoning ?? ''
   const running = data.running ?? false
+  const imageInputs = imageInputCount(data.imageInputs)
 
   const [copied, setCopied] = useState(false)
   const copyResult = async () => {
@@ -96,6 +101,8 @@ export function LlmNode({ id, data, selected }: NodeProps<LlmNodeType>) {
       return
     }
     const systemPrompt = collectUpstreamPrompt(project, id, { handle: 'system' })
+    // 多模态：各图像输入端点连入的上游图（按端点编号排序），有则发给视觉模型
+    const images = collectUpstreamImages(project, id)
     updateNodeData(id, {
       running: true,
       error: undefined,
@@ -110,6 +117,7 @@ export function LlmNode({ id, data, selected }: NodeProps<LlmNodeType>) {
         model,
         prompt,
         systemPrompt: systemPrompt.trim() || undefined,
+        images: images.length ? images : undefined,
         temperature,
         thinking,
       })
@@ -130,36 +138,19 @@ export function LlmNode({ id, data, selected }: NodeProps<LlmNodeType>) {
         selected ? 'ring-2 ring-primary' : ''
       }`}
     >
-      {/* 左侧两个输入端点：默认端点（用户 Prompt，紫色）+ System Prompt 端点（绿色） */}
-      <Handle
-        type="target"
-        position={Position.Left}
-        className={meta.handle}
-        style={handleStyle(0)}
-        title="Prompt 输入（用户消息）"
-      />
-      <Handle
+      {/* 左侧输入端点：Prompt（粉）+ System Prompt（粉）+ 图像输入端点（绿，image-0..，Image 1..N） */}
+      <NodeHandle type="target" index={0} tone="prompt" label="Prompt" required title="Prompt 输入" />
+      <NodeHandle
         type="target"
         id={LLM_SYSTEM_HANDLE}
-        position={Position.Left}
-        className="!bg-emerald-500 dark:!bg-emerald-400"
-        style={handleStyle(1)}
-        title="System Prompt 输入（系统提示词）"
+        index={1}
+        tone="prompt"
+        label="System Prompt"
+        title="System Prompt 输入"
       />
+      <ImageInputHandles count={imageInputs} baseIndex={2} />
       <NodeHeader id={id} icon={Sparkles} title={model} selected={selected} />
       <CardContent className="flex flex-col gap-2 px-3">
-        {/* 输入端点图例：与左侧两个端点颜色对应 */}
-        <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
-          <span className="flex items-center gap-1">
-            <span className="inline-block size-2 shrink-0 rounded-full bg-violet-500 dark:bg-violet-400" />
-            Prompt
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="inline-block size-2 shrink-0 rounded-full bg-emerald-500 dark:bg-emerald-400" />
-            System Prompt
-          </span>
-        </div>
-
         {/* 思考过程（若返回）：可折叠，默认收起 */}
         {reasoning && !running && (
           <details className="nodrag rounded-md border bg-muted/40 px-2 py-1.5 text-xs">
@@ -201,9 +192,13 @@ export function LlmNode({ id, data, selected }: NodeProps<LlmNodeType>) {
           )}
         </div>
 
-        <Button size="sm" onClick={handleRun} disabled={running} className="nodrag w-full">
-          {running ? (thinking ? '思考中…' : '生成中…') : '运行'}
-        </Button>
+        {/* 添加图像输入 + 运行 并排 */}
+        <div className="flex items-center gap-2">
+          <AddImageInputButton id={id} count={imageInputs} />
+          <Button size="sm" onClick={handleRun} disabled={running} className="nodrag ml-auto h-8">
+            {running ? (thinking ? '思考中…' : '生成中…') : '运行'}
+          </Button>
+        </div>
 
         {/* 生成失败信息：固定在节点最下方 */}
         {data.error && (
@@ -212,7 +207,8 @@ export function LlmNode({ id, data, selected }: NodeProps<LlmNodeType>) {
           </p>
         )}
       </CardContent>
-      <Handle type="source" position={Position.Right} className={meta.handle} style={handleStyle()} />
+      {/* 输出：Text（粉，LLM 输出文本） */}
+      <NodeHandle type="source" index={0} tone="prompt" label="Text" title="文本输出" />
     </Card>
   )
 }

@@ -38,8 +38,13 @@ function NodeInspectorPanel({
   const id = node.id
   const isLlm = node.type === 'llm'
   // 运行时实际发送的 prompt（= 上游 Prompt 节点文本按连线拼接），只读预览。
-  // LLM 节点有两个输入端点：用户 Prompt 只取默认端点（排除 System Prompt 端点）。
-  const promptPreview = collectUpstreamPrompt(project, id, isLlm ? { handle: 'user' } : undefined)
+  // LLM / 图像节点左侧有多个输入端点：Prompt 只取默认 Prompt 端点（排除 System / 图像端点）。
+  const usesPromptHandle = node.type === 'llm' || node.type === 'image'
+  const promptPreview = collectUpstreamPrompt(
+    project,
+    id,
+    usesPromptHandle ? { handle: 'user' } : undefined,
+  )
   const hasPrompt = promptPreview.trim().length > 0
   // System Prompt 预览：仅 LLM 节点，取 System Prompt 端点的上游文本
   const systemPreview = isLlm ? collectUpstreamPrompt(project, id, { handle: 'system' }) : ''
