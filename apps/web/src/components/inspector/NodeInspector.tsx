@@ -1,14 +1,20 @@
 import { Textarea } from '@/components/ui/textarea'
 import { collectUpstreamPrompt } from '@/lib/graph'
-import { type ImageNode as ImageNodeT, type Project, type VideoNode as VideoNodeT } from '@/lib/types'
+import {
+  type ImageNode as ImageNodeT,
+  type LlmNode as LlmNodeT,
+  type Project,
+  type VideoNode as VideoNodeT,
+} from '@/lib/types'
 import { useActiveProject } from '@/store/useFlowStore'
 import { ImageInput } from './ImageInput'
 import { ImageParams } from './ImageParams'
+import { LlmParams } from './LlmParams'
 import { VideoParams } from './VideoParams'
 
 /**
  * 右侧节点参数面板（Inspector）。
- * 仅在「恰好选中一个 image/video 节点」时出现；节点卡片只显示生成结果，参数都在此编辑。
+ * 仅在「恰好选中一个 image/video/llm 节点」时出现；节点卡片只显示生成结果，参数都在此编辑。
  * 选中状态来自 React Flow 写在 node.selected 上的标记（store 已通过 applyNodeChanges 维护）。
  */
 export function NodeInspector() {
@@ -17,7 +23,7 @@ export function NodeInspector() {
   const selected = project.nodes.filter((n) => n.selected)
   if (selected.length !== 1) return null
   const node = selected[0]
-  if (node.type !== 'image' && node.type !== 'video') return null
+  if (node.type !== 'image' && node.type !== 'video' && node.type !== 'llm') return null
   // key={node.id}：切换选中节点时重置内部状态（上传态 / 文件输入），避免串台
   return <NodeInspectorPanel key={node.id} node={node} project={project} />
 }
@@ -26,7 +32,7 @@ function NodeInspectorPanel({
   node,
   project,
 }: {
-  node: ImageNodeT | VideoNodeT
+  node: ImageNodeT | VideoNodeT | LlmNodeT
   project: Project
 }) {
   const id = node.id
@@ -41,7 +47,7 @@ function NodeInspectorPanel({
         <h2 className="text-sm font-semibold">{node.data.model}</h2>
       </div>
 
-      {/* 图像：输入图（画廊态）+ 模型参数；视频：整套参数（含任务自适应的输入图）交给 VideoParams */}
+      {/* 图像：输入图（画廊态）+ 模型参数；视频：整套参数；LLM：Model/Temperature/Thinking */}
       {node.type === 'image' ? (
         <>
           <div className="flex flex-col gap-2">
@@ -54,8 +60,10 @@ function NodeInspectorPanel({
           </div>
           <ImageParams id={id} data={node.data} />
         </>
-      ) : (
+      ) : node.type === 'video' ? (
         <VideoParams id={id} data={node.data} />
+      ) : (
+        <LlmParams id={id} data={node.data} />
       )}
 
       {/* 最终 Prompt 预览（置底）：运行时发送的 prompt（上游 Prompt 节点文本按连线拼接）。

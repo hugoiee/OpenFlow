@@ -1,8 +1,10 @@
 # OpenFlow
 
 节点式 AI 工作流画布编辑器：支持多个项目，每个项目是一块画布，可在画布上添加节点
-（节点列表按输出形态分三类：**文本** Prompt 节点 / **图像** 生成节点 / **视频** 生成节点）并用连线把
-节点连接起来。还支持从桌面**拖入图像/音频文件**：拖到空白处经 /api/upload 上传后生成 **素材节点**（图像素材 / 音频素材，纯「源」节点，
+（节点列表按输出形态分三类：**文本** Prompt 节点 + Any LLM 节点 / **图像** 生成节点 / **视频** 生成节点）并用连线把
+节点连接起来。**Any LLM 节点**：把上游 Prompt/LLM 文本喂给一个 OpenAI 兼容模型产出文本（左入右出，输出经连线可作下游节点的 prompt）；
+节点卡片展示回答（思考文本若返回则折叠展示），选中时右侧 Inspector 面板调 Model（预置下拉）/ Temperature（滑块）/ Thinking（开关，开启发 reasoning_effort 原生推理参数）；
+调用**复用画布 Agent 的 endpoint/key**（不需 req_from），走异步任务（同图像/视频，刷新不丢结果）。还支持从桌面**拖入图像/音频文件**：拖到空白处经 /api/upload 上传后生成 **素材节点**（图像素材 / 音频素材，纯「源」节点，
 连下游图像/视频节点作输入——图像素材作输入图、音频素材作视频 audio_list）；拖到已有图像/视频节点上则把图片直接追加进其输入图，拖音频到视频节点则追加进其输入音频（audio_list）。
 图像类的 **Image 2(gpt-image-2)** 与 **Nano Banana(nano-banana)**、视频类的 **Seedance(seedance)** 均已接入真实生成
 （经后端代理调 AIGC 接口；prompt 取自上游 Prompt 节点，节点上可调各自参数，输入图可手填 URL 或经 /api/upload 上传，运行后展示结果图/视频）。
@@ -41,7 +43,7 @@ pnpm --filter @openflow/desktop dev        # Electron 开发（自动切 electro
 ## 目录结构
 
 ```
-packages/shared/src/index.ts   ProjectDTO / SettingsDTO(defaultReqFrom + aigcEndpoint/uploadEndpoint/uploadMediaEndpoint + agentEndpoint/agentApiKey/agentModel) / SaveSettingsBody(defaultReqFrom 必填 + 其余可选，省略保持原值) / GenImageBody / GenVideoBody(含 projectId/nodeId + audios → audio_list) / TaskDTO(id/projectId/nodeId/kind/status/result/error) + TaskKind + TaskStatus + CreateTaskResponse + 画布 Agent 契约(AgentMessage / AgentChatBody / AgentImageAction{prompt,model,title?} / AgentChatResponse{reply,actions})
+packages/shared/src/index.ts   ProjectDTO / SettingsDTO(defaultReqFrom + aigcEndpoint/uploadEndpoint/uploadMediaEndpoint + agentEndpoint/agentApiKey/agentModel) / SaveSettingsBody(defaultReqFrom 必填 + 其余可选，省略保持原值) / GenImageBody / GenVideoBody(含 projectId/nodeId + audios → audio_list) / GenLlmBody(projectId/nodeId + model/prompt/temperature/thinking) / TaskDTO(id/projectId/nodeId/kind/status/result/error；llm 的 result=[回答] 或 [回答,思考]) + TaskKind('image'|'video'|'llm') + TaskStatus + CreateTaskResponse + 画布 Agent 契约(AgentMessage / AgentChatBody / AgentImageAction{prompt,model,title?} / AgentChatResponse{reply,actions})
 apps/server/src/
   index.ts                     独立开发入口（tsx，固定 8787）：调 startServer()，数据走源码相对目录；并 re-export createApp/startServer
   app.ts                       createApp({staticDir?})：挂 /api 路由（含 /api/tasks）+ import './task-store'（启动即对账中断任务）+ 可选在根路径托管前端 SPA（供 Electron 生产用；HashRouter 故非 /api 路径统一回退 index.html，含目录穿越防护）
@@ -49,12 +51,14 @@ apps/server/src/
   db.ts                        better-sqlite3 建库建表（projects / settings / tasks）；数据目录 = env OPENFLOW_DATA_DIR（桌面端注入 userData）否则回退 apps/server/data/openflow.db（gitignore）；settings 表列 default_req_from + aigc/upload/upload_media_endpoint（按需 ALTER 迁移，旧 provider 列留存不读）；tasks 表(id/project_id/node_id/kind/status/params/result/error/时间戳 + node 索引)
   settings-store.ts            读写 settings 单行（defaultReqFrom + 三端点 + agent 三项）；writeSettings(patch) 合并写：只覆盖出现的字段
   agent.ts                     runAgentChat(messages, settings)：POST OpenAI 兼容 /chat/completions（端点按 URL pathname 判断/补后缀，保住查询串如 Azure ?api-version=；设置优先 → env AGENT_ENDPOINT/AGENT_API_KEY/AGENT_MODEL；端点或模型缺失抛「请在设置中填写」；apiKey 非空才带 Bearer；网络失败/超时/非 JSON 响应均翻译成含地址与原因的中文错误）；系统提示词要求严格 JSON 计划 + 容错解析（extractJsonObject 从首个 { 起做括号平衡扫描——容忍 ``` 围栏与 JSON 后追加的说明文字；非 JSON 时整段当 reply 且 actions 空）+ normalizeActions（无 prompt 丢弃、model 归一为 Image 2/Nano Banana、单轮上限 8 个动作）
-  task-store.ts                异步生成任务持久化 + 进程内 runner：createTask/getTask/getLatestTaskForNode；startTask(不 await 地后台跑 runImageGen/runVideoGen，reqFrom/端点运行时从设置解析不入库，完成回写 succeeded/failed)；reconcileInterruptedTasks()（模块加载时调一次：残留 pending/running 标 failed「任务因服务重启中断」）
+  task-store.ts                异步生成任务持久化 + 进程内 runner：createTask/getTask/getLatestTaskForNode；startTask(不 await 地后台跑 runImageGen/runVideoGen/runLlmCompletion 按 kind 分支，reqFrom/端点运行时从设置解析不入库，完成回写 succeeded/failed；llm result 打包成 [回答] 或 [回答,思考])；reconcileInterruptedTasks()（模块加载时调一次：残留 pending/running 标 failed「任务因服务重启中断」）
+  llm.ts                       runLlmCompletion({model,prompt,temperature,thinking,settings})：Any LLM 节点的文本补全，复用画布 Agent 的 endpoint/key（设置优先→env AGENT_ENDPOINT/AGENT_API_KEY，端点缺失抛「请在设置中填写」），无系统提示词纯文本补全；thinking=true 时请求体带 reasoning_effort:'medium'；解析回答(content)与思考(reasoning_content/reasoning/thinking)回传（复用 agent.ts 导出的 resolveChatCompletionsUrl/extractLlmError）
   provider.ts                  runImageGen()/runVideoGen()：POST AIGC 接口生成图像/视频（按 model 分支构造 payload；视频 audio_list 取自入参 audios；端点取入参 endpoint，空回退 env AIGC_ENDPOINT/内置）+ 从任意响应稳健解析 URL；uploadFiles(form,kind,endpointOverride?)：转发 multipart 到上传接口（端点取 override，空回退 UPLOAD_ENDPOINT / UPLOAD_MEDIA_ENDPOINT）；resolveReqFrom()：把全局署名解析成最终 req_from（**为空即抛错、无兜底默认**——req_from 空时不允许发任何上游请求）
   routes/projects.ts           /api/projects CRUD（nodes/edges 以 JSON 存）
   routes/settings.ts           GET /api/settings(回 defaultReqFrom + 三端点 + agent 配置；**agentApiKey 不回明文**——恒空串 + hasAgentApiKey 标记) / PUT(defaultReqFrom 必填；其余省略保持原值、空串清空回退默认)
   routes/image.ts              POST /api/aigc(图像生成：校验 model/prompt/projectId/nodeId + req_from 空返回 400 拒发 → createTask/startTask 建任务、立刻返回 {taskId}；实际 AIGC 由 task-store runner 后台跑)
   routes/video.ts              POST /api/video(视频生成 seedance：同 image.ts 建任务返回 {taskId}，kind=video)
+  routes/llm.ts                POST /api/llm(Any LLM 文本生成：校验 model/prompt/projectId/nodeId → createTask/startTask 建任务返回 {taskId}，kind=llm；复用 Agent 配置不需 req_from，未配置时由后台任务给出可读失败)
   routes/tasks.ts              GET /api/tasks/:id(轮询单任务，缺失 404) / GET /api/tasks?projectId=&nodeId=(取节点最近一次任务，重连兜底)
   routes/upload.ts             POST /api/upload(文件上传代理：按 query kind 分流转发 multipart——图片→uploadEndpoint、音频(kind=audio)→uploadMediaEndpoint（均从设置注入，空回退对应 env）；req_from 从全局设置注入，为空返回 400 拒发)
   routes/agent.ts              POST /api/agent/chat(画布 Agent 对话：过滤非法消息并截取最近 20 条历史 → runAgentChat 同步调 LLM 返 {reply,actions}；配置缺失 400、上游失败 502；本接口不建任务——画布动作与生图任务由前端执行)
@@ -67,13 +71,13 @@ apps/web/src/
   store/useSettingsStore.ts    Zustand（无 persist）：loadSettings() 拉 defaultReqFrom + 三端点 + agent 三项；saveSettings(部分字段) PUT 后回拉；saveReqFrom() 为其薄封装（其余字段由后端合并保留，供 ReqFromGate）
   store/useAgentStore.ts       Zustand（无 persist）：画布 Agent 会话（conversations 按 projectId 分、仅存内存刷新即清）+ sending 态 + panelOpen（存 localStorage openflow-agent-panel）；send() = agentChatApi 拿计划 → executeAgentActions 落画布 → 把 reply/执行结果（成功组数 okCount、失败信息 actionErrors）追加进会话；有动作的 assistant 轮以 llmContent 存完整 JSON 计划回灌 LLM 历史（供「照上一张改」类追问拿到 prompt 全文，展示仍用短 reply）；错误提示条不进 LLM 历史，且历史构建时合并连续同角色消息（严格网关要求角色交替）
   store/useThemeStore.ts       Zustand：主题偏好 mode(light/dark/system) 存 localStorage(openflow-theme)；resolved 为实际明暗（system 已按 prefers-color-scheme 解析，供 React Flow colorMode）；创建即给 <html> 挂/摘 .dark 并监听系统明暗变化（index.html 另有防白闪内联脚本在首帧前先挂类）
-  lib/api.ts                   /api/* fetch 封装（项目 CRUD / 设置 get·save / 图像·视频异步任务 createImageTaskApi·createVideoTaskApi 建任务返 taskId、getTaskApi 轮询、getLatestTaskForNodeApi 按节点重连 / agentChatApi(Agent 对话，同步返 {reply,actions}) / 文件上传 uploadFilesApi(files,kind)——图片默认走 /api/upload，音频 kind=audio 走 /api/upload-media）
+  lib/api.ts                   /api/* fetch 封装（项目 CRUD / 设置 get·save / 图像·视频·LLM 异步任务 createImageTaskApi·createVideoTaskApi·createLlmTaskApi 建任务返 taskId、getTaskApi 轮询、getLatestTaskForNodeApi 按节点重连 / agentChatApi(Agent 对话，同步返 {reply,actions}) / 文件上传 uploadFilesApi(files,kind)——图片默认走 /api/upload，音频 kind=audio 走 /api/upload-media）
   lib/agentExecutor.ts         executeAgentActions(projectId, actions)：把 Agent 计划落到画布——逐动作 addAgentGeneration 建节点连线 → createImageTaskApi 建任务（参数与 ImageNode 手动运行同构，按模型分组）→ updateNodeData 写 taskId（轮询/展示由 ImageNode 的 taskId 重连 effect 接管，节点组件零改动）；等待期间画布切走则跳过该动作；建任务失败把错误写到节点 data 内联展示
   lib/taskPolling.ts           pollTask(taskId,{onUpdate?,signal})：递归 setTimeout 轮询任务至终态（起 1500ms×1.3 退避封顶 5000ms；瞬时错误重试；signal abort 可取消）
-  lib/graph.ts                 连线采集：collectUpstreamPrompt（上游文本）/ collectUpstreamImages（上游 image 结果 + 图像素材 URL 作输入图）/ collectUpstreamAudio（上游音频素材 URL 作 audio_list）
+  lib/graph.ts                 连线采集：collectUpstreamPrompt（上游 prompt 文本 + 上游 Any LLM 节点输出文本；prompt 有左侧输入→递归并入其上游文本实现 Prompt 链，LLM 结果为终点不回溯，visited 防环）/ collectUpstreamImages（上游 image 结果 + 图像素材 URL 作输入图）/ collectUpstreamAudio（上游音频素材 URL 作 audio_list）
   lib/migrate.ts               首次启动把旧 localStorage（openflow-store）项目数据一次性导入后端，打 openflow-migrated 标记
-  lib/types.ts                 React Flow 强类型节点（FlowNode = Prompt/Image/Video/Asset；AssetNodeData{kind:image|audio,url,fileName,uploading,error}；Project）
-  lib/nodeCatalog.ts           图像/视频预置模型 + 模型→AIGC model_name 映射(IMAGE_API_MODEL/imageApiModel、VIDEO_API_MODEL/videoApiModel) + 各模型可调项选项(图像尺寸/质量/张数、Nano version/宽高比/尺寸、Seedance version/mode/分辨率/时长) + 配色文案（侧栏与节点共用，含素材节点 ASSET_NODE_META：图像=琥珀 / 音频=天蓝）
+  lib/types.ts                 React Flow 强类型节点（FlowNode = Prompt/Llm/Image/Video/Asset；LlmNodeData{model,temperature,thinking,running,result,reasoning,error,taskId}；AssetNodeData{kind:image|audio,url,fileName,uploading,error}；Project）
+  lib/nodeCatalog.ts           图像/视频预置模型 + 模型→AIGC model_name 映射(IMAGE_API_MODEL/imageApiModel、VIDEO_API_MODEL/videoApiModel) + 各模型可调项选项(图像尺寸/质量/张数、Nano version/宽高比/尺寸、Seedance version/mode/分辨率/时长) + Any LLM 预置模型 LLM_MODELS + Temperature 范围 + 配色文案（侧栏与节点共用，含素材节点 ASSET_NODE_META：图像=琥珀 / 音频=天蓝；LLM_NODE_META：紫色）
   components/ui/               shadcn/ui vendored（不参与 lint/format，勿手改）
   components/gate/ReqFromGate.tsx 启动强制填写 req_from：设置已加载且全局署名为空时全屏阻断弹窗，填写保存后放行（已填则不出现）
   components/settings/SettingsDialog.tsx 设置面板：全局 req_from（署名）+ AIGC 生成端点 / 图片上传端点 / 音频上传端点 + Agent 接口地址（OpenAI 兼容）/ Agent API Key（password 框，**写入-only**：不回显、留空=保持已存值、placeholder 按 hasAgentApiKey 提示）/ Agent 模型名（留空=用服务端默认/env）输入 + 保存
@@ -84,11 +88,12 @@ apps/web/src/
   components/projects/ProjectSidebar.tsx     工作区 Sidebar：返回首页 + 节点列表（按文本/图像/视频三类分组，点按添加对应节点并预设模型；不再显示项目列表）
   components/canvas/
     FlowCanvas.tsx             React Flow 封装；连线默认 bezier 曲线（default，旧 straight/smoothstep 载入时归一成曲线）+ 加粗；悬停高亮、与「已选中节点」相连的边高亮 + 蚂蚁线流动（渲染时按 node.selected 派生 animated/edge-active，不入库；样式在 index.css）；colorMode 跟随主题（useThemeStore.resolved，画布底纹/控制按钮/缩略图随暗色）；onDragOver/onDrop 接桌面拖入文件（按 MIME 分图像/音频，screenToFlowPosition 定位：图片落图像/视频节点→追加输入图、音频落视频节点→追加输入音频，否则建素材节点上传写回 URL）
-    nodes/PromptNode.tsx       Prompt 节点（Card + Textarea，source Handle 在右）
+    nodes/PromptNode.tsx       Prompt 节点（Card + Textarea）：左侧 target Handle 输入 + 右侧 source Handle 输出（左入右出，天蓝）；上游 Prompt/LLM 文本可连入，经 collectUpstreamPrompt 递归并入下游（Prompt 链）
+    nodes/LlmNode.tsx          Any LLM 节点：卡片展示回答文本（思考文本若返回则 <details> 折叠）+ 复制按钮；运行收集上游 Prompt/LLM 文本→createLlmTaskApi 建任务→pollTask 轮询→展示；带 taskId 载入时 useEffect 重连轮询（重连路径失败 silent、点击运行失败弹窗）；Handle 左进右出（紫色）；Model/Temperature/Thinking 参数在右侧 Inspector 编辑
     nodes/ImageNode.tsx        图像生成节点：输入图(可上传)/按模型(Image 2 走尺寸/质量/张数；Nano Banana 走 version/宽高比/尺寸)；运行收集上游 Prompt 文本→createImageTaskApi 建任务→pollTask 轮询→展示结果图；带 taskId 载入时 useEffect 重连轮询（关页面不丢结果；重连/Agent 触发路径失败 **silent 不弹 alert** 只节点内联报错，点击运行路径失败仍弹窗）；Handle 左进右出（req_from 署名走全局设置，节点不再单设）
     nodes/SeedanceNode.tsx     视频生成节点（seedance）：输入图(可上传)/输入音频(可上传，走 /api/upload-media)/version/mode/分辨率/时长；运行时音频 = 上游音频素材(连线)+ 本节点手动填/传 URL 合并作 audios→createVideoTaskApi 建任务→pollTask 轮询→<video> 展示；带 taskId 载入时 useEffect 重连轮询；Handle 左进右出（req_from 署名走全局设置，节点不再单设）
     nodes/AssetNode.tsx        素材节点（桌面拖入）：图像素材显示缩略图 / 音频素材显示 <audio>；上传中骨架、失败内联；仅右侧 source Handle（纯源，连下游作输入）
-    nodes/index.ts             nodeTypes 注册表（prompt → PromptNode / image → ImageNode / video → SeedanceNode / asset → AssetNode）
+    nodes/index.ts             nodeTypes 注册表（prompt → PromptNode / llm → LlmNode / image → ImageNode / video → SeedanceNode / asset → AssetNode）
 apps/desktop/
   src/main.ts                  Electron 主进程：dataDir=userData → startServer(内嵌后端)；生产固定端口 42617（保证 localStorage origin 稳定，主题/homeView 偏好可跨启动保留；被占用才回退随机端口）+ 托管 SPA 后 loadURL(localhost)，开发连 VITE_DEV_SERVER_URL(5173)；窗口 backgroundColor 跟随 nativeTheme 明暗（防暗色用户启动白闪）；含 OPENFLOW_SELFTEST 无界面自检分支
   src/preload.ts               预加载：contextIsolation，仅暴露 window.openflow.desktop 标记（渲染进程只用 fetch 访问本地 /api）

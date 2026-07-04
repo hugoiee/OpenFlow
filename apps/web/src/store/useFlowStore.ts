@@ -21,6 +21,8 @@ import {
   NANO_IMAGE_SIZE_DEFAULT,
   NANO_VERSION_DEFAULT,
   IMAGE_SIZE_DEFAULT,
+  LLM_MODEL_DEFAULT,
+  LLM_TEMPERATURE_DEFAULT,
   SEEDANCE_DURATION_DEFAULT,
   SEEDANCE_RATIO_DEFAULT,
   SEEDANCE_RESOLUTION_DEFAULT,
@@ -107,6 +109,22 @@ function createNode(
       data: { label: 'Prompt', text: '' },
     }
   }
+  if (type === 'llm') {
+    // Any LLM 节点：带模型/温度/思考默认值；运行状态/结果初始为空。
+    return {
+      id: newId('n_'),
+      type: 'llm',
+      position,
+      data: {
+        label: 'Any LLM',
+        model: model || LLM_MODEL_DEFAULT,
+        temperature: LLM_TEMPERATURE_DEFAULT,
+        thinking: false,
+        running: false,
+        result: '',
+      },
+    }
+  }
   if (type === 'image') {
     // 图像生成节点：带具名模型 + 可调选项默认值；运行状态/结果初始为空。
     // 统一带上 Image 2 与 Nano Banana 两套字段默认值，后端按 model 取舍。
@@ -152,6 +170,7 @@ function createNode(
 // Agent 摆放新节点时估算已有节点的高度（React Flow 尚未测量到时的兜底），用于找画布底部空位
 const AGENT_PLACE_FALLBACK_HEIGHT: Record<string, number> = {
   prompt: 190,
+  llm: 280,
   image: 380,
   video: 400,
   asset: 220,
@@ -213,6 +232,9 @@ export const useFlowStore = create<FlowState>()((set, get) => {
             return { ...node, data: { ...node.data, running: false, error: undefined } }
           }
           if (node.type === 'video') {
+            return { ...node, data: { ...node.data, running: false, error: undefined } }
+          }
+          if (node.type === 'llm') {
             return { ...node, data: { ...node.data, running: false, error: undefined } }
           }
           // 素材节点：uploading 是瞬时态，载入时复位，避免刷新后卡在「上传中…」
@@ -376,9 +398,9 @@ export const useFlowStore = create<FlowState>()((set, get) => {
     addConnectedNode: ({ type, model, position, from }) =>
       patchActive((p) => {
         const node = createNode(type, p.nodes.length, model, position)
-        // 只有 image/video 有输入(target) handle；从输出端拉出却选了无输入口的节点（Prompt）时，
+        // 除 asset（纯源，只出不进）外都有输入(target) handle；从输出端拉出却选了无输入口的节点（asset）时，
         // 无处可连 → 只建节点不连线，避免生成一条挂空的坏边。
-        const canBeTarget = type === 'image' || type === 'video'
+        const canBeTarget = type !== 'asset'
         const edge: Edge | null =
           from.handleType === 'source'
             ? canBeTarget

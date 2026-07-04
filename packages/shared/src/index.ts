@@ -100,8 +100,24 @@ export type GenVideoBody = {
   duration: number
 }
 
+/** POST /api/llm 请求体（Any LLM 文本生成，经后端复用画布 Agent 的 endpoint/key 调 /chat/completions）。 */
+export type GenLlmBody = {
+  /** 归属项目 id（用于建任务、按节点重连）。 */
+  projectId: string
+  /** 发起生成的节点 id（用于建任务、按节点重连）。 */
+  nodeId: string
+  /** 模型名（作 chat/completions 的 model；取自节点下拉）。 */
+  model: string
+  /** 生成指令（= 上游 Prompt/LLM 节点文本按连线拼接）。 */
+  prompt: string
+  /** 采样温度 0–2。 */
+  temperature: number
+  /** 是否开启思考：为 true 时请求体带 reasoning_effort 等原生推理参数。 */
+  thinking: boolean
+}
+
 /** 异步生成任务的种类 / 状态。 */
-export type TaskKind = 'image' | 'video'
+export type TaskKind = 'image' | 'video' | 'llm'
 export type TaskStatus = 'pending' | 'running' | 'succeeded' | 'failed'
 
 /** 任务 DTO：前端轮询用；不含请求体 params（内部持久化，不外泄）。 */
@@ -111,7 +127,7 @@ export type TaskDTO = {
   nodeId: string
   kind: TaskKind
   status: TaskStatus
-  /** 成功前为空。 */
+  /** 成功前为空。image/video 为结果 URL 列表；llm 为 [回答文本] 或 [回答文本, 思考文本]。 */
   result: string[]
   /** 失败时的可读错误信息。 */
   error?: string
