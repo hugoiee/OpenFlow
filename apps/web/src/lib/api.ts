@@ -1,6 +1,8 @@
 import type {
   AgentChatBody,
   AgentChatResponse,
+  AgentTestBody,
+  AgentTestResponse,
   CreateTaskResponse,
   GenImageBody,
   GenLlmBody,
@@ -129,6 +131,15 @@ export async function createLlmTaskApi(body: GenLlmBody): Promise<string> {
 // 同步接口：后端调 LLM 返回 { reply, actions } 计划；画布动作由前端执行（见 lib/agentExecutor.ts）。
 export function agentChatApi(body: AgentChatBody): Promise<AgentChatResponse> {
   return request<AgentChatResponse>('/agent/chat', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+}
+
+// ---- Agent 连接测试（最小用量）----
+// 后端用请求体（或已存）配置发一条 max_tokens:1 的探测请求；apiKey 省略=测已保存的密钥。
+export function testAgentConnectionApi(body: AgentTestBody): Promise<AgentTestResponse> {
+  return request<AgentTestResponse>('/agent/test', {
     method: 'POST',
     body: JSON.stringify(body),
   })

@@ -2,6 +2,7 @@ import type {
   AgentChatResponse,
   AgentImageAction,
   AgentMessage,
+  AgentTestBody,
   SettingsDTO,
 } from '@openflow/shared'
 
@@ -189,4 +190,64 @@ export async function runAgentChat(
     )
   }
   return parsePlan(content)
+}
+
+/**
+ * 最小用量连接测试：用配置的 endpoint/key/model 发一条极小的 chat/completions 请求
+ * （max_tokens:1），验证接口可达、鉴权有效、模型被接受，只耗 ~1 个输出 token。
+ * 端点/模型：入参非空优先，否则回退已存设置，再回退 env；缺失时抛可读错误（供 400）。
+ * apiKey 入参为空则回退已存密钥/env（沿用写入-only 语义：不传即测已保存的 Key）。
+ */
+export async function runAgentConnectionTest(
+  override: AgentTestBody,
+  settings: SettingsDTO,
+): Promise<{ model: string; latencyMs: number }> {
+  const endpoint = override.endpoint?.trim() || settings.agentEndpoint.trim() || AGENT_ENDPOINT
+  if (!endpoint) throw new Error('未配置 Agent 接口地址，请在设置中填写')
+  const model = override.model?.trim() || settings.agentModel.trim() || AGENT_MODEL
+  if (!model) throw new Error('未配置 Agent 模型名，请在设置中填写')
+  const apiKey = override.apiKey?.trim() || settings.agentApiKey.trim() || AGENT_API_KEY
+
+  const url = resolveChatCompletionsUrl(endpoint)
+  const startedAt = Date.now()
+  let res: Response
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+      },
+      // 最小用量：只探连通，限制输出 1 token、temperature 0
+      body: JSON.stringify({
+        model,
+        messages: [{ role: 'user', content: 'ping' }],
+        max_tokens: 1,
+        temperature: 0,
+      }),
+      // 连接测试不该久等，30 秒足以判定可达性
+      signal: AbortSignal.timeout(30_000),
+    })
+  } catch (e) {
+    if (e instanceof Error && e.name === 'TimeoutError') {
+      throw new Error(`连接测试超时（30 秒无响应）：${url}，请检查 Agent 接口地址`)
+    }
+    const cause = e instanceof Error && e.cause instanceof Error ? e.cause.message : undefined
+    throw new Error(
+      `连接测试失败（${url}）：${cause ?? (e instanceof Error ? e.message : String(e))}`,
+    )
+  }
+  const raw = await res.text().catch(() => '')
+  let data: unknown = null
+  try {
+    data = JSON.parse(raw)
+  } catch {
+    // 非 JSON 响应，data 留 null
+  }
+  if (!res.ok) {
+    throw new Error(
+      `连接测试失败 HTTP ${res.status}：${extractLlmError(data) ?? (raw.trim().slice(0, 300) || '(空响应)')}`,
+    )
+  }
+  return { model, latencyMs: Date.now() - startedAt }
 }
