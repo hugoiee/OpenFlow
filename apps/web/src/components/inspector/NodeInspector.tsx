@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Textarea } from '@/components/ui/textarea'
 import { useResizableWidth } from '@/hooks/useResizableWidth'
-import { buildImageRequest, buildLlmRequest, buildVideoRequest } from '@/lib/requestBody'
+import { buildImageUpstream, buildLlmUpstream, buildVideoUpstream } from '@/lib/requestBody'
 import {
   type ImageNode as ImageNodeT,
   type LlmNode as LlmNodeT,
@@ -9,6 +9,7 @@ import {
   type VideoNode as VideoNodeT,
 } from '@/lib/types'
 import { useActiveProject } from '@/store/useFlowStore'
+import { useSettingsStore } from '@/store/useSettingsStore'
 import { ImageInput } from './ImageInput'
 import { ImageParams } from './ImageParams'
 import { LlmParams } from './LlmParams'
@@ -30,23 +31,45 @@ export function NodeInspector() {
   return <NodeInspectorPanel key={node.id} node={node} project={project} />
 }
 
-/** 各节点类型「点击生成」时打到的接口路径（预览标签用）。 */
-const ENDPOINT: Record<'image' | 'video' | 'llm', string> = {
-  image: 'POST /api/aigc',
-  video: 'POST /api/video',
-  llm: 'POST /api/llm',
+/** 把 Agent 端点显示成 /chat/completions 上游地址（已带该后缀则原样）；空则给占位。 */
+function chatCompletionsLabel(endpoint: string): string {
+  const ep = endpoint.trim()
+  if (!ep) return '…/chat/completions（后端默认端点）'
+  const base = ep.replace(/\/+$/, '')
+  return /\/chat\/completions$/i.test(base) ? base : `${base}/chat/completions`
 }
 
-/** 表格视图里单个字段值的渲染：数组逐行展开（空显灰占位）、布尔转 true/false、其余按文本换行。 */
+/**
+ * 表格视图里单个字段值的渲染：数组逐行展开、嵌套对象转缩进键值块（应对上游 body 的
+ * config / messages / 多模态内容块）、空数组显灰占位、布尔转 true/false、其余按文本换行。
+ */
 function RequestValue({ value }: { value: unknown }) {
+  if (value === null || value === undefined)
+    return <span className="text-muted-foreground/60">—</span>
   if (Array.isArray(value)) {
     if (value.length === 0) return <span className="text-muted-foreground/60">[ 空 ]</span>
     return (
-      <div className="flex flex-col gap-0.5">
+      <div className="flex flex-col gap-1">
         {value.map((item, i) => (
-          <span key={i} className="break-all">
-            {String(item)}
-          </span>
+          <div key={i} className="min-w-0 break-all">
+            <RequestValue value={item} />
+          </div>
+        ))}
+      </div>
+    )
+  }
+  if (typeof value === 'object') {
+    const rows = Object.entries(value as Record<string, unknown>).filter(([, v]) => v !== undefined)
+    if (rows.length === 0) return <span className="text-muted-foreground/60">{'{ }'}</span>
+    return (
+      <div className="flex flex-col gap-0.5 rounded border border-border/50 bg-background/40 p-1">
+        {rows.map(([k, v]) => (
+          <div key={k} className="flex min-w-0 gap-1.5">
+            <span className="shrink-0 font-medium text-muted-foreground">{k}</span>
+            <div className="min-w-0 flex-1">
+              <RequestValue value={v} />
+            </div>
+          </div>
         ))}
       </div>
     )
@@ -65,13 +88,23 @@ function NodeInspectorPanel({
   const id = node.id
   // 面板宽度可调：当前设计宽度 240px 作为下限
   const { width, onPointerDownResize } = useResizableWidth('openflow-inspector-width', 240)
-  // 「点击生成时发送的请求体」——与各节点 handleRun 同源（build*Request），保证预览=实发。
+  // 上游端点 / 全局署名：预览「后端实际发往上游」的请求体需要它们（req_from 由全局署名注入）
+  const reqFrom = useSettingsStore((s) => s.defaultReqFrom)
+  const aigcEndpoint = useSettingsStore((s) => s.aigcEndpoint)
+  const agentEndpoint = useSettingsStore((s) => s.agentEndpoint)
+  // 「后端实际打到上游的请求体」：图像 / 视频=内网 AIGC 网关（req_from / model_name / config…），
+  // LLM=OpenAI 兼容 /chat/completions（messages / 多模态内容块 / reasoning_effort）。与实发链路同源。
   const requestBody =
     node.type === 'image'
-      ? buildImageRequest(project, node)
+      ? buildImageUpstream(project, node, reqFrom)
       : node.type === 'video'
-        ? buildVideoRequest(project, node)
-        : buildLlmRequest(project, node)
+        ? buildVideoUpstream(project, node, reqFrom)
+        : buildLlmUpstream(project, node)
+  // 预览标签上的上游地址：图像 / 视频走 AIGC 端点，LLM 走 Agent 端点的 /chat/completions
+  const upstreamEndpoint =
+    node.type === 'llm'
+      ? chatCompletionsLabel(agentEndpoint)
+      : aigcEndpoint.trim() || '…/aigc（后端默认端点）'
   const requestJson = JSON.stringify(requestBody, null, 2)
   // 请求预览的显示方式：JSON / 表格（存 localStorage，跨节点/刷新保留）
   const [view, setView] = useState<'json' | 'table'>(() =>
@@ -118,25 +151,31 @@ function NodeInspectorPanel({
 
       {/* 请求预览（置底）：点击生成时真正发送的请求体，只读。JSON / 表格 两种查看方式可切换。 */}
       <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-[11px] text-muted-foreground">请求（{ENDPOINT[node.type]}）</span>
-          {/* 切换显示方式：JSON / 表格 */}
-          <div className="flex shrink-0 rounded-md border p-0.5">
-            {(['json', 'table'] as const).map((v) => (
-              <button
-                key={v}
-                type="button"
-                onClick={() => pickView(v)}
-                className={`rounded-sm px-2 py-0.5 text-[10px] transition-colors ${
-                  view === v
-                    ? 'bg-primary/10 font-medium text-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                {v === 'json' ? 'JSON' : '表格'}
-              </button>
-            ))}
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] text-muted-foreground">请求（上游实发）</span>
+            {/* 切换显示方式：JSON / 表格 */}
+            <div className="flex shrink-0 rounded-md border p-0.5">
+              {(['json', 'table'] as const).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => pickView(v)}
+                  className={`rounded-sm px-2 py-0.5 text-[10px] transition-colors ${
+                    view === v
+                      ? 'bg-primary/10 font-medium text-foreground'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {v === 'json' ? 'JSON' : '表格'}
+                </button>
+              ))}
+            </div>
           </div>
+          {/* 实际打到的上游地址（署名 req_from 由后端从全局设置注入） */}
+          <span className="break-all font-mono text-[10px] leading-snug text-muted-foreground/70">
+            POST {upstreamEndpoint}
+          </span>
         </div>
 
         {view === 'json' ? (
