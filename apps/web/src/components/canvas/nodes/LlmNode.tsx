@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { type NodeProps } from '@xyflow/react'
+import { type NodeProps, useUpdateNodeInternals } from '@xyflow/react'
 import { Copy, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -26,6 +26,7 @@ import { useFlowStore } from '@/store/useFlowStore'
  */
 export function LlmNode({ id, data, selected }: NodeProps<LlmNodeType>) {
   const updateNodeData = useFlowStore((s) => s.updateNodeData)
+  const updateNodeInternals = useUpdateNodeInternals()
 
   const model = data.model || LLM_MODEL_DEFAULT
   const thinking = data.thinking ?? false
@@ -36,6 +37,12 @@ export function LlmNode({ id, data, selected }: NodeProps<LlmNodeType>) {
   const imageInputs = imageInputCount(data.imageInputs)
   const audioInputs = Math.max(0, data.audioInputs ?? 0)
   const videoInputs = Math.max(0, data.videoInputs ?? 0)
+
+  // 「Add Input」动态增减端点后，通知 React Flow 重新测量本节点的 handle 位置——
+  // 否则挂载后新增的 audio-/video- 端点不会被登记进连接系统，无法连线（image 默认≥1 在挂载时已登记故无此症状）。
+  useEffect(() => {
+    updateNodeInternals(id)
+  }, [id, imageInputs, audioInputs, videoInputs, updateNodeInternals])
 
   const [copied, setCopied] = useState(false)
   const copyResult = async () => {

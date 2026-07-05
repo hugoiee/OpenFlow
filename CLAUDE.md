@@ -121,7 +121,7 @@ apps/web/src/
     nodes/GroupNode.tsx        分组容器节点：半透明虚线框包住子节点（子节点 parentId 指向它、渲染在其上方，拖框子节点跟随）；顶部工具条改名 + 取消分组；NodeResizer 可调大小；无连接点
     nodes/NodeHeader.tsx       各节点共用卡片头部：图标 + 名称 + 删除按钮（默认隐藏，hover/选中时显示）
     nodes/NodeHandle.tsx       统一端点：环形连接点 + 外侧标签；type(target/source) + index(竖向槽位) + tone(粉/绿/蓝) + required(必填端点实心)
-    nodes/ImageInputHandles.tsx 编号输入端点组（image-/audio-/video- 三种 kind，含 ImageInputHandles/AudioInputHandles/VideoInputHandles）+ AddInputControls：暴露「Add Input:」图标按钮组（image/audio/video 三个按钮，传入哪个计数就显示哪个），点按 updateNodeData 递增 imageInputs/audioInputs/videoInputs → 节点重渲多出一个 NodeHandle（**Add Input 按钮通过计数字段反向驱动端点增减**）
+    nodes/ImageInputHandles.tsx 编号输入端点组（image-/audio-/video- 三种 kind，含 ImageInputHandles/AudioInputHandles/VideoInputHandles）+ AddInputControls：暴露「Add Input:」图标按钮组（image/audio/video 三个按钮，传入哪个计数就显示哪个），点按 updateNodeData 递增 imageInputs/audioInputs/videoInputs → 节点重渲多出一个 NodeHandle（**Add Input 按钮通过计数字段反向驱动端点增减**）。**⚠️ 用这些动态端点的节点（LlmNode/ImageNode/SeedanceNode）必须在端点数变化后调 `useUpdateNodeInternals()(id)` 重新测量**——否则挂载后新增的 handle 只在 DOM 存在、不进 React Flow 的 handleBounds 连接登记，无法连线（image 默认≥1 挂载即登记故不易发现）
     nodes/handleLayout.ts      端点竖向布局常量/计算：HANDLE_TOP_START=48 + HANDLE_GAP=32 + handleTop(index)/handleStyle(index)
     nodes/index.ts             nodeTypes 注册表（prompt → PromptNode / llm → LlmNode / image → ImageNode / video → SeedanceNode / asset → AssetNode / group → GroupNode）
   components/inspector/        右侧节点参数面板（Inspector）：节点卡片只显示结果，参数都在此编辑

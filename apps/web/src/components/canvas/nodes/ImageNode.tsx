@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { type NodeProps } from '@xyflow/react'
+import { type NodeProps, useUpdateNodeInternals } from '@xyflow/react'
 import { Banana, Download, Image as ImageIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -34,6 +34,12 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
   const result = data.result ?? []
   const running = data.running ?? false
   const imageInputs = imageInputCount(data.imageInputs)
+  const updateNodeInternals = useUpdateNodeInternals()
+
+  // 「Add Input」动态增减图像端点后，通知 React Flow 重新测量本节点 handle，否则新增端点无法连线
+  useEffect(() => {
+    updateNodeInternals(id)
+  }, [id, imageInputs, updateNodeInternals])
 
   // 生成失败：节点底部内联显示；silent=false 时再弹窗提示。
   // 重连路径（刷新重开 / Agent 触发）走 silent——非点击场景连环 alert 会阻塞整个应用。
