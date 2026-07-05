@@ -31,10 +31,12 @@ import {
   type VideoVariant,
 } from '@/lib/nodeCatalog'
 import {
+  ARRANGE_GAP,
   GROUP_PADDING,
   computeBoundingBox,
   computeGridLayout,
   detachChildren,
+  nodeSize,
 } from '@/lib/layout'
 import { isValidTypedConnection } from '@/lib/handleTypes'
 import { type FlowNode, type FlowNodeType, type Project } from '@/lib/types'
@@ -79,6 +81,12 @@ type FlowState = {
   addAssetNode: (kind: 'image' | 'audio' | 'video', position: { x: number; y: number }) => string
   /** 删除某个节点（如素材上传失败时移除占位节点）。 */
   removeNode: (nodeId: string) => void
+  /**
+   * 复制某个节点：在原节点正右侧（让开整宽 + 间距，不重叠）生成一个内容相同的副本。
+   * 保留全部参数配置与结果快照（result / 素材 url），但清掉 taskId 与运行态
+   * （副本不再重连轮询，避免与原节点共用 taskId 串写）。group 容器不支持（原样返回）。
+   */
+  duplicateNode: (nodeId: string) => void
   updateNodeData: (nodeId: string, data: Partial<FlowNode['data']>) => void
   /** 同 updateNodeData，但显式指定项目：供异步回调（如 Agent 建任务后写 taskId）使用，不受「当前激活项目」切换影响。 */
   updateNodeDataInProject: (
@@ -374,6 +382,32 @@ export const useFlowStore = create<FlowState>()((set, get) => {
         // 一并清掉与该节点相关的连线
         edges: p.edges.filter((e) => e.source !== nodeId && e.target !== nodeId),
       })),
+
+    duplicateNode: (nodeId) =>
+      patchActive((p) => {
+        const source = p.nodes.find((n) => n.id === nodeId)
+        // group 容器不复制（需连子节点 + 子连线一起，暂不支持）；节点不存在也原样返回
+        if (!source || source.type === 'group') return p
+        const { w } = nodeSize(source)
+        // 复制 data：清运行态与 taskId（副本不重连轮询，避免与原节点串写），
+        // result 数组另建一份避免共享引用（结果作静态快照保留）。
+        const data = { ...source.data } as Record<string, unknown>
+        delete data.taskId
+        delete data.error
+        if ('running' in data) data.running = false
+        if (Array.isArray(data.result)) data.result = [...data.result]
+        const copy = {
+          ...source,
+          id: newId('n_'),
+          // 正右侧、同一水平线：让开原节点整宽 + 间距 → 不重叠（原节点在组内则沿用相对坐标留在同组）
+          position: { x: source.position.x + w + ARRANGE_GAP, y: source.position.y },
+          selected: true,
+          data: data as FlowNode['data'],
+        } as FlowNode
+        // 选中态转到副本：其余节点取消选中
+        const nodes = p.nodes.map((n) => (n.selected ? { ...n, selected: false } : n))
+        return { ...p, nodes: [...nodes, copy] }
+      }),
 
     updateNodeData: (nodeId, data) =>
       patchActive((p) => ({
