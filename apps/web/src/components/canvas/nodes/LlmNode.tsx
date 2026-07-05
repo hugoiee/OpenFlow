@@ -1,8 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import { type NodeProps, useUpdateNodeInternals } from '@xyflow/react'
-import { Copy, Sparkles } from 'lucide-react'
+import { Copy, Maximize, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import { NodeHeader } from './NodeHeader'
 import { NodeHandle } from './NodeHandle'
@@ -54,6 +62,15 @@ export function LlmNode({ id, data, selected }: NodeProps<LlmNodeType>) {
       // 剪贴板不可用时静默（非关键路径）
     }
   }
+
+  // 「展开全文」弹窗 + 预览是否被截断（截断了才显示底部渐隐遮罩与「展开全文」按钮）
+  const [fullOpen, setFullOpen] = useState(false)
+  const previewRef = useRef<HTMLParagraphElement>(null)
+  const [clamped, setClamped] = useState(false)
+  useEffect(() => {
+    const el = previewRef.current
+    setClamped(!!el && el.scrollHeight > el.clientHeight + 1)
+  }, [result])
 
   // 生成失败：节点底部内联显示；silent=false 时再弹窗。
   // 重连路径（刷新重开）走 silent——非点击场景连环 alert 会阻塞整个应用。
@@ -169,7 +186,7 @@ export function LlmNode({ id, data, selected }: NodeProps<LlmNodeType>) {
           </details>
         )}
 
-        {/* 输出展示区 */}
+        {/* 输出展示区：节点内只显示紧凑预览，超长时底部渐隐 + 「展开全文」弹窗看完整内容 */}
         <div className="nodrag overflow-hidden rounded-md border">
           {running ? (
             <div className="flex aspect-square w-full flex-col justify-center gap-2 p-3">
@@ -179,9 +196,26 @@ export function LlmNode({ id, data, selected }: NodeProps<LlmNodeType>) {
             </div>
           ) : result ? (
             <div className="group/copy relative">
-              <p className="max-h-64 overflow-y-auto whitespace-pre-wrap p-3 text-sm leading-relaxed">
+              <p
+                ref={previewRef}
+                className="max-h-40 overflow-hidden whitespace-pre-wrap p-3 text-sm leading-relaxed"
+              >
                 {result}
               </p>
+              {/* 超长：底部渐隐遮罩 + 展开全文按钮（遮罩不挡点击，仅按钮可点） */}
+              {clamped && (
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center bg-gradient-to-t from-card via-card/90 to-transparent pt-8 pb-2">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => setFullOpen(true)}
+                    className="nodrag pointer-events-auto h-6 gap-1 px-2 text-[11px] shadow-sm"
+                  >
+                    <Maximize className="size-3" />
+                    展开全文
+                  </Button>
+                </div>
+              )}
               <button
                 type="button"
                 title={copied ? '已复制' : '复制'}
@@ -215,6 +249,28 @@ export function LlmNode({ id, data, selected }: NodeProps<LlmNodeType>) {
       </CardContent>
       {/* 输出：Text（粉，LLM 输出文本） */}
       <NodeHandle type="source" index={0} tone="prompt" label="Text" title="文本输出" />
+
+      {/* 展开全文弹窗：宽、可滚动、带复制（Dialog 经 portal 渲染，放在节点内不影响布局） */}
+      <Dialog open={fullOpen} onOpenChange={setFullOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <Sparkles className="size-4 opacity-70" />
+              {model}
+            </DialogTitle>
+            <DialogDescription>完整输出，可滚动查看与复制。</DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[70vh] overflow-y-auto whitespace-pre-wrap rounded-md border bg-muted/30 p-4 text-sm leading-relaxed">
+            {result}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={copyResult} className="gap-1.5">
+              <Copy className="size-3.5" />
+              {copied ? '已复制' : '复制全文'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   )
 }
