@@ -100,8 +100,28 @@ export type GenVideoBody = {
   duration: number
 }
 
+/** POST /api/llm 请求体（Any LLM 文本生成，经后端复用画布 Agent 的 endpoint/key 调 /chat/completions）。 */
+export type GenLlmBody = {
+  /** 归属项目 id（用于建任务、按节点重连）。 */
+  projectId: string
+  /** 发起生成的节点 id（用于建任务、按节点重连）。 */
+  nodeId: string
+  /** 模型名（作 chat/completions 的 model；取自节点下拉）。 */
+  model: string
+  /** 生成指令（= 连到「Prompt 输入」端点的上游文本按连线拼接）。 */
+  prompt: string
+  /** 系统提示词（= 连到「System Prompt 输入」端点的上游文本；为空则不下发 system 消息）。 */
+  systemPrompt?: string
+  /** 多模态输入图 URL（= 连到各「图像输入」端点的上游图；有则作 image_url 内容发给视觉模型）。 */
+  images?: string[]
+  /** 采样温度 0–2。 */
+  temperature: number
+  /** 是否开启思考：为 true 时请求体带 reasoning_effort 等原生推理参数。 */
+  thinking: boolean
+}
+
 /** 异步生成任务的种类 / 状态。 */
-export type TaskKind = 'image' | 'video'
+export type TaskKind = 'image' | 'video' | 'llm'
 export type TaskStatus = 'pending' | 'running' | 'succeeded' | 'failed'
 
 /** 任务 DTO：前端轮询用；不含请求体 params（内部持久化，不外泄）。 */
@@ -111,7 +131,7 @@ export type TaskDTO = {
   nodeId: string
   kind: TaskKind
   status: TaskStatus
-  /** 成功前为空。 */
+  /** 成功前为空。image/video 为结果 URL 列表；llm 为 [回答文本] 或 [回答文本, 思考文本]。 */
   result: string[]
   /** 失败时的可读错误信息。 */
   error?: string
@@ -122,13 +142,18 @@ export type TaskDTO = {
 /** POST /api/aigc | /api/video 建任务成功响应。 */
 export type CreateTaskResponse = { taskId: string }
 
-/** 常用 Prompt 预设 DTO：全局共享库，供 Prompt 节点下拉选用。 */
+/** Prompt 预设分组：'common' 常用 Prompt（作用户消息）/ 'system' System Prompt（作系统提示词）。 */
+export type PromptPresetCategory = 'common' | 'system'
+
+/** Prompt 预设 DTO：全局共享库，供 Prompt 节点下拉选用。按 category 分「常用 / System」两组。 */
 export type PromptPresetDTO = {
   id: string
   /** 简短标题（下拉 / 列表里展示）。 */
   title: string
   /** prompt 正文。 */
   content: string
+  /** 分组：常用 Prompt / System Prompt。 */
+  category: PromptPresetCategory
   createdAt: number
   updatedAt: number
 }
@@ -137,6 +162,8 @@ export type PromptPresetDTO = {
 export type SavePromptPresetBody = {
   title: string
   content: string
+  /** 分组；省略时后端按 'common' 处理（向后兼容）。 */
+  category?: PromptPresetCategory
 }
 
 // ---- 画布 Agent（对话式操作画布：写 Prompt / 建节点 / 生图）----
@@ -170,4 +197,26 @@ export type AgentImageAction = {
 export type AgentChatResponse = {
   reply: string
   actions: AgentImageAction[]
+}
+
+/**
+ * POST /api/agent/test 请求体：最小用量连接测试。
+ * 各字段留空/省略则后端回退已存设置再回退 env（apiKey 空 = 沿用写入-only 语义，测已存密钥）。
+ */
+export type AgentTestBody = {
+  /** 待测 Agent 接口地址；空则回退已存设置 / env。 */
+  endpoint?: string
+  /** 待测 API Key；空则回退已存密钥 / env。 */
+  apiKey?: string
+  /** 待测模型名；空则回退已存设置 / env。 */
+  model?: string
+}
+
+/** POST /api/agent/test 成功响应：连通即 ok，附实际生效模型名与往返耗时。失败走非 2xx + { error }。 */
+export type AgentTestResponse = {
+  ok: true
+  /** 实际用于测试的模型名。 */
+  model: string
+  /** 请求往返耗时（毫秒）。 */
+  latencyMs: number
 }

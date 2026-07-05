@@ -1,5 +1,13 @@
-import type { GenImageBody, GenVideoBody, TaskDTO, TaskKind, TaskStatus } from '@openflow/shared'
+import type {
+  GenImageBody,
+  GenLlmBody,
+  GenVideoBody,
+  TaskDTO,
+  TaskKind,
+  TaskStatus,
+} from '@openflow/shared'
 import { db } from './db'
+import { runLlmCompletion } from './llm'
 import { runImageGen, runVideoGen } from './provider'
 import { readSettings } from './settings-store'
 
@@ -23,6 +31,7 @@ type TaskRow = {
 // params 存请求体（含 projectId/nodeId 等，运行时只取生成相关字段），不含 req_from/端点。
 type ImageParams = GenImageBody
 type VideoParams = GenVideoBody
+type LlmParams = GenLlmBody
 
 function rowToDTO(row: TaskRow): TaskDTO {
   return {
@@ -47,7 +56,7 @@ export function createTask(input: {
   projectId: string
   nodeId: string
   kind: TaskKind
-  params: ImageParams | VideoParams
+  params: ImageParams | VideoParams | LlmParams
 }): TaskDTO {
   const id = newId()
   const now = Date.now()
@@ -128,7 +137,7 @@ export function startTask(task: TaskDTO): void {
         aspectRatio: typeof p.aspectRatio === 'string' ? p.aspectRatio : '',
         imageSize: typeof p.imageSize === 'string' ? p.imageSize : '',
       })
-    } else {
+    } else if (task.kind === 'video') {
       const p = JSON.parse(row.params) as VideoParams
       urls = await runVideoGen({
         reqFrom: s.defaultReqFrom,
@@ -143,6 +152,19 @@ export function startTask(task: TaskDTO): void {
         ratio: typeof p.ratio === 'string' ? p.ratio : undefined,
         duration: typeof p.duration === 'number' ? p.duration : 6,
       })
+    } else {
+      // llm：文本补全。result 打包成 [回答] 或 [回答, 思考]（思考文本供折叠展示）。
+      const p = JSON.parse(row.params) as LlmParams
+      const { text, reasoning } = await runLlmCompletion({
+        model: p.model,
+        prompt: p.prompt,
+        systemPrompt: typeof p.systemPrompt === 'string' ? p.systemPrompt : undefined,
+        images: Array.isArray(p.images) ? p.images : [],
+        temperature: typeof p.temperature === 'number' ? p.temperature : 0.7,
+        thinking: p.thinking === true,
+        settings: s,
+      })
+      urls = reasoning ? [text, reasoning] : [text]
     }
     updateStatus(task.id, { status: 'succeeded', result: urls })
   }

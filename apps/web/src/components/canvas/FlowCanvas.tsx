@@ -8,6 +8,7 @@ import {
   useReactFlow,
   type Connection,
   type Edge,
+  type IsValidConnection,
   type OnConnectStart,
   type OnConnectEnd,
 } from '@xyflow/react'
@@ -16,8 +17,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { nodeTypes } from './nodes'
 import { ZoomSlider } from './ZoomSlider'
 import { CanvasContextMenu } from './CanvasContextMenu'
+import { SelectionContextMenu } from './SelectionContextMenu'
 import { uploadFilesApi } from '@/lib/api'
-import { type FlowNodeType } from '@/lib/types'
+import { edgeColorForSource, isValidTypedConnection } from '@/lib/handleTypes'
+import { type FlowNode, type FlowNodeType } from '@/lib/types'
 import { useActiveProject, useFlowStore } from '@/store/useFlowStore'
 import { useThemeStore } from '@/store/useThemeStore'
 
@@ -27,8 +30,13 @@ const MINIMAP_STORAGE_KEY = 'openflow-minimap'
 const SNAP_GRID: [number, number] = [20, 20]
 
 // 拉线松开在空白处时，记录连线从哪个节点的哪一端（source=输出端 / target=输入端）发起，
-// 供菜单选中后据方向连线（源→新 或 新→源）。
-type ConnectFrom = { nodeId: string; handleType: 'source' | 'target' }
+// 及该端点的 id（多端点节点如 Any LLM 的 'system' 用来连回精确端点；默认端点为 null）。
+// 供菜单选中后据方向 + 端点连线（源→新 或 新→源）。
+type ConnectFrom = {
+  nodeId: string
+  handleType: 'source' | 'target'
+  handleId: string | null
+}
 
 export function FlowCanvas() {
   const project = useActiveProject()
@@ -41,6 +49,9 @@ export function FlowCanvas() {
   const addConnectedNode = useFlowStore((s) => s.addConnectedNode)
   const removeNode = useFlowStore((s) => s.removeNode)
   const updateNodeData = useFlowStore((s) => s.updateNodeData)
+  const groupSelectedNodes = useFlowStore((s) => s.groupSelectedNodes)
+  const ungroupNode = useFlowStore((s) => s.ungroupNode)
+  const arrangeSelectedNodes = useFlowStore((s) => s.arrangeSelectedNodes)
   // 实际生效的明暗（system 已解析）：让画布底纹 / 控制按钮 / 缩略图 / 连线跟随主题
   const colorMode = useThemeStore((s) => s.resolved)
   const { screenToFlowPosition } = useReactFlow()
@@ -73,6 +84,17 @@ export function FlowCanvas() {
     connectFrom: ConnectFrom | null
   } | null>(null)
 
+  // 选中节点的右键菜单（分组 / 整理 / 取消分组）：右键点在节点或框选区上触发。
+  const [actionMenu, setActionMenu] = useState<{
+    top: number
+    left: number
+    canGroup: boolean
+    canArrange: boolean
+    canUngroup: boolean
+    /** 取消分组要释放的容器 id（选中的容器 + 右键点中的容器）。 */
+    groupIds: string[]
+  } | null>(null)
+
   // 在指定屏幕坐标浮出节点菜单；connectFrom 非空时选中项会与源节点连线
   const openMenuAt = useCallback(
     (clientX: number, clientY: number, connectFrom: ConnectFrom | null) => {
@@ -82,6 +104,7 @@ export function FlowCanvas() {
       // 基本防溢出：菜单约 180×230，靠近右/下边缘时回夹
       const left = Math.max(0, Math.min(clientX - rect.left, rect.width - 180))
       const top = Math.max(0, Math.min(clientY - rect.top, rect.height - 230))
+      setActionMenu(null) // 与选中操作菜单互斥
       setMenu({ top, left, flow, connectFrom })
     },
     [screenToFlowPosition],
@@ -94,6 +117,34 @@ export function FlowCanvas() {
     },
     [openMenuAt],
   )
+
+  const openSelectionMenu = useCallback((event: React.MouseEvent, node?: FlowNode) => {
+    const state = useFlowStore.getState()
+    const proj = state.projects.find((p) => p.id === state.activeProjectId)
+    if (!proj) return
+    const selected = proj.nodes.filter((n) => n.selected)
+    // 可分组/整理的对象：选中的、非容器、且未属于任何组的节点
+    const groupable = selected.filter((n) => n.type !== 'group' && !n.parentId)
+    // 可取消分组的容器：选中的 group 节点 +（若右键点在某个 group 上）该 group
+    const groupIds = new Set(selected.filter((n) => n.type === 'group').map((n) => n.id))
+    if (node?.type === 'group') groupIds.add(node.id)
+    const canGroup = groupable.length >= 2
+    const canArrange = groupable.length >= 2
+    const canUngroup = groupIds.size > 0
+    if (!canGroup && !canArrange && !canUngroup) return
+    event.preventDefault()
+    const rect = wrapperRef.current?.getBoundingClientRect()
+    if (!rect) return
+    const left = Math.max(0, Math.min(event.clientX - rect.left, rect.width - 180))
+    const top = Math.max(0, Math.min(event.clientY - rect.top, rect.height - 140))
+    setMenu(null) // 与加节点菜单互斥
+    setActionMenu({ top, left, canGroup, canArrange, canUngroup, groupIds: [...groupIds] })
+  }, [])
+
+  const closeMenus = useCallback(() => {
+    setMenu(null)
+    setActionMenu(null)
+  }, [])
 
   // Delete Edge on Drop：拖动连线端点若松手在空白处（未落到合法 handle）则删除该连线。
   // reconnect 成功会先触发 onReconnect 把标记置 true；未触发即视为落空 → onReconnectEnd 删除。
@@ -134,9 +185,21 @@ export function FlowCanvas() {
     connectStartRef.current = {
       nodeId: params.nodeId,
       handleType: params.handleType,
+      handleId: params.handleId ?? null,
       x: point?.clientX ?? 0,
       y: point?.clientY ?? 0,
     }
+  }, [])
+
+  // 连接校验：图像端点只接图像源、Prompt/System 端点只接文本源（视频等混合口不限）。
+  // 防止把 Prompt 误连到图像端点（文本被吞）或把图像误连到文本端点（漏进多模态）。
+  const isValidConnection = useCallback<IsValidConnection>((conn) => {
+    const state = useFlowStore.getState()
+    const proj = state.projects.find((p) => p.id === state.activeProjectId)
+    if (!proj) return true
+    const src = proj.nodes.find((n) => n.id === conn.source)
+    const tgt = proj.nodes.find((n) => n.id === conn.target)
+    return isValidTypedConnection(src, tgt, conn.targetHandle)
   }, [])
 
   const onConnectEnd = useCallback<OnConnectEnd>(
@@ -152,6 +215,7 @@ export function FlowCanvas() {
       openMenuAt(point.clientX, point.clientY, {
         nodeId: start.nodeId,
         handleType: start.handleType,
+        handleId: start.handleId,
       })
     },
     [openMenuAt],
@@ -188,53 +252,19 @@ export function FlowCanvas() {
     }
   }
 
-  // 把拖入的图片上传后追加到某个图像/视频节点的输入图文本框
-  const appendImagesToNode = async (nodeId: string, files: File[]) => {
-    try {
-      const urls = await uploadFilesApi(files)
-      const state = useFlowStore.getState()
-      const node = state.projects
-        .find((p) => p.id === state.activeProjectId)
-        ?.nodes.find((n) => n.id === nodeId)
-      const prev =
-        node && (node.type === 'image' || node.type === 'video')
-          ? (node.data.imagesText ?? '')
-          : ''
-      const next = [prev.trim(), ...urls].filter(Boolean).join('\n')
-      updateNodeData(nodeId, { imagesText: next })
-    } catch (e) {
-      window.alert(`图片上传失败：${e instanceof Error ? e.message : String(e)}`)
-    }
-  }
-
-  // 把拖入的音频上传（走音频端点）后追加到某个视频节点的输入音频文本框
-  const appendAudiosToNode = async (nodeId: string, files: File[]) => {
-    try {
-      const urls = await uploadFilesApi(files, 'audio')
-      const state = useFlowStore.getState()
-      const node = state.projects
-        .find((p) => p.id === state.activeProjectId)
-        ?.nodes.find((n) => n.id === nodeId)
-      const prev = node && node.type === 'video' ? (node.data.audiosText ?? '') : ''
-      const next = [prev.trim(), ...urls].filter(Boolean).join('\n')
-      updateNodeData(nodeId, { audiosText: next })
-    } catch (e) {
-      window.alert(`音频上传失败：${e instanceof Error ? e.message : String(e)}`)
-    }
-  }
-
   const onDrop = (event: React.DragEvent) => {
     // 优先处理从侧栏拖入的节点（携带 application/openflow-node）
     const nodePayload = event.dataTransfer.getData('application/openflow-node')
     if (nodePayload) {
       event.preventDefault()
       try {
-        const { type, model } = JSON.parse(nodePayload) as {
+        const { type, model, videoVariant } = JSON.parse(nodePayload) as {
           type: FlowNodeType
           model?: string
+          videoVariant?: 'frames' | 'reference'
         }
         const pos = screenToFlowPosition({ x: event.clientX, y: event.clientY })
-        addNode(type, model, pos)
+        addNode(type, model, pos, videoVariant)
       } catch (e) {
         console.error('[openflow] 拖入节点解析失败', e)
       }
@@ -245,46 +275,19 @@ export function FlowCanvas() {
     if (files.length === 0) return
     event.preventDefault()
 
-    const images = files.filter((f) => f.type.startsWith('image/'))
-    const audios = files.filter((f) => f.type.startsWith('audio/'))
-    if (images.length === 0 && audios.length === 0) {
+    // 桌面拖入的图像 / 音频文件一律在落点建「素材」节点（纯源，连线到下游生成节点作输入）。
+    // 这是把资源送进画布的唯一入口——不再支持「拖到已有节点上追加」。
+    const assetJobs: { kind: 'image' | 'audio'; file: File }[] = []
+    files.forEach((file) => {
+      if (file.type.startsWith('image/')) assetJobs.push({ kind: 'image', file })
+      else if (file.type.startsWith('audio/')) assetJobs.push({ kind: 'audio', file })
+    })
+    if (assetJobs.length === 0) {
       window.alert('仅支持拖入图像或音频文件')
       return
     }
 
     const dropPos = screenToFlowPosition({ x: event.clientX, y: event.clientY })
-
-    // 是否正好落在某个图像/视频节点上 → 图片直接追加为该节点输入图
-    const nodeEl = (event.target as HTMLElement | null)?.closest('.react-flow__node')
-    const targetId = nodeEl?.getAttribute('data-id') ?? null
-    const state = useFlowStore.getState()
-    const targetNode = targetId
-      ? state.projects
-          .find((p) => p.id === state.activeProjectId)
-          ?.nodes.find((n) => n.id === targetId)
-      : undefined
-    const droppedOnGenNode =
-      !!targetNode && (targetNode.type === 'image' || targetNode.type === 'video')
-    // 音频只对视频节点有意义：落在视频节点上→追加为其输入音频，否则建音频素材
-    const droppedOnVideoNode = !!targetNode && targetNode.type === 'video'
-
-    // 待新建的素材节点列表：图片 / 音频均仅在「未落在对应生成节点上」时才建素材
-    const assetJobs: { kind: 'image' | 'audio'; file: File }[] = []
-    if (images.length > 0) {
-      if (droppedOnGenNode && targetId) {
-        void appendImagesToNode(targetId, images)
-      } else {
-        images.forEach((file) => assetJobs.push({ kind: 'image', file }))
-      }
-    }
-    if (audios.length > 0) {
-      if (droppedOnVideoNode && targetId) {
-        void appendAudiosToNode(targetId, audios)
-      } else {
-        audios.forEach((file) => assetJobs.push({ kind: 'audio', file }))
-      }
-    }
-
     // 多个素材错开摆放，避免完全重叠
     assetJobs.forEach((job, i) => {
       void createAsset(job.kind, job.file, {
@@ -301,13 +304,17 @@ export function FlowCanvas() {
   const selectedNodeIds = new Set(
     project.nodes.filter((n) => n.selected).map((n) => n.id),
   )
+  // 连线着色：按源节点输出的数据类型（文本粉 / 图像绿 / 其余默认，与端点同色）。
+  const nodeById = new Map(project.nodes.map((n) => [n.id, n]))
   const edges = project.edges.map((e) => {
     const active = selectedNodeIds.has(e.source) || selectedNodeIds.has(e.target)
+    const color = edgeColorForSource(nodeById.get(e.source))
     return {
       ...e,
       type: 'default',
       animated: active,
       className: active ? 'edge-active' : undefined,
+      ...(color ? { style: { ...e.style, stroke: color } } : {}),
     }
   })
 
@@ -327,14 +334,17 @@ export function FlowCanvas() {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        isValidConnection={isValidConnection}
         onConnectStart={onConnectStart}
         onConnectEnd={onConnectEnd}
         onReconnectStart={onReconnectStart}
         onReconnect={handleReconnect}
         onReconnectEnd={onReconnectEnd}
         onPaneContextMenu={openContextMenu}
-        onPaneClick={() => setMenu(null)}
-        onMoveStart={() => setMenu(null)}
+        onNodeContextMenu={(e, node) => openSelectionMenu(e, node as FlowNode)}
+        onSelectionContextMenu={(e) => openSelectionMenu(e)}
+        onPaneClick={closeMenus}
+        onMoveStart={closeMenus}
         defaultEdgeOptions={{ type: 'default' }}
         connectionLineType={ConnectionLineType.Bezier}
         colorMode={colorMode}
@@ -384,12 +394,35 @@ export function FlowCanvas() {
                 model: item.model,
                 position: menu.flow,
                 from: menu.connectFrom,
+                videoVariant: item.videoVariant,
               })
             } else {
-              addNode(item.type, item.model, menu.flow)
+              addNode(item.type, item.model, menu.flow, item.videoVariant)
             }
             setMenu(null)
           }}
+        />
+      )}
+      {actionMenu && (
+        <SelectionContextMenu
+          top={actionMenu.top}
+          left={actionMenu.left}
+          canGroup={actionMenu.canGroup}
+          canArrange={actionMenu.canArrange}
+          canUngroup={actionMenu.canUngroup}
+          onGroup={() => {
+            groupSelectedNodes()
+            setActionMenu(null)
+          }}
+          onArrange={() => {
+            arrangeSelectedNodes()
+            setActionMenu(null)
+          }}
+          onUngroup={() => {
+            actionMenu.groupIds.forEach((id) => ungroupNode(id))
+            setActionMenu(null)
+          }}
+          onClose={() => setActionMenu(null)}
         />
       )}
     </div>

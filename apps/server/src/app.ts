@@ -9,6 +9,7 @@ import { settings } from './routes/settings'
 import { image } from './routes/image'
 import { upload } from './routes/upload'
 import { video } from './routes/video'
+import { llm } from './routes/llm'
 import { tasks } from './routes/tasks'
 import { promptPresets } from './routes/prompt-presets'
 import { download } from './routes/download'
@@ -80,6 +81,7 @@ export function createApp(opts: CreateAppOptions = {}): Hono {
   app.route('/api', image)
   app.route('/api', upload)
   app.route('/api', video)
+  app.route('/api', llm)
   app.route('/api/tasks', tasks)
   app.route('/api/prompt-presets', promptPresets)
   app.route('/api', download)

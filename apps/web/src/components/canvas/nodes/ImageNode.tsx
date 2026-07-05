@@ -1,28 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
-import { Handle, Position, type NodeProps } from '@xyflow/react'
+import { type NodeProps } from '@xyflow/react'
 import { Banana, Download, Image as ImageIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { DownloadDialog, type DownloadTarget } from '@/components/canvas/DownloadDialog'
 import { NodeHeader } from './NodeHeader'
-import { handleStyle } from './handleLayout'
+import { NodeHandle } from './NodeHandle'
+import { AddInputControls, ImageInputHandles } from './ImageInputHandles'
 import { createImageTaskApi } from '@/lib/api'
 import { pollTask } from '@/lib/taskPolling'
-import {
-  GEN_NODE_META,
-  IMAGE_SIZE_DEFAULT,
-  IMAGE_SIZE_OPTIONS,
-  NANO_ASPECT_DEFAULT,
-  NANO_IMAGE_SIZE_DEFAULT,
-  NANO_VERSION_DEFAULT,
-  imageApiModel,
-} from '@/lib/nodeCatalog'
-import { collectUpstreamImages, collectUpstreamPrompt } from '@/lib/graph'
+import { imageInputCount } from '@/lib/graph'
+import { buildImageRequest } from '@/lib/requestBody'
 import { type ImageNode as ImageNodeType } from '@/lib/types'
 import { useFlowStore } from '@/store/useFlowStore'
-
-const meta = GEN_NODE_META.image
 
 /**
  * 图像生成节点：卡片只展示生成结果（运行态 / 结果图 / 空占位）。
@@ -40,21 +31,9 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
     setDialogOpen(true)
   }
 
-  // 兼容旧数据：早期 image 节点只有 {label, model}，缺失字段给默认值，避免崩。
-  // 以下派生供 handleRun 取参（参数 UI 已移到 Inspector，但运行时仍从 data 读取）。
-  const imagesText = data.imagesText ?? ''
-  const isNano = imageApiModel(data.model) === 'nano-banana'
-  const storedSize = data.size ?? IMAGE_SIZE_DEFAULT
-  const size = (IMAGE_SIZE_OPTIONS as readonly string[]).includes(storedSize)
-    ? storedSize
-    : IMAGE_SIZE_DEFAULT
-  const quality = data.quality ?? 'auto'
-  const n = data.n ?? 1
-  const version = data.version ?? NANO_VERSION_DEFAULT
-  const aspectRatio = data.aspectRatio ?? NANO_ASPECT_DEFAULT
-  const imageSize = data.imageSize ?? NANO_IMAGE_SIZE_DEFAULT
   const result = data.result ?? []
   const running = data.running ?? false
+  const imageInputs = imageInputCount(data.imageInputs)
 
   // 生成失败：节点底部内联显示；silent=false 时再弹窗提示。
   // 重连路径（刷新重开 / Agent 触发）走 silent——非点击场景连环 alert 会阻塞整个应用。
@@ -101,30 +80,20 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
       fail('未找到当前项目')
       return
     }
-    const prompt = collectUpstreamPrompt(project, id)
-    if (!prompt.trim()) {
+    const node = project.nodes.find((n) => n.id === id)
+    if (node?.type !== 'image') {
+      fail('未找到当前节点')
+      return
+    }
+    // 请求体与 Inspector 的「请求 JSON 预览」同源（buildImageRequest），保证预览=实发
+    const body = buildImageRequest(project, node)
+    if (!body.prompt.trim()) {
       fail('请先连接一个有内容的 Prompt 节点')
       return
     }
-    // 输入图 = 上游 image 节点的连线结果（图片1…）在前，手动填/传的在后
-    const manualImages = imagesText
-      .split('\n')
-      .map((s) => s.trim())
-      .filter(Boolean)
-    const images = [...collectUpstreamImages(project, id), ...manualImages]
     updateNodeData(id, { running: true, error: undefined, result: [], taskId: undefined })
     try {
-      const taskId = await createImageTaskApi({
-        projectId: project.id,
-        nodeId: id,
-        model: imageApiModel(data.model),
-        prompt,
-        images,
-        // 按模型分组传参，未用到的一组留默认值/空（后端按 model 取舍）
-        ...(isNano
-          ? { version, aspectRatio, imageSize, size: '', n: 1, quality: '' }
-          : { size, n, quality }),
-      })
+      const taskId = await createImageTaskApi(body)
       // 立刻存下 taskId：点击后 1s 刷新也已存下，可重连（关页面不丢结果）
       attachedRef.current = taskId
       updateNodeData(id, { taskId })
@@ -143,12 +112,9 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
         selected ? 'ring-2 ring-primary' : ''
       }`}
     >
-      <Handle
-        type="target"
-        position={Position.Left}
-        className={meta.handle}
-        style={handleStyle()}
-      />
+      {/* 左侧输入端点：Prompt（粉，index 0）+ 图像输入端点（绿，image-0..，Image 1..N） */}
+      <NodeHandle type="target" index={0} tone="prompt" label="Prompt" required title="Prompt 输入" />
+      <ImageInputHandles count={imageInputs} baseIndex={1} />
       <NodeHeader
         id={id}
         icon={data.model === 'Nano Banana' ? Banana : ImageIcon}
@@ -196,9 +162,13 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
           )}
         </div>
 
-        <Button size="sm" onClick={handleRun} disabled={running} className="nodrag w-full">
-          {running ? '生成中…' : '生成'}
-        </Button>
+        {/* Add Input + 生成 并排 */}
+        <div className="flex items-center gap-2">
+          <AddInputControls id={id} image={imageInputs} />
+          <Button size="sm" onClick={handleRun} disabled={running} className="nodrag ml-auto h-8">
+            {running ? '生成中…' : '生成'}
+          </Button>
+        </div>
 
         {/* 生成失败信息：固定在节点最下方 */}
         {data.error && (
@@ -208,12 +178,8 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
         )}
       </CardContent>
       <DownloadDialog open={dialogOpen} onOpenChange={setDialogOpen} target={downloadTarget} />
-      <Handle
-        type="source"
-        position={Position.Right}
-        className={meta.handle}
-        style={handleStyle()}
-      />
+      {/* 输出：Image（绿） */}
+      <NodeHandle type="source" index={0} tone="image" label="Image" title="图像输出" />
     </Card>
   )
 }

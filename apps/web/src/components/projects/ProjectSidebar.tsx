@@ -55,7 +55,11 @@ export function ProjectSidebar() {
                         // 拖拽建节点：把类型/模型塞进 dataTransfer，画布 onDrop 读取
                         e.dataTransfer.setData(
                           'application/openflow-node',
-                          JSON.stringify({ type: item.type, model: item.model }),
+                          JSON.stringify({
+                            type: item.type,
+                            model: item.model,
+                            videoVariant: item.videoVariant,
+                          }),
                         )
                         e.dataTransfer.effectAllowed = 'copy'
                       }}

@@ -1,9 +1,9 @@
-import { Handle, Position, type NodeProps } from '@xyflow/react'
+import { type NodeProps } from '@xyflow/react'
 import { Image as ImageIcon, Music } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { NodeHeader } from './NodeHeader'
-import { handleStyle } from './handleLayout'
+import { NodeHandle } from './NodeHandle'
 import { ASSET_NODE_META } from '@/lib/nodeCatalog'
 import { type AssetNode as AssetNodeType } from '@/lib/types'
 
@@ -57,11 +57,12 @@ export function AssetNode({ id, data, selected }: NodeProps<AssetNodeType>) {
           </p>
         )}
       </CardContent>
-      <Handle
+      {/* 输出：图像素材=Image(绿) / 音频素材=Audio(默认) */}
+      <NodeHandle
         type="source"
-        position={Position.Right}
-        className={meta.handle}
-        style={handleStyle()}
+        index={0}
+        tone={kind === 'image' ? 'image' : 'default'}
+        label={kind === 'image' ? 'Image' : 'Audio'}
       />
     </Card>
   )

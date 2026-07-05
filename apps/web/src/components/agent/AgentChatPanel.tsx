@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Bot, Loader2, Send, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { useResizableWidth } from '@/hooks/useResizableWidth'
 import { useAgentStore, type AgentChatItem } from '@/store/useAgentStore'
 import { useActiveProject } from '@/store/useFlowStore'
 
@@ -73,6 +74,8 @@ export function AgentChatPanel({ projectId }: { projectId: string }) {
 
   const [input, setInput] = useState('')
   const listRef = useRef<HTMLDivElement>(null)
+  // 面板宽度可调：当前设计宽度 240px 作为下限
+  const { width, onPointerDownResize } = useResizableWidth('openflow-agent-width', 240)
 
   // 新消息 / 思考态变化时滚到底部
   useEffect(() => {
@@ -90,7 +93,16 @@ export function AgentChatPanel({ projectId }: { projectId: string }) {
   }
 
   return (
-    <aside className="flex h-full w-60 shrink-0 flex-col border-l bg-background">
+    <aside
+      style={{ width }}
+      className="relative flex h-full shrink-0 flex-col border-l bg-background"
+    >
+      {/* 左缘拖拽调宽 */}
+      <div
+        onPointerDown={onPointerDownResize}
+        title="拖拽调整宽度"
+        className="absolute left-0 top-0 z-30 h-full w-1.5 cursor-col-resize hover:bg-primary/30"
+      />
       <div className="flex items-center gap-2 border-b px-4 py-3">
         <Bot className="size-4" />
         <span className="text-sm font-medium">画布 Agent</span>
