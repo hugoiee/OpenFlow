@@ -15,6 +15,7 @@ import {
   LLM_TEMPERATURE_MAX,
   LLM_TEMPERATURE_MIN,
   LLM_TEMPERATURE_STEP,
+  mergeModelOptions,
 } from '@/lib/nodeCatalog'
 import { type LlmNodeData } from '@/lib/types'
 import { useFlowStore } from '@/store/useFlowStore'
@@ -23,11 +24,11 @@ import { useSettingsStore } from '@/store/useSettingsStore'
 /** Any LLM 节点参数控件（右侧 Inspector 用）：Model 选择 / Temperature 滑块 / Thinking 开关。 */
 export function LlmParams({ id, data }: { id: string; data: LlmNodeData }) {
   const updateNodeData = useFlowStore((s) => s.updateNodeData)
-  // 模型列表从配置的 Agent 端点动态获取（与设置面板共用同一份，见 useSettingsStore）
+  // Model 候选 = 手动维护列表(持久) ∪ 端点动态获取列表(本次会话)；与设置面板共用同一份
+  const agentModelList = useSettingsStore((s) => s.agentModelList)
   const agentModels = useSettingsStore((s) => s.agentModels)
   const agentModelsLoading = useSettingsStore((s) => s.agentModelsLoading)
   const agentModelsLoaded = useSettingsStore((s) => s.agentModelsLoaded)
-  const agentModelsError = useSettingsStore((s) => s.agentModelsError)
   const loadAgentModels = useSettingsStore((s) => s.loadAgentModels)
 
   // 挂载时（及保存设置使列表失效后）自动按已存配置拉一次可用模型
@@ -36,9 +37,9 @@ export function LlmParams({ id, data }: { id: string; data: LlmNodeData }) {
   }, [agentModelsLoaded, agentModelsLoading, loadAgentModels])
 
   const model = data.model || LLM_MODEL_DEFAULT
-  // 已选模型若不在获取到的列表里，仍置顶保留可选（不静默改动节点已存模型）
-  const options = agentModels.includes(model) ? agentModels : [model, ...agentModels]
-  const hasModels = agentModels.length > 0
+  // 已选模型若不在并集里仍置顶保留（不静默改动节点已存模型）
+  const options = mergeModelOptions(agentModelList, agentModels, model)
+  const hasModels = options.length > 0
   const temperature = data.temperature ?? LLM_TEMPERATURE_DEFAULT
   const thinking = data.thinking ?? false
 
@@ -88,9 +89,7 @@ export function LlmParams({ id, data }: { id: string; data: LlmNodeData }) {
             <span className="text-[10px] text-muted-foreground/80">
               {agentModelsLoading
                 ? '正在获取模型列表…'
-                : agentModelsError
-                  ? '未能获取模型列表，可手动填写模型名或点「刷新」重试'
-                  : '在设置里配置 Agent 接口后可从端点获取模型列表'}
+                : '可直接手填模型名；或在设置里维护「模型列表」/ 配置可拉取 /models 的端点，下拉即可多选'}
             </span>
           </>
         )}

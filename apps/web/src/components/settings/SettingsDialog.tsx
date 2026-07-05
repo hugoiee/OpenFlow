@@ -27,7 +27,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
 import { testAgentConnectionApi } from '@/lib/api'
+import { mergeModelOptions } from '@/lib/nodeCatalog'
 import { cn } from '@/lib/utils'
 import { useSettingsStore } from '@/store/useSettingsStore'
 
@@ -67,6 +69,7 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
   const agentEndpoint = useSettingsStore((s) => s.agentEndpoint)
   const hasAgentApiKey = useSettingsStore((s) => s.hasAgentApiKey)
   const agentModel = useSettingsStore((s) => s.agentModel)
+  const agentModelList = useSettingsStore((s) => s.agentModelList)
   const saveSettings = useSettingsStore((s) => s.saveSettings)
   // 动态模型列表（从 Agent 端点 GET /models 获取，与 Any LLM 节点共用同一份）
   const agentModels = useSettingsStore((s) => s.agentModels)
@@ -84,6 +87,8 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
   const [agentUrl, setAgentUrl] = useState('')
   const [agentKey, setAgentKey] = useState('')
   const [agentModelName, setAgentModelName] = useState('')
+  // 手动模型列表草稿（每行一个）：进入下拉候选并在保存时持久化
+  const [modelListText, setModelListText] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   // 连接测试：testing 进行中；testResult 为最近一次结果（改动配置输入即清空以免误导）
@@ -101,6 +106,7 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
       setAgentUrl(agentEndpoint)
       setAgentKey('') // 密钥不回显（后端不回明文）；留空=保持已存值
       setAgentModelName(agentModel)
+      setModelListText(agentModelList.join('\n'))
       setError('')
       setTestResult(null)
     }
@@ -143,6 +149,10 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
     setSaving(true)
     setError('')
     try {
+      const modelList = modelListText
+        .split('\n')
+        .map((s) => s.trim())
+        .filter(Boolean)
       await saveSettings({
         defaultReqFrom: reqFrom.trim(),
         aigcEndpoint: aigc.trim(),
@@ -152,6 +162,7 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
         // 密钥字段为空 = 用户没改：省略以保持后端已存值（后端合并写只覆盖出现的字段）
         ...(agentKey.trim() ? { agentApiKey: agentKey.trim() } : {}),
         agentModel: agentModelName.trim(),
+        agentModelList: modelList,
       })
       setOpen(false)
     } catch (e) {
@@ -162,13 +173,13 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
   }
 
   const active = SECTIONS.find((s) => s.id === section)!
-  // 是否已获取到可用模型列表：有 → 纯下拉；没有（未配置/端点不支持/获取失败）→ 回退手填
-  const hasModels = agentModels.length > 0
-  // 当前已填模型若不在获取到的列表里，置顶保留可选（不静默丢弃用户已存的模型名）
-  const modelOptions =
-    agentModelName && !agentModels.includes(agentModelName)
-      ? [agentModelName, ...agentModels]
-      : agentModels
+  // 手动列表草稿（每行一个）→ 与动态获取结果取并集作下拉候选（当前已选值置顶保留）
+  const draftModels = modelListText
+    .split('\n')
+    .map((s) => s.trim())
+    .filter(Boolean)
+  const modelOptions = mergeModelOptions(draftModels, agentModels, agentModelName)
+  const hasModels = modelOptions.length > 0
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -273,42 +284,49 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
                         获取模型列表
                       </button>
                     </div>
-                    {hasModels ? (
-                      <Select
-                        value={agentModelName}
-                        onValueChange={(v) => {
-                          setAgentModelName(v)
-                          setTestResult(null)
-                        }}
-                      >
-                        <SelectTrigger id="agentModel" className="w-full">
-                          <SelectValue placeholder="选择模型" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {modelOptions.map((m) => (
-                            <SelectItem key={m} value={m}>
-                              {m}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      // 未获取到模型（未配置端点 / 端点不支持 /models / 获取失败）：回退手填
-                      <Input
-                        id="agentModel"
-                        value={agentModelName}
-                        onChange={(e) => {
-                          setAgentModelName(e.target.value)
-                          setTestResult(null)
-                        }}
-                        placeholder="如 gpt-4o / doubao-seed-1.6"
-                      />
-                    )}
+                    <Select
+                      value={agentModelName}
+                      onValueChange={(v) => {
+                        setAgentModelName(v)
+                        setTestResult(null)
+                      }}
+                    >
+                      <SelectTrigger id="agentModel" className="w-full">
+                        <SelectValue
+                          placeholder={
+                            hasModels ? '选择模型' : '先在下方「模型列表」添加或点「获取模型列表」'
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {modelOptions.map((m) => (
+                          <SelectItem key={m} value={m}>
+                            {m}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     {agentModelsError && (
                       <p className="text-xs text-muted-foreground">
-                        未能获取模型列表（可手动填写）：{agentModelsError}
+                        未能获取模型列表（可在下方手动维护）：{agentModelsError}
                       </p>
                     )}
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="agentModelList">模型列表（手动维护，每行一个）</Label>
+                    <Textarea
+                      id="agentModelList"
+                      value={modelListText}
+                      onChange={(e) => setModelListText(e.target.value)}
+                      placeholder={'每行一个模型名，如\ngpt-4o\nqwen2.5-72b'}
+                      rows={4}
+                      className="text-sm"
+                    />
+                    <span className="text-xs text-muted-foreground">
+                      上面的下拉从这份列表 + 端点获取到的模型中选；不支持 /models
+                      的网关可在此手填多个。
+                    </span>
                   </div>
 
                   {/* 最小用量连接测试：发一条 max_tokens:1 的探测请求验证接口/密钥/模型可用 */}

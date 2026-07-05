@@ -24,6 +24,11 @@ export type SettingsDTO = {
   agentApiKey: string
   /** 画布 Agent 的 LLM 模型名（如 gpt-4o / doubao-xxx）；为空时回退 env AGENT_MODEL。 */
   agentModel: string
+  /**
+   * 手动维护的模型名列表：作 Agent 模型名 / Any LLM 节点下拉的持久候选项，
+   * 与端点 GET /models 动态获取的结果取并集。供不支持 /models 的网关手填多个模型。
+   */
+  agentModelList: string[]
   /** 服务端是否已存有 Agent API Key（GET 响应专用；明文不回传）。 */
   hasAgentApiKey?: boolean
 }
@@ -44,6 +49,8 @@ export type SaveSettingsBody = {
   agentApiKey?: string
   /** Agent LLM 模型名（空串=清空回退 env；省略=保持原值）。 */
   agentModel?: string
+  /** 手动维护的模型候选列表（传数组则整体覆盖，含空数组=清空；省略=保持原值）。 */
+  agentModelList?: string[]
 }
 
 /** POST /api/aigc 请求体（图像生成，经后端代理到 AIGC 接口）。req_from 由后端从全局设置注入。 */

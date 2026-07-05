@@ -10,14 +10,31 @@ type SettingsRow = {
   agent_endpoint: string
   agent_api_key: string
   agent_model: string
+  agent_model_list: string
 }
 
 const SINGLETON = 'singleton'
 
+/** 把存的 JSON 字符串解析成模型名数组（去空/去重）；损坏或非数组时回退空数组。 */
+function parseModelList(raw: string | null | undefined): string[] {
+  if (!raw) return []
+  try {
+    const v = JSON.parse(raw)
+    if (!Array.isArray(v)) return []
+    const out: string[] = []
+    for (const item of v) {
+      if (typeof item === 'string' && item.trim() && !out.includes(item.trim())) out.push(item.trim())
+    }
+    return out
+  } catch {
+    return []
+  }
+}
+
 function ensureRow(): SettingsRow {
   let row = db
     .prepare(
-      'SELECT id, default_req_from, aigc_endpoint, upload_endpoint, upload_media_endpoint, agent_endpoint, agent_api_key, agent_model FROM settings WHERE id = ?',
+      'SELECT id, default_req_from, aigc_endpoint, upload_endpoint, upload_media_endpoint, agent_endpoint, agent_api_key, agent_model, agent_model_list FROM settings WHERE id = ?',
     )
     .get(SINGLETON) as SettingsRow | undefined
   if (!row) {
@@ -31,6 +48,7 @@ function ensureRow(): SettingsRow {
       agent_endpoint: '',
       agent_api_key: '',
       agent_model: '',
+      agent_model_list: '[]',
     }
   }
   return row
@@ -46,6 +64,7 @@ export function readSettings(): SettingsDTO {
     agentEndpoint: row.agent_endpoint ?? '',
     agentApiKey: row.agent_api_key ?? '',
     agentModel: row.agent_model ?? '',
+    agentModelList: parseModelList(row.agent_model_list),
   }
 }
 
@@ -54,7 +73,7 @@ export function writeSettings(patch: Partial<SettingsDTO>): void {
   const cur = readSettings()
   const next = { ...cur, ...patch }
   db.prepare(
-    'UPDATE settings SET default_req_from = ?, aigc_endpoint = ?, upload_endpoint = ?, upload_media_endpoint = ?, agent_endpoint = ?, agent_api_key = ?, agent_model = ? WHERE id = ?',
+    'UPDATE settings SET default_req_from = ?, aigc_endpoint = ?, upload_endpoint = ?, upload_media_endpoint = ?, agent_endpoint = ?, agent_api_key = ?, agent_model = ?, agent_model_list = ? WHERE id = ?',
   ).run(
     next.defaultReqFrom,
     next.aigcEndpoint,
@@ -63,6 +82,7 @@ export function writeSettings(patch: Partial<SettingsDTO>): void {
     next.agentEndpoint,
     next.agentApiKey,
     next.agentModel,
+    JSON.stringify(next.agentModelList ?? []),
     SINGLETON,
   )
 }

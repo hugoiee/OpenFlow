@@ -17,6 +17,8 @@ type SettingsState = {
   hasAgentApiKey: boolean
   /** 画布 Agent 的 LLM 模型名；为空=后端回退 env。 */
   agentModel: string
+  /** 手动维护的模型候选列表（持久化）；与动态获取的 agentModels 取并集作下拉选项。 */
+  agentModelList: string[]
   loaded: boolean
   /** 从端点 GET /models 动态获取到的可用模型 ID（供 Agent 模型名 / Any LLM 节点下拉共用）。 */
   agentModels: string[]
@@ -46,6 +48,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   agentEndpoint: '',
   hasAgentApiKey: false,
   agentModel: '',
+  agentModelList: [],
   loaded: false,
   agentModels: [],
   agentModelsLoading: false,
@@ -62,6 +65,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
       agentEndpoint: dto.agentEndpoint,
       hasAgentApiKey: dto.hasAgentApiKey ?? false,
       agentModel: dto.agentModel,
+      agentModelList: dto.agentModelList ?? [],
       loaded: true,
     })
   },
