@@ -1,6 +1,8 @@
 import type {
   AgentChatBody,
   AgentChatResponse,
+  AgentModelsBody,
+  AgentModelsResponse,
   AgentTestBody,
   AgentTestResponse,
   CreateTaskResponse,
@@ -145,6 +147,16 @@ export function testAgentConnectionApi(body: AgentTestBody): Promise<AgentTestRe
   })
 }
 
+// ---- 动态获取模型列表 ----
+// 后端调端点 GET /models 列出可用模型 ID；endpoint/apiKey 省略=用已存设置（apiKey 空=已保存密钥）。
+export async function listAgentModelsApi(body: AgentModelsBody = {}): Promise<string[]> {
+  const { models } = await request<AgentModelsResponse>('/agent/models', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+  return models
+}
+
 // ---- 任务查询（轮询 / 重连）----
 export function getTaskApi(id: string): Promise<TaskDTO> {
   return request<TaskDTO>(`/tasks/${id}`)
@@ -190,13 +202,13 @@ export function triggerDownload(
   a.remove()
 }
 
-// ---- 文件上传（图片 / 音频）----
+// ---- 文件上传（图片 / 音频 / 视频）----
 // 走 multipart，不能复用 request()（它写死了 application/json）；让浏览器自带 boundary。
 // req_from（用户标识）由后端从全局设置注入，前端不再传。
-// kind 走 query：图片 → /api/upload，音频 → /api/upload-media（后端据此分流上游端点）。
+// kind 走 query：图片 → 图片端点，音频 / 视频 → 媒体端点（后端据此分流上游端点）。
 export async function uploadFilesApi(
   files: File[],
-  kind: 'image' | 'audio' = 'image',
+  kind: 'image' | 'audio' | 'video' = 'image',
 ): Promise<string[]> {
   const form = new FormData()
   files.forEach((f) => form.append('files', f))

@@ -26,6 +26,26 @@ export const LLM_MODELS = [
 ] as const
 export const LLM_MODEL_DEFAULT = LLM_MODELS[0]
 
+/**
+ * 合并「手动维护列表 + 端点动态获取列表」为 Model 下拉候选：去空 / 去重 / 排序，
+ * 并保证当前已选模型可选（不在并集里则置顶保留，不静默丢弃）。
+ * 设置面板的 Agent 模型名与 Any LLM 节点的 Model 下拉共用，保证两处候选一致。
+ */
+export function mergeModelOptions(
+  manual: readonly string[],
+  fetched: readonly string[],
+  current?: string,
+): string[] {
+  const merged: string[] = []
+  for (const m of [...manual, ...fetched]) {
+    const t = m.trim()
+    if (t && !merged.includes(t)) merged.push(t)
+  }
+  merged.sort((a, b) => a.localeCompare(b))
+  const cur = current?.trim()
+  return cur && !merged.includes(cur) ? [cur, ...merged] : merged
+}
+
 /** Any LLM 节点 Temperature 滑块范围（0–2，步长 0.1）。 */
 export const LLM_TEMPERATURE_MIN = 0
 export const LLM_TEMPERATURE_MAX = 2
@@ -256,14 +276,19 @@ export const LLM_NODE_META = {
   handle: '!bg-violet-500 dark:!bg-violet-400',
 } as const
 
-/** 素材节点（image/audio）的展示元信息（标题回退文案 + 连接点配色，按种类区分）。 */
-export const ASSET_NODE_META: Record<'image' | 'audio', { label: string; handle: string }> = {
-  image: {
-    label: '图像素材',
-    handle: '!bg-amber-500 dark:!bg-amber-400',
-  },
-  audio: {
-    label: '音频素材',
-    handle: '!bg-sky-500 dark:!bg-sky-400',
-  },
-}
+/** 素材节点（image/audio/video）的展示元信息（标题回退文案 + 连接点配色，按种类区分）。 */
+export const ASSET_NODE_META: Record<'image' | 'audio' | 'video', { label: string; handle: string }> =
+  {
+    image: {
+      label: '图像素材',
+      handle: '!bg-amber-500 dark:!bg-amber-400',
+    },
+    audio: {
+      label: '音频素材',
+      handle: '!bg-sky-500 dark:!bg-sky-400',
+    },
+    video: {
+      label: '视频素材',
+      handle: '!bg-rose-500 dark:!bg-rose-400',
+    },
+  }

@@ -160,6 +160,8 @@ export function startTask(task: TaskDTO): void {
         prompt: p.prompt,
         systemPrompt: typeof p.systemPrompt === 'string' ? p.systemPrompt : undefined,
         images: Array.isArray(p.images) ? p.images : [],
+        audios: Array.isArray(p.audios) ? p.audios : [],
+        videos: Array.isArray(p.videos) ? p.videos : [],
         temperature: typeof p.temperature === 'number' ? p.temperature : 0.7,
         thinking: p.thinking === true,
         settings: s,

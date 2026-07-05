@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { type NodeProps } from '@xyflow/react'
+import { type NodeProps, useUpdateNodeInternals } from '@xyflow/react'
 import { Download, Video } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -43,6 +43,12 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
   // 左侧端点竖向排位：Prompt(0) → 图像端点 → 音频端点。frames 固定 2 张图，reference 为 imageInputs
   const imageSlots = isReference ? imageInputs : 2
   const audioBaseIndex = 1 + imageSlots
+
+  // 「Add Input」/ 切换变体 动态增减端点后，通知 React Flow 重新测量本节点 handle，否则新增端点无法连线
+  const updateNodeInternals = useUpdateNodeInternals()
+  useEffect(() => {
+    updateNodeInternals(id)
+  }, [id, imageSlots, audioInputs, updateNodeInternals])
 
   const fail = (message: string) => {
     updateNodeData(id, { running: false, error: message, taskId: undefined })
@@ -185,8 +191,8 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
         )}
       </CardContent>
       <DownloadDialog open={dialogOpen} onOpenChange={setDialogOpen} target={downloadTarget} />
-      {/* 输出：Video（默认色） */}
-      <NodeHandle type="source" index={0} label="Video" title="视频输出" />
+      {/* 输出：Video（玫红）——可连下游节点的视频输入端点 */}
+      <NodeHandle type="source" index={0} tone="video" label="Video" title="视频输出" />
     </Card>
   )
 }

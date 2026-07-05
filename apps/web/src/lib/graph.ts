@@ -19,10 +19,16 @@ export function imageInputHandleId(index: number): string {
   return `${IMAGE_INPUT_HANDLE_PREFIX}${index}`
 }
 
-/** 音频输入端点 handle id 前缀：第 i 个音频端点为 `audio-${i}`（视频节点用）。 */
+/** 音频输入端点 handle id 前缀：第 i 个音频端点为 `audio-${i}`（视频 / Any LLM 节点用）。 */
 export const AUDIO_INPUT_HANDLE_PREFIX = 'audio-'
 export function audioInputHandleId(index: number): string {
   return `${AUDIO_INPUT_HANDLE_PREFIX}${index}`
+}
+
+/** 视频输入端点 handle id 前缀：第 i 个视频端点为 `video-${i}`（Any LLM 节点用，接视频素材）。 */
+export const VIDEO_INPUT_HANDLE_PREFIX = 'video-'
+export function videoInputHandleId(index: number): string {
+  return `${VIDEO_INPUT_HANDLE_PREFIX}${index}`
 }
 
 /** 节点图像输入端点数量（含旧数据兜底）：至少 1。 */
@@ -132,6 +138,29 @@ export function collectUpstreamAudio(project: Project, nodeId: string): string[]
     const src = project.nodes.find((n) => n.id === e.source)
     if (src?.type === 'asset' && src.data.kind === 'audio' && src.data.url) {
       entries.push({ slot: handleSlot(e.targetHandle, AUDIO_INPUT_HANDLE_PREFIX), order, url: src.data.url })
+    }
+  })
+  entries.sort((a, b) => a.slot - b.slot || a.order - b.order)
+  return entries.map((e) => e.url)
+}
+
+/**
+ * 收集所有指向 nodeId 的上游视频 URL（作为 Any LLM 节点的视频理解输入）。
+ * 来源：上游 video 生成节点(Seedance)的结果视频 + 上游视频素材节点的 URL。
+ * 按「视频输入端点编号」排序（video-0、video-1…），同端点内按连线顺序展平；URL 为空的来源不贡献。
+ */
+export function collectUpstreamVideo(project: Project, nodeId: string): string[] {
+  const entries: { slot: number; order: number; url: string }[] = []
+  project.edges.forEach((e, order) => {
+    if (e.target !== nodeId) return
+    const src = project.nodes.find((n) => n.id === e.source)
+    const slot = handleSlot(e.targetHandle, VIDEO_INPUT_HANDLE_PREFIX)
+    if (src?.type === 'video') {
+      for (const url of (src.data.result ?? []).filter(Boolean)) {
+        entries.push({ slot, order, url })
+      }
+    } else if (src?.type === 'asset' && src.data.kind === 'video' && src.data.url) {
+      entries.push({ slot, order, url: src.data.url })
     }
   })
   entries.sort((a, b) => a.slot - b.slot || a.order - b.order)

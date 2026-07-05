@@ -34,7 +34,8 @@ db.exec(`
     upload_media_endpoint TEXT NOT NULL DEFAULT '',
     agent_endpoint TEXT NOT NULL DEFAULT '',
     agent_api_key TEXT NOT NULL DEFAULT '',
-    agent_model TEXT NOT NULL DEFAULT ''
+    agent_model TEXT NOT NULL DEFAULT '',
+    agent_model_list TEXT NOT NULL DEFAULT '[]'
   );
 
   -- 异步生成任务：点「生成」后后端建行并后台跑 AIGC，前端凭 taskId 轮询/刷新重连。
@@ -80,6 +81,10 @@ for (const col of [
   if (!settingsColNames.has(col)) {
     db.exec(`ALTER TABLE settings ADD COLUMN ${col} TEXT NOT NULL DEFAULT ''`)
   }
+}
+// 手动模型候选列表列（JSON 数组字符串，默认 '[]'，单独补——默认值与上面的 '' 不同）
+if (!settingsColNames.has('agent_model_list')) {
+  db.exec(`ALTER TABLE settings ADD COLUMN agent_model_list TEXT NOT NULL DEFAULT '[]'`)
 }
 
 // 旧库迁移：prompt_presets 早期无 category 列，补上（已有预设默认归入常用 Prompt）

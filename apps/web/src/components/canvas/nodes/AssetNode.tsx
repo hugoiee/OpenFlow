@@ -1,5 +1,5 @@
 import { type NodeProps } from '@xyflow/react'
-import { Image as ImageIcon, Music } from 'lucide-react'
+import { Image as ImageIcon, Music, Video } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { NodeHeader } from './NodeHeader'
@@ -26,14 +26,14 @@ export function AssetNode({ id, data, selected }: NodeProps<AssetNodeType>) {
     >
       <NodeHeader
         id={id}
-        icon={kind === 'image' ? ImageIcon : Music}
+        icon={kind === 'image' ? ImageIcon : kind === 'video' ? Video : Music}
         title={data.fileName || meta.label}
         selected={selected}
       />
       <CardContent className="flex flex-col gap-2 px-3">
         <div className="nodrag overflow-hidden rounded-md border">
           {uploading ? (
-            <Skeleton className={kind === 'image' ? 'aspect-square w-full' : 'h-12 w-full'} />
+            <Skeleton className={kind === 'audio' ? 'h-12 w-full' : 'aspect-square w-full'} />
           ) : kind === 'image' && url ? (
             <a href={url} target="_blank" rel="noreferrer" className="block">
               <img
@@ -42,6 +42,8 @@ export function AssetNode({ id, data, selected }: NodeProps<AssetNodeType>) {
                 className="max-h-64 w-full bg-muted object-contain"
               />
             </a>
+          ) : kind === 'video' && url ? (
+            <video src={url} controls className="max-h-64 w-full bg-black object-contain" />
           ) : kind === 'audio' && url ? (
             <audio src={url} controls className="w-full" />
           ) : (
@@ -57,12 +59,12 @@ export function AssetNode({ id, data, selected }: NodeProps<AssetNodeType>) {
           </p>
         )}
       </CardContent>
-      {/* 输出：图像素材=Image(绿) / 音频素材=Audio(默认) */}
+      {/* 输出：图像素材=Image(绿) / 音频素材=Audio(蓝) / 视频素材=Video(玫红) */}
       <NodeHandle
         type="source"
         index={0}
-        tone={kind === 'image' ? 'image' : 'default'}
-        label={kind === 'image' ? 'Image' : 'Audio'}
+        tone={kind === 'image' ? 'image' : kind === 'video' ? 'video' : 'audio'}
+        label={kind === 'image' ? 'Image' : kind === 'video' ? 'Video' : 'Audio'}
       />
     </Card>
   )

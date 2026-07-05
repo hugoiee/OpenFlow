@@ -29,6 +29,14 @@ settings.put('/', async (c) => {
   if (typeof body.agentEndpoint === 'string') patch.agentEndpoint = body.agentEndpoint.trim()
   if (typeof body.agentApiKey === 'string') patch.agentApiKey = body.agentApiKey.trim()
   if (typeof body.agentModel === 'string') patch.agentModel = body.agentModel.trim()
+  // 手动模型列表：传数组则整体覆盖（trim/去空/去重）；非数组则忽略保持原值
+  if (Array.isArray(body.agentModelList)) {
+    const list: string[] = []
+    for (const m of body.agentModelList) {
+      if (typeof m === 'string' && m.trim() && !list.includes(m.trim())) list.push(m.trim())
+    }
+    patch.agentModelList = list
+  }
   writeSettings(patch)
   return c.json({ ok: true })
 })

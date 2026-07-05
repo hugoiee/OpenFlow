@@ -127,15 +127,16 @@ export async function runImageGen(input: ImageGenInput): Promise<string[]> {
 }
 
 /**
- * 转发 multipart 文件到上传接口 → URL 列表。图片走 /api/upload，音频走 /api/upload-media。
+ * 转发 multipart 文件到上传接口 → URL 列表。图片走 /api/upload，音频 / 视频走 /api/upload-media。
  * 出错抛带可读信息的 Error。
  */
 export async function uploadFiles(
   form: FormData,
-  kind: 'image' | 'audio' = 'image',
+  kind: 'image' | 'audio' | 'video' = 'image',
   endpointOverride?: string,
 ): Promise<string[]> {
-  const fallback = kind === 'audio' ? UPLOAD_MEDIA_ENDPOINT : UPLOAD_ENDPOINT
+  // 图片 → 图片端点；音频 / 视频都是媒体，走媒体端点
+  const fallback = kind === 'image' ? UPLOAD_ENDPOINT : UPLOAD_MEDIA_ENDPOINT
   const endpoint = resolveEndpoint(endpointOverride, fallback)
   // 不手动设 Content-Type，让 fetch 自带 multipart boundary
   const res = await fetch(endpoint, { method: 'POST', body: form })

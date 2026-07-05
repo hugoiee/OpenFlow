@@ -24,6 +24,11 @@ export type SettingsDTO = {
   agentApiKey: string
   /** 画布 Agent 的 LLM 模型名（如 gpt-4o / doubao-xxx）；为空时回退 env AGENT_MODEL。 */
   agentModel: string
+  /**
+   * 手动维护的模型名列表：作 Agent 模型名 / Any LLM 节点下拉的持久候选项，
+   * 与端点 GET /models 动态获取的结果取并集。供不支持 /models 的网关手填多个模型。
+   */
+  agentModelList: string[]
   /** 服务端是否已存有 Agent API Key（GET 响应专用；明文不回传）。 */
   hasAgentApiKey?: boolean
 }
@@ -44,6 +49,8 @@ export type SaveSettingsBody = {
   agentApiKey?: string
   /** Agent LLM 模型名（空串=清空回退 env；省略=保持原值）。 */
   agentModel?: string
+  /** 手动维护的模型候选列表（传数组则整体覆盖，含空数组=清空；省略=保持原值）。 */
+  agentModelList?: string[]
 }
 
 /** POST /api/aigc 请求体（图像生成，经后端代理到 AIGC 接口）。req_from 由后端从全局设置注入。 */
@@ -114,6 +121,10 @@ export type GenLlmBody = {
   systemPrompt?: string
   /** 多模态输入图 URL（= 连到各「图像输入」端点的上游图；有则作 image_url 内容发给视觉模型）。 */
   images?: string[]
+  /** 多模态输入音频 URL（= 连到各「音频输入」端点的上游音频素材；有则作 audio_url 内容发给模型）。 */
+  audios?: string[]
+  /** 多模态输入视频 URL（= 连到各「视频输入」端点的上游视频素材；有则作 video_url 内容发给模型）。 */
+  videos?: string[]
   /** 采样温度 0–2。 */
   temperature: number
   /** 是否开启思考：为 true 时请求体带 reasoning_effort 等原生推理参数。 */
@@ -219,4 +230,20 @@ export type AgentTestResponse = {
   model: string
   /** 请求往返耗时（毫秒）。 */
   latencyMs: number
+}
+
+/**
+ * POST /api/agent/models 请求体：列出 OpenAI 兼容端点 GET /models 的可用模型。
+ * 各字段省略/空则后端回退已存设置再回退 env（apiKey 空 = 沿用写入-only 语义，用已存密钥）。
+ */
+export type AgentModelsBody = {
+  /** 待查询的 Agent 接口地址；空则回退已存设置 / env。 */
+  endpoint?: string
+  /** 待用的 API Key；空则回退已存密钥 / env。 */
+  apiKey?: string
+}
+
+/** POST /api/agent/models 成功响应：端点 /models 列出的模型 ID（已去重、按字母排序）。失败走非 2xx + { error }。 */
+export type AgentModelsResponse = {
+  models: string[]
 }

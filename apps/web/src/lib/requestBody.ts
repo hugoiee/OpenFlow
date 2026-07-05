@@ -2,7 +2,12 @@
 // 节点组件的 handleRun 与右侧 Inspector 的「请求 JSON 预览」共用，保证预览与实发一致、不漂移。
 
 import type { GenImageBody, GenLlmBody, GenVideoBody } from '@openflow/shared'
-import { collectUpstreamAudio, collectUpstreamImages, collectUpstreamPrompt } from './graph'
+import {
+  collectUpstreamAudio,
+  collectUpstreamImages,
+  collectUpstreamPrompt,
+  collectUpstreamVideo,
+} from './graph'
 import {
   IMAGE_SIZE_DEFAULT,
   IMAGE_SIZE_OPTIONS,
@@ -35,6 +40,8 @@ export function buildLlmRequest(project: Project, node: LlmNode): GenLlmBody {
   const d = node.data
   const systemPrompt = collectUpstreamPrompt(project, id, { handle: 'system' }).trim()
   const images = collectUpstreamImages(project, id)
+  const audios = collectUpstreamAudio(project, id)
+  const videos = collectUpstreamVideo(project, id)
   return {
     projectId: project.id,
     nodeId: id,
@@ -42,6 +49,8 @@ export function buildLlmRequest(project: Project, node: LlmNode): GenLlmBody {
     prompt: collectUpstreamPrompt(project, id, { handle: 'user' }),
     systemPrompt: systemPrompt || undefined,
     images: images.length ? images : undefined,
+    audios: audios.length ? audios : undefined,
+    videos: videos.length ? videos : undefined,
     temperature: d.temperature ?? LLM_TEMPERATURE_DEFAULT,
     thinking: d.thinking ?? false,
   }

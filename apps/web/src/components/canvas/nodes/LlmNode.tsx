@@ -1,12 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
-import { type NodeProps } from '@xyflow/react'
+import { type NodeProps, useUpdateNodeInternals } from '@xyflow/react'
 import { Copy, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { NodeHeader } from './NodeHeader'
 import { NodeHandle } from './NodeHandle'
-import { AddInputControls, ImageInputHandles } from './ImageInputHandles'
+import {
+  AddInputControls,
+  AudioInputHandles,
+  ImageInputHandles,
+  VideoInputHandles,
+} from './ImageInputHandles'
 import { createLlmTaskApi } from '@/lib/api'
 import { pollTask } from '@/lib/taskPolling'
 import { LLM_MODEL_DEFAULT } from '@/lib/nodeCatalog'
@@ -21,13 +26,23 @@ import { useFlowStore } from '@/store/useFlowStore'
  */
 export function LlmNode({ id, data, selected }: NodeProps<LlmNodeType>) {
   const updateNodeData = useFlowStore((s) => s.updateNodeData)
+  const updateNodeInternals = useUpdateNodeInternals()
 
   const model = data.model || LLM_MODEL_DEFAULT
   const thinking = data.thinking ?? false
   const result = data.result ?? ''
   const reasoning = data.reasoning ?? ''
   const running = data.running ?? false
+  // 图像默认 ≥1（沿用旧行为）；音频 / 视频 0 起步，点「Add Input」才出现端点
   const imageInputs = imageInputCount(data.imageInputs)
+  const audioInputs = Math.max(0, data.audioInputs ?? 0)
+  const videoInputs = Math.max(0, data.videoInputs ?? 0)
+
+  // 「Add Input」动态增减端点后，通知 React Flow 重新测量本节点的 handle 位置——
+  // 否则挂载后新增的 audio-/video- 端点不会被登记进连接系统，无法连线（image 默认≥1 在挂载时已登记故无此症状）。
+  useEffect(() => {
+    updateNodeInternals(id)
+  }, [id, imageInputs, audioInputs, videoInputs, updateNodeInternals])
 
   const [copied, setCopied] = useState(false)
   const copyResult = async () => {
@@ -136,7 +151,10 @@ export function LlmNode({ id, data, selected }: NodeProps<LlmNodeType>) {
         label="System Prompt"
         title="System Prompt 输入"
       />
+      {/* 媒体输入端点竖向排列：图像(绿) → 音频(蓝) → 视频(玫红)，baseIndex 依次顺延 */}
       <ImageInputHandles count={imageInputs} baseIndex={2} />
+      <AudioInputHandles count={audioInputs} baseIndex={2 + imageInputs} />
+      <VideoInputHandles count={videoInputs} baseIndex={2 + imageInputs + audioInputs} />
       <NodeHeader id={id} icon={Sparkles} title={model} selected={selected} />
       <CardContent className="flex flex-col gap-2 px-3">
         {/* 思考过程（若返回）：可折叠，默认收起 */}
@@ -182,7 +200,7 @@ export function LlmNode({ id, data, selected }: NodeProps<LlmNodeType>) {
 
         {/* Add Input + 运行 并排 */}
         <div className="flex items-center gap-2">
-          <AddInputControls id={id} image={imageInputs} />
+          <AddInputControls id={id} image={imageInputs} audio={audioInputs} video={videoInputs} />
           <Button size="sm" onClick={handleRun} disabled={running} className="nodrag ml-auto h-8">
             {running ? (thinking ? '思考中…' : '生成中…') : '运行'}
           </Button>
