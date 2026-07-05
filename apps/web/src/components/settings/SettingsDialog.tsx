@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Cable, Network, SlidersHorizontal } from 'lucide-react'
+import { Cable, CheckCircle2, Loader2, Network, PlugZap, SlidersHorizontal, XCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { testAgentConnectionApi } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useSettingsStore } from '@/store/useSettingsStore'
 
@@ -63,6 +64,9 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
   const [agentModelName, setAgentModelName] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  // 连接测试：testing 进行中；testResult 为最近一次结果（改动配置输入即清空以免误导）
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null)
 
   const handleOpenChange = (next: boolean) => {
     if (next) {
@@ -76,8 +80,27 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
       setAgentKey('') // 密钥不回显（后端不回明文）；留空=保持已存值
       setAgentModelName(agentModel)
       setError('')
+      setTestResult(null)
     }
     setOpen(next)
+  }
+
+  // 用表单当前值发最小用量探测；apiKey 留空则后端回退已存密钥
+  const handleTest = async () => {
+    setTesting(true)
+    setTestResult(null)
+    try {
+      const r = await testAgentConnectionApi({
+        endpoint: agentUrl.trim(),
+        apiKey: agentKey.trim() || undefined,
+        model: agentModelName.trim(),
+      })
+      setTestResult({ ok: true, message: `连接成功 · 模型 ${r.model} · ${r.latencyMs}ms` })
+    } catch (e) {
+      setTestResult({ ok: false, message: e instanceof Error ? e.message : String(e) })
+    } finally {
+      setTesting(false)
+    }
   }
 
   const handleSave = async () => {
@@ -161,7 +184,10 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
                     <Input
                       id="agentEndpoint"
                       value={agentUrl}
-                      onChange={(e) => setAgentUrl(e.target.value)}
+                      onChange={(e) => {
+                        setAgentUrl(e.target.value)
+                        setTestResult(null)
+                      }}
                       placeholder="如 https://api.openai.com/v1（自动补 /chat/completions）"
                     />
                   </div>
@@ -172,7 +198,10 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
                       id="agentApiKey"
                       type="password"
                       value={agentKey}
-                      onChange={(e) => setAgentKey(e.target.value)}
+                      onChange={(e) => {
+                        setAgentKey(e.target.value)
+                        setTestResult(null)
+                      }}
                       placeholder={
                         hasAgentApiKey ? '已保存（输入新值可更换，留空保持不变）' : '无鉴权网关可留空'
                       }
@@ -184,9 +213,52 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
                     <Input
                       id="agentModel"
                       value={agentModelName}
-                      onChange={(e) => setAgentModelName(e.target.value)}
+                      onChange={(e) => {
+                        setAgentModelName(e.target.value)
+                        setTestResult(null)
+                      }}
                       placeholder="如 gpt-4o / doubao-seed-1.6"
                     />
+                  </div>
+
+                  {/* 最小用量连接测试：发一条 max_tokens:1 的探测请求验证接口/密钥/模型可用 */}
+                  <div className="mt-1 flex flex-col gap-2 border-t pt-3">
+                    <div className="flex items-center gap-3">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleTest}
+                        disabled={testing}
+                      >
+                        {testing ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : (
+                          <PlugZap className="size-4" />
+                        )}
+                        {testing ? '测试中…' : '测试连接'}
+                      </Button>
+                      <span className="text-xs text-muted-foreground">
+                        发一条最小请求验证接口 / 密钥 / 模型可用
+                      </span>
+                    </div>
+                    {testResult && (
+                      <p
+                        className={cn(
+                          'flex items-start gap-1.5 text-xs',
+                          testResult.ok
+                            ? 'text-emerald-600 dark:text-emerald-400'
+                            : 'text-destructive',
+                        )}
+                      >
+                        {testResult.ok ? (
+                          <CheckCircle2 className="mt-px size-3.5 shrink-0" />
+                        ) : (
+                          <XCircle className="mt-px size-3.5 shrink-0" />
+                        )}
+                        <span className="break-all">{testResult.message}</span>
+                      </p>
+                    )}
                   </div>
                 </>
               )}

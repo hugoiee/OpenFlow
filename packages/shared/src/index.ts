@@ -198,3 +198,25 @@ export type AgentChatResponse = {
   reply: string
   actions: AgentImageAction[]
 }
+
+/**
+ * POST /api/agent/test 请求体：最小用量连接测试。
+ * 各字段留空/省略则后端回退已存设置再回退 env（apiKey 空 = 沿用写入-only 语义，测已存密钥）。
+ */
+export type AgentTestBody = {
+  /** 待测 Agent 接口地址；空则回退已存设置 / env。 */
+  endpoint?: string
+  /** 待测 API Key；空则回退已存密钥 / env。 */
+  apiKey?: string
+  /** 待测模型名；空则回退已存设置 / env。 */
+  model?: string
+}
+
+/** POST /api/agent/test 成功响应：连通即 ok，附实际生效模型名与往返耗时。失败走非 2xx + { error }。 */
+export type AgentTestResponse = {
+  ok: true
+  /** 实际用于测试的模型名。 */
+  model: string
+  /** 请求往返耗时（毫秒）。 */
+  latencyMs: number
+}
