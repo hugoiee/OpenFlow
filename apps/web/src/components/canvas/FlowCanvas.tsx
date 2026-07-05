@@ -252,41 +252,6 @@ export function FlowCanvas() {
     }
   }
 
-  // 把拖入的图片上传后追加到某个图像/视频节点的输入图文本框
-  const appendImagesToNode = async (nodeId: string, files: File[]) => {
-    try {
-      const urls = await uploadFilesApi(files)
-      const state = useFlowStore.getState()
-      const node = state.projects
-        .find((p) => p.id === state.activeProjectId)
-        ?.nodes.find((n) => n.id === nodeId)
-      const prev =
-        node && (node.type === 'image' || node.type === 'video')
-          ? (node.data.imagesText ?? '')
-          : ''
-      const next = [prev.trim(), ...urls].filter(Boolean).join('\n')
-      updateNodeData(nodeId, { imagesText: next })
-    } catch (e) {
-      window.alert(`图片上传失败：${e instanceof Error ? e.message : String(e)}`)
-    }
-  }
-
-  // 把拖入的音频上传（走音频端点）后追加到某个视频节点的输入音频文本框
-  const appendAudiosToNode = async (nodeId: string, files: File[]) => {
-    try {
-      const urls = await uploadFilesApi(files, 'audio')
-      const state = useFlowStore.getState()
-      const node = state.projects
-        .find((p) => p.id === state.activeProjectId)
-        ?.nodes.find((n) => n.id === nodeId)
-      const prev = node && node.type === 'video' ? (node.data.audiosText ?? '') : ''
-      const next = [prev.trim(), ...urls].filter(Boolean).join('\n')
-      updateNodeData(nodeId, { audiosText: next })
-    } catch (e) {
-      window.alert(`音频上传失败：${e instanceof Error ? e.message : String(e)}`)
-    }
-  }
-
   const onDrop = (event: React.DragEvent) => {
     // 优先处理从侧栏拖入的节点（携带 application/openflow-node）
     const nodePayload = event.dataTransfer.getData('application/openflow-node')
@@ -310,46 +275,19 @@ export function FlowCanvas() {
     if (files.length === 0) return
     event.preventDefault()
 
-    const images = files.filter((f) => f.type.startsWith('image/'))
-    const audios = files.filter((f) => f.type.startsWith('audio/'))
-    if (images.length === 0 && audios.length === 0) {
+    // 桌面拖入的图像 / 音频文件一律在落点建「素材」节点（纯源，连线到下游生成节点作输入）。
+    // 这是把资源送进画布的唯一入口——不再支持「拖到已有节点上追加」。
+    const assetJobs: { kind: 'image' | 'audio'; file: File }[] = []
+    files.forEach((file) => {
+      if (file.type.startsWith('image/')) assetJobs.push({ kind: 'image', file })
+      else if (file.type.startsWith('audio/')) assetJobs.push({ kind: 'audio', file })
+    })
+    if (assetJobs.length === 0) {
       window.alert('仅支持拖入图像或音频文件')
       return
     }
 
     const dropPos = screenToFlowPosition({ x: event.clientX, y: event.clientY })
-
-    // 是否正好落在某个图像/视频节点上 → 图片直接追加为该节点输入图
-    const nodeEl = (event.target as HTMLElement | null)?.closest('.react-flow__node')
-    const targetId = nodeEl?.getAttribute('data-id') ?? null
-    const state = useFlowStore.getState()
-    const targetNode = targetId
-      ? state.projects
-          .find((p) => p.id === state.activeProjectId)
-          ?.nodes.find((n) => n.id === targetId)
-      : undefined
-    const droppedOnGenNode =
-      !!targetNode && (targetNode.type === 'image' || targetNode.type === 'video')
-    // 音频只对视频节点有意义：落在视频节点上→追加为其输入音频，否则建音频素材
-    const droppedOnVideoNode = !!targetNode && targetNode.type === 'video'
-
-    // 待新建的素材节点列表：图片 / 音频均仅在「未落在对应生成节点上」时才建素材
-    const assetJobs: { kind: 'image' | 'audio'; file: File }[] = []
-    if (images.length > 0) {
-      if (droppedOnGenNode && targetId) {
-        void appendImagesToNode(targetId, images)
-      } else {
-        images.forEach((file) => assetJobs.push({ kind: 'image', file }))
-      }
-    }
-    if (audios.length > 0) {
-      if (droppedOnVideoNode && targetId) {
-        void appendAudiosToNode(targetId, audios)
-      } else {
-        audios.forEach((file) => assetJobs.push({ kind: 'audio', file }))
-      }
-    }
-
     // 多个素材错开摆放，避免完全重叠
     assetJobs.forEach((job, i) => {
       void createAsset(job.kind, job.file, {
