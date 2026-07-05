@@ -2,6 +2,7 @@ import { type NodeProps } from '@xyflow/react'
 import { GROUP_PADDING } from '@/lib/layout'
 import { type GroupNode as GroupNodeType } from '@/lib/types'
 import { useFlowStore } from '@/store/useFlowStore'
+import { useCompositionField } from '@/hooks/useCompositionField'
 
 /**
  * 分组容器节点：一块半透明填充背景（不描边），包住子节点（子节点 parentId 指向它、渲染在其上方）。
@@ -11,6 +12,7 @@ import { useFlowStore } from '@/store/useFlowStore'
  */
 export function GroupNode({ id, data, selected, width, height }: NodeProps<GroupNodeType>) {
   const updateNodeData = useFlowStore((s) => s.updateNodeData)
+  const labelField = useCompositionField(data.label, (v) => updateNodeData(id, { label: v }))
 
   return (
     <div
@@ -22,8 +24,7 @@ export function GroupNode({ id, data, selected, width, height }: NodeProps<Group
     >
       {/* 分组名：显示在分组框外左上角，可点击改名（nodrag，避免误触发拖拽/编辑） */}
       <input
-        value={data.label}
-        onChange={(e) => updateNodeData(id, { label: e.target.value })}
+        {...labelField}
         placeholder="分组名"
         className="nodrag absolute -top-6 left-0 max-w-full rounded-sm bg-transparent px-1 py-0.5 text-xs font-medium text-muted-foreground outline-none focus:bg-background/70 focus:text-foreground"
       />

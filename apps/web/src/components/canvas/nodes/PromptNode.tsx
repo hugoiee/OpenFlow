@@ -15,6 +15,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { useCompositionField } from '@/hooks/useCompositionField'
 import { NodeHeader } from './NodeHeader'
 import { NodeHandle } from './NodeHandle'
 import { useFlowStore } from '@/store/useFlowStore'
@@ -41,6 +42,7 @@ const DEFAULT_HEIGHT = 200
 
 export function PromptNode({ id, data, selected, width, height }: NodeProps<PromptNodeType>) {
   const updateNodeData = useFlowStore((s) => s.updateNodeData)
+  const textField = useCompositionField(data.text, (v) => updateNodeData(id, { text: v }))
   const presets = usePromptPresetStore((s) => s.presets)
   const addPreset = usePromptPresetStore((s) => s.addPreset)
 
@@ -108,8 +110,7 @@ export function PromptNode({ id, data, selected, width, height }: NodeProps<Prom
       {/* flex-1 + min-h-0：内容区吃掉除页头/工具条外的剩余高度，输入框随之填满 */}
       <CardContent className="flex min-h-0 flex-1 flex-col gap-2 px-3">
         <Textarea
-          value={data.text}
-          onChange={(e) => updateNodeData(id, { text: e.target.value })}
+          {...textField}
           placeholder="在这里写 prompt…"
           className="nodrag field-sizing-fixed min-h-0 w-full flex-1 resize-none text-sm"
         />

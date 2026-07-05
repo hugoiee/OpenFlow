@@ -46,6 +46,7 @@ export function ProjectCard({ project, view }: ProjectCardProps) {
       onBlur={commitRename}
       onKeyDown={(e) => {
         e.stopPropagation()
+        if (e.nativeEvent.isComposing) return // 输入法组词中，别把选字的回车/Esc 当作提交/取消
         if (e.key === 'Enter') commitRename()
         if (e.key === 'Escape') setEditing(false)
       }}
