@@ -6,7 +6,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { NodeHeader } from './NodeHeader'
 import { NodeHandle } from './NodeHandle'
-import { AddImageInputButton, ImageInputHandles } from './ImageInputHandles'
+import { AddInputControls, ImageInputHandles } from './ImageInputHandles'
 import { createLlmTaskApi } from '@/lib/api'
 import { pollTask } from '@/lib/taskPolling'
 import { LLM_MODEL_DEFAULT } from '@/lib/nodeCatalog'
@@ -180,9 +180,9 @@ export function LlmNode({ id, data, selected }: NodeProps<LlmNodeType>) {
           )}
         </div>
 
-        {/* 添加图像输入 + 运行 并排 */}
+        {/* Add Input + 运行 并排 */}
         <div className="flex items-center gap-2">
-          <AddImageInputButton id={id} count={imageInputs} />
+          <AddInputControls id={id} image={imageInputs} />
           <Button size="sm" onClick={handleRun} disabled={running} className="nodrag ml-auto h-8">
             {running ? (thinking ? '思考中…' : '生成中…') : '运行'}
           </Button>

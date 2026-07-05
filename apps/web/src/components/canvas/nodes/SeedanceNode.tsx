@@ -7,12 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { DownloadDialog, type DownloadTarget } from '@/components/canvas/DownloadDialog'
 import { NodeHeader } from './NodeHeader'
 import { NodeHandle } from './NodeHandle'
-import {
-  AddAudioInputButton,
-  AddImageInputButton,
-  AudioInputHandles,
-  ImageInputHandles,
-} from './ImageInputHandles'
+import { AddInputControls, AudioInputHandles, ImageInputHandles } from './ImageInputHandles'
 import { createVideoTaskApi } from '@/lib/api'
 import { pollTask } from '@/lib/taskPolling'
 import { audioInputCount, imageInputCount, imageInputHandleId } from '@/lib/graph'
@@ -171,10 +166,13 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
           )}
         </div>
 
-        {/* 添加图像/音频输入（text button）+ 生成 并排 */}
-        <div className="flex flex-wrap items-center gap-1">
-          {isReference && <AddImageInputButton id={id} count={imageInputs} />}
-          <AddAudioInputButton id={id} count={audioInputs} />
+        {/* Add Input（图标按钮：参考图=图+音，首尾帧=仅音）+ 生成 并排 */}
+        <div className="flex flex-wrap items-center gap-2">
+          <AddInputControls
+            id={id}
+            image={isReference ? imageInputs : undefined}
+            audio={audioInputs}
+          />
           <Button size="sm" onClick={handleRun} disabled={running} className="nodrag ml-auto h-8">
             {running ? '生成中…' : '生成'}
           </Button>

@@ -7,7 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { DownloadDialog, type DownloadTarget } from '@/components/canvas/DownloadDialog'
 import { NodeHeader } from './NodeHeader'
 import { NodeHandle } from './NodeHandle'
-import { AddImageInputButton, ImageInputHandles } from './ImageInputHandles'
+import { AddInputControls, ImageInputHandles } from './ImageInputHandles'
 import { createImageTaskApi } from '@/lib/api'
 import { pollTask } from '@/lib/taskPolling'
 import { imageInputCount } from '@/lib/graph'
@@ -162,9 +162,9 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
           )}
         </div>
 
-        {/* 添加图像输入 + 生成 并排 */}
+        {/* Add Input + 生成 并排 */}
         <div className="flex items-center gap-2">
-          <AddImageInputButton id={id} count={imageInputs} />
+          <AddInputControls id={id} image={imageInputs} />
           <Button size="sm" onClick={handleRun} disabled={running} className="nodrag ml-auto h-8">
             {running ? '生成中…' : '生成'}
           </Button>
