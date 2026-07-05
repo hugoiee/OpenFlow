@@ -121,3 +121,78 @@ export function buildVideoRequest(project: Project, node: VideoNode): GenVideoBo
     duration: d.duration ?? SEEDANCE_DURATION_DEFAULT,
   }
 }
+
+// ---- 上游实发请求体（右侧 Inspector「请求预览」用）----
+// 下面三个把「点击生成时发给后端 /api/* 的 GenXxxBody」再转成「后端实际打到上游网关的请求体」：
+//   图像 / 视频镜像 apps/server/src/provider.ts 的 runImageGen / runVideoGen（内网 AIGC 网关，
+//     字段为 req_from / model_name / version / config…，req_from 由全局署名注入）；
+//   LLM 镜像 apps/server/src/llm.ts 的 runLlmCompletion（OpenAI 兼容 /chat/completions）。
+// 复用上面的 build*Request 收集上游输入，故预览与实发链路同源、不漂移；改后端构造逻辑时同步这里。
+
+/** 图像：内网 AIGC 网关的 POST body（镜像 provider.ts runImageGen）。 */
+export function buildImageUpstream(project: Project, node: ImageNode, reqFrom: string) {
+  const body = buildImageRequest(project, node)
+  const isNano = body.model === 'nano-banana'
+  return {
+    req_from: reqFrom,
+    model_name: body.model,
+    // Nano Banana 用 version（缺省回退默认）；Image 2 的 version 即 model_name
+    version: isNano ? body.version?.trim() || NANO_VERSION_DEFAULT : body.model,
+    prompt: body.prompt,
+    image_list: body.images,
+    // config 按模型两套，互不污染
+    config: isNano
+      ? { aspect_ratio: body.aspectRatio, image_size: body.imageSize }
+      : { size: body.size, n: body.n, quality: body.quality },
+  }
+}
+
+/** 视频（seedance）：内网 AIGC 网关的 POST body（镜像 provider.ts runVideoGen）。 */
+export function buildVideoUpstream(project: Project, node: VideoNode, reqFrom: string) {
+  const body = buildVideoRequest(project, node)
+  return {
+    req_from: reqFrom,
+    model_name: body.model,
+    version: body.version,
+    mode: body.mode,
+    prompt: body.prompt,
+    image_list: body.images,
+    video_list: [] as string[],
+    audio_list: body.audios ?? [],
+    // ratio 省略（自适应）时不塞进 config，与后端保持一致
+    config: {
+      resolution: body.resolution,
+      duration: body.duration,
+      ...(body.ratio?.trim() ? { ratio: body.ratio } : {}),
+    },
+  }
+}
+
+/** Any LLM：OpenAI 兼容 /chat/completions 的 POST body（镜像 llm.ts runLlmCompletion）。 */
+export function buildLlmUpstream(project: Project, node: LlmNode) {
+  const body = buildLlmRequest(project, node)
+  const imageUrls = (body.images ?? []).map((u) => u.trim()).filter(Boolean)
+  const audioUrls = (body.audios ?? []).map((u) => u.trim()).filter(Boolean)
+  const videoUrls = (body.videos ?? []).map((u) => u.trim()).filter(Boolean)
+  // 有图 / 音 / 视输入时把 user 内容改成多模态内容块数组，否则纯文本
+  const userContent =
+    imageUrls.length + audioUrls.length + videoUrls.length > 0
+      ? [
+          { type: 'text', text: body.prompt },
+          ...imageUrls.map((url) => ({ type: 'image_url', image_url: { url } })),
+          ...audioUrls.map((url) => ({ type: 'audio_url', audio_url: { url } })),
+          ...videoUrls.map((url) => ({ type: 'video_url', video_url: { url } })),
+        ]
+      : body.prompt
+  return {
+    model: body.model,
+    messages: [
+      // 有系统提示词则置于消息首位
+      ...(body.systemPrompt?.trim() ? [{ role: 'system', content: body.systemPrompt.trim() }] : []),
+      { role: 'user', content: userContent },
+    ],
+    temperature: body.temperature,
+    // 开启思考才下发原生推理参数
+    ...(body.thinking ? { reasoning_effort: 'medium' } : {}),
+  }
+}
