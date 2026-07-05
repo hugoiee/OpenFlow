@@ -13,7 +13,7 @@ import {
   type OnConnectEnd,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { nodeTypes } from './nodes'
 import { ZoomSlider } from './ZoomSlider'
 import { CanvasContextMenu } from './CanvasContextMenu'
@@ -65,14 +65,17 @@ export function FlowCanvas() {
   }, [snapToGrid])
   const toggleSnap = useCallback(() => setSnapToGrid((v) => !v), [])
 
-  // 缩略图显隐：偏好存 localStorage，首次默认显示；由 ZoomSlider 缩略图按钮切换
+  // 缩略图显隐：偏好存 localStorage，首次默认隐藏（缩略图随节点变动重绘，省点开销）；由 ZoomSlider 缩略图按钮切换
   const [minimapOpen, setMinimapOpen] = useState(
-    () => localStorage.getItem(MINIMAP_STORAGE_KEY) !== '0',
+    () => localStorage.getItem(MINIMAP_STORAGE_KEY) === '1',
   )
   useEffect(() => {
     localStorage.setItem(MINIMAP_STORAGE_KEY, minimapOpen ? '1' : '0')
   }, [minimapOpen])
   const toggleMinimap = useCallback(() => setMinimapOpen((v) => !v), [])
+
+  // 节点拖动态：拖动时临时关掉蚂蚁线（stroke-dashoffset 动画每帧重绘），减轻拖动时的重绘负担
+  const [dragging, setDragging] = useState(false)
 
   // 画布右键菜单：记录光标处（相对画布容器的 top/left）+ 落点（flow 坐标），点选即在该处建节点
   const wrapperRef = useRef<HTMLDivElement>(null)
@@ -295,26 +298,38 @@ export function FlowCanvas() {
     })
   }
 
-  if (!project) return null
-
   // 连线统一走贝塞尔曲线（default）：旧的 straight/smoothstep 一并归一成曲线。
-  // 派生视图态（不入库）：与「已选中节点」相连的边高亮（edge-active）+ 走蚂蚁线（animated）。
-  const selectedNodeIds = new Set(
-    project.nodes.filter((n) => n.selected).map((n) => n.id),
-  )
+  // 派生视图态（不入库）：与「已选中节点」相连的边高亮（edge-active）+ 走蚂蚁线（animated，拖动中关闭）。
   // 连线着色：按源节点输出的数据类型（文本粉 / 图像绿 / 其余默认，与端点同色）。
-  const nodeById = new Map(project.nodes.map((n) => [n.id, n]))
-  const edges = project.edges.map((e) => {
-    const active = selectedNodeIds.has(e.source) || selectedNodeIds.has(e.target)
-    const color = edgeColorForSource(nodeById.get(e.source))
-    return {
-      ...e,
-      type: 'default',
-      animated: active,
-      className: active ? 'edge-active' : undefined,
-      ...(color ? { style: { ...e.style, stroke: color } } : {}),
-    }
-  })
+  // ⚡ useMemo 稳定引用：依赖只取 edges + 选中签名 + 拖动态——拖动节点（仅改 nodes）时
+  // project.edges 引用不变、selectedSig 不变 → 复用同一 edges 数组，避免每帧都吐给 React Flow
+  // 全新的 edge/style 对象、触发全量边重算重绘（颜色只随源节点类型变、拖动中不变，故不入依赖）。
+  const selectedSig = project
+    ? project.nodes
+        .filter((n) => n.selected)
+        .map((n) => n.id)
+        .sort()
+        .join('|')
+    : ''
+  const edges = useMemo(() => {
+    if (!project) return []
+    const selectedSet = new Set(selectedSig ? selectedSig.split('|') : [])
+    const nodeById = new Map(project.nodes.map((n) => [n.id, n]))
+    return project.edges.map((e) => {
+      const active = selectedSet.has(e.source) || selectedSet.has(e.target)
+      const color = edgeColorForSource(nodeById.get(e.source))
+      return {
+        ...e,
+        type: 'default',
+        animated: active && !dragging,
+        className: active ? 'edge-active' : undefined,
+        ...(color ? { style: { ...e.style, stroke: color } } : {}),
+      }
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project?.edges, selectedSig, dragging])
+
+  if (!project) return null
 
   return (
     <div
@@ -331,6 +346,8 @@ export function FlowCanvas() {
         nodeTypes={nodeTypes}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
+        onNodeDragStart={() => setDragging(true)}
+        onNodeDragStop={() => setDragging(false)}
         onConnect={onConnect}
         isValidConnection={isValidConnection}
         onConnectStart={onConnectStart}
