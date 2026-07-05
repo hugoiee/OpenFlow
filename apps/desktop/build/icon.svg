@@ -1,0 +1,24 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Desktop app icon: macOS-style rounded white tile + Open Flow mark.
+       A tile icon never adapts to the dock theme, so colors are fixed
+       (blue + black on white), matching the brand reference. -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="#FFFFFF" />
+  <svg x="12" y="12" width="1000" height="1000" viewBox="0 0 256 256">
+    <g stroke-width="15">
+      <line x1="105" y1="84" x2="128" y2="84" stroke="#0F1115" />
+      <line x1="128" y1="84" x2="151" y2="84" stroke="#3D6BFF" />
+      <line x1="172" y1="105" x2="172" y2="128" stroke="#3D6BFF" />
+      <line x1="172" y1="128" x2="172" y2="151" stroke="#0F1115" />
+      <line x1="105" y1="172" x2="128" y2="172" stroke="#3D6BFF" />
+      <line x1="128" y1="172" x2="151" y2="172" stroke="#0F1115" />
+      <line x1="84" y1="105" x2="84" y2="128" stroke="#0F1115" />
+      <line x1="84" y1="128" x2="84" y2="151" stroke="#3D6BFF" />
+    </g>
+    <g fill="none" stroke-width="15">
+      <circle cx="84" cy="84" r="21" stroke="#0F1115" />
+      <circle cx="172" cy="84" r="21" stroke="#3D6BFF" />
+      <circle cx="84" cy="172" r="21" stroke="#3D6BFF" />
+      <circle cx="172" cy="172" r="21" stroke="#0F1115" />
+    </g>
+  </svg>
+</svg>
