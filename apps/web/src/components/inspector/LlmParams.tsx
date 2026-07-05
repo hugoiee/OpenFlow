@@ -1,4 +1,6 @@
-import { Brain } from 'lucide-react'
+import { useEffect } from 'react'
+import { Brain, Loader2, RefreshCw } from 'lucide-react'
+import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
@@ -8,7 +10,6 @@ import {
 } from '@/components/ui/select'
 import { Slider } from '@/components/ui/slider'
 import {
-  LLM_MODELS,
   LLM_MODEL_DEFAULT,
   LLM_TEMPERATURE_DEFAULT,
   LLM_TEMPERATURE_MAX,
@@ -17,36 +18,83 @@ import {
 } from '@/lib/nodeCatalog'
 import { type LlmNodeData } from '@/lib/types'
 import { useFlowStore } from '@/store/useFlowStore'
+import { useSettingsStore } from '@/store/useSettingsStore'
 
 /** Any LLM 节点参数控件（右侧 Inspector 用）：Model 选择 / Temperature 滑块 / Thinking 开关。 */
 export function LlmParams({ id, data }: { id: string; data: LlmNodeData }) {
   const updateNodeData = useFlowStore((s) => s.updateNodeData)
+  // 模型列表从配置的 Agent 端点动态获取（与设置面板共用同一份，见 useSettingsStore）
+  const agentModels = useSettingsStore((s) => s.agentModels)
+  const agentModelsLoading = useSettingsStore((s) => s.agentModelsLoading)
+  const agentModelsLoaded = useSettingsStore((s) => s.agentModelsLoaded)
+  const agentModelsError = useSettingsStore((s) => s.agentModelsError)
+  const loadAgentModels = useSettingsStore((s) => s.loadAgentModels)
 
-  // 旧数据可能存了已不在列表里的模型，仍原样保留可选（下拉里追加一项）
+  // 挂载时（及保存设置使列表失效后）自动按已存配置拉一次可用模型
+  useEffect(() => {
+    if (!agentModelsLoaded && !agentModelsLoading) void loadAgentModels()
+  }, [agentModelsLoaded, agentModelsLoading, loadAgentModels])
+
   const model = data.model || LLM_MODEL_DEFAULT
-  const models = (LLM_MODELS as readonly string[]).includes(model)
-    ? LLM_MODELS
-    : [model, ...LLM_MODELS]
+  // 已选模型若不在获取到的列表里，仍置顶保留可选（不静默改动节点已存模型）
+  const options = agentModels.includes(model) ? agentModels : [model, ...agentModels]
+  const hasModels = agentModels.length > 0
   const temperature = data.temperature ?? LLM_TEMPERATURE_DEFAULT
   const thinking = data.thinking ?? false
 
   return (
     <div className="flex flex-col gap-3">
-      <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
-        Model
-        <Select value={model} onValueChange={(v) => updateNodeData(id, { model: v })}>
-          <SelectTrigger className="w-full text-xs">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {models.map((m) => (
-              <SelectItem key={m} value={m} className="text-xs">
-                {m}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </label>
+      <div className="flex flex-col gap-1 text-[11px] text-muted-foreground">
+        <div className="flex items-center justify-between">
+          <span>Model</span>
+          <button
+            type="button"
+            title="重新从 Agent 端点获取模型列表"
+            onClick={() => void loadAgentModels()}
+            disabled={agentModelsLoading}
+            className="flex items-center gap-1 rounded px-1 py-0.5 transition-colors hover:text-foreground disabled:opacity-50"
+          >
+            {agentModelsLoading ? (
+              <Loader2 className="size-3 animate-spin" />
+            ) : (
+              <RefreshCw className="size-3" />
+            )}
+            刷新
+          </button>
+        </div>
+
+        {hasModels ? (
+          <Select value={model} onValueChange={(v) => updateNodeData(id, { model: v })}>
+            <SelectTrigger className="w-full text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {options.map((m) => (
+                <SelectItem key={m} value={m} className="text-xs">
+                  {m}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : (
+          // 未能获取到模型列表（未配置端点 / 端点不支持 /models / 获取失败）：回退手填模型名
+          <>
+            <Input
+              value={model}
+              onChange={(e) => updateNodeData(id, { model: e.target.value })}
+              placeholder="如 gpt-4o"
+              className="h-8 text-xs"
+            />
+            <span className="text-[10px] text-muted-foreground/80">
+              {agentModelsLoading
+                ? '正在获取模型列表…'
+                : agentModelsError
+                  ? '未能获取模型列表，可手动填写模型名或点「刷新」重试'
+                  : '在设置里配置 Agent 接口后可从端点获取模型列表'}
+            </span>
+          </>
+        )}
+      </div>
 
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center justify-between text-[11px] text-muted-foreground">

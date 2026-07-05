@@ -220,3 +220,19 @@ export type AgentTestResponse = {
   /** 请求往返耗时（毫秒）。 */
   latencyMs: number
 }
+
+/**
+ * POST /api/agent/models 请求体：列出 OpenAI 兼容端点 GET /models 的可用模型。
+ * 各字段省略/空则后端回退已存设置再回退 env（apiKey 空 = 沿用写入-only 语义，用已存密钥）。
+ */
+export type AgentModelsBody = {
+  /** 待查询的 Agent 接口地址；空则回退已存设置 / env。 */
+  endpoint?: string
+  /** 待用的 API Key；空则回退已存密钥 / env。 */
+  apiKey?: string
+}
+
+/** POST /api/agent/models 成功响应：端点 /models 列出的模型 ID（已去重、按字母排序）。失败走非 2xx + { error }。 */
+export type AgentModelsResponse = {
+  models: string[]
+}

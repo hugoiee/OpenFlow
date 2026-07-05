@@ -1,5 +1,14 @@
-import { useState } from 'react'
-import { Cable, CheckCircle2, Loader2, Network, PlugZap, SlidersHorizontal, XCircle } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import {
+  Cable,
+  CheckCircle2,
+  Loader2,
+  Network,
+  PlugZap,
+  RefreshCw,
+  SlidersHorizontal,
+  XCircle,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -11,6 +20,13 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { testAgentConnectionApi } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useSettingsStore } from '@/store/useSettingsStore'
@@ -52,6 +68,12 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
   const hasAgentApiKey = useSettingsStore((s) => s.hasAgentApiKey)
   const agentModel = useSettingsStore((s) => s.agentModel)
   const saveSettings = useSettingsStore((s) => s.saveSettings)
+  // 动态模型列表（从 Agent 端点 GET /models 获取，与 Any LLM 节点共用同一份）
+  const agentModels = useSettingsStore((s) => s.agentModels)
+  const agentModelsLoading = useSettingsStore((s) => s.agentModelsLoading)
+  const agentModelsLoaded = useSettingsStore((s) => s.agentModelsLoaded)
+  const agentModelsError = useSettingsStore((s) => s.agentModelsError)
+  const loadAgentModels = useSettingsStore((s) => s.loadAgentModels)
 
   const [open, setOpen] = useState(false)
   const [section, setSection] = useState<SectionId>('general')
@@ -103,6 +125,20 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
     }
   }
 
+  // 用表单当前 endpoint/key 拉取端点可用模型（fetch-before-save：不必先保存即可获取）
+  const handleFetchModels = () => {
+    void loadAgentModels({ endpoint: agentUrl.trim(), apiKey: agentKey.trim() || undefined })
+  }
+
+  // 进入「API 接入」分区且已填端点、尚未获取过时，自动拉一次模型列表；
+  // 编辑 endpoint/key 后由「获取模型列表」按钮手动重取（故不把表单值放进依赖，避免逐字重拉）。
+  useEffect(() => {
+    if (open && section === 'api' && agentUrl.trim() && !agentModelsLoaded && !agentModelsLoading) {
+      handleFetchModels()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, section])
+
   const handleSave = async () => {
     setSaving(true)
     setError('')
@@ -126,6 +162,13 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
   }
 
   const active = SECTIONS.find((s) => s.id === section)!
+  // 是否已获取到可用模型列表：有 → 纯下拉；没有（未配置/端点不支持/获取失败）→ 回退手填
+  const hasModels = agentModels.length > 0
+  // 当前已填模型若不在获取到的列表里，置顶保留可选（不静默丢弃用户已存的模型名）
+  const modelOptions =
+    agentModelName && !agentModels.includes(agentModelName)
+      ? [agentModelName, ...agentModels]
+      : agentModels
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -209,16 +252,63 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
                   </div>
 
                   <div className="flex flex-col gap-1.5">
-                    <Label htmlFor="agentModel">Agent 模型名</Label>
-                    <Input
-                      id="agentModel"
-                      value={agentModelName}
-                      onChange={(e) => {
-                        setAgentModelName(e.target.value)
-                        setTestResult(null)
-                      }}
-                      placeholder="如 gpt-4o / doubao-seed-1.6"
-                    />
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="agentModel">Agent 模型名</Label>
+                      <button
+                        type="button"
+                        onClick={handleFetchModels}
+                        disabled={agentModelsLoading || !agentUrl.trim()}
+                        title={
+                          agentUrl.trim()
+                            ? '从端点 GET /models 获取可用模型'
+                            : '请先填写 Agent 接口地址'
+                        }
+                        className="flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+                      >
+                        {agentModelsLoading ? (
+                          <Loader2 className="size-3.5 animate-spin" />
+                        ) : (
+                          <RefreshCw className="size-3.5" />
+                        )}
+                        获取模型列表
+                      </button>
+                    </div>
+                    {hasModels ? (
+                      <Select
+                        value={agentModelName}
+                        onValueChange={(v) => {
+                          setAgentModelName(v)
+                          setTestResult(null)
+                        }}
+                      >
+                        <SelectTrigger id="agentModel" className="w-full">
+                          <SelectValue placeholder="选择模型" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {modelOptions.map((m) => (
+                            <SelectItem key={m} value={m}>
+                              {m}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      // 未获取到模型（未配置端点 / 端点不支持 /models / 获取失败）：回退手填
+                      <Input
+                        id="agentModel"
+                        value={agentModelName}
+                        onChange={(e) => {
+                          setAgentModelName(e.target.value)
+                          setTestResult(null)
+                        }}
+                        placeholder="如 gpt-4o / doubao-seed-1.6"
+                      />
+                    )}
+                    {agentModelsError && (
+                      <p className="text-xs text-muted-foreground">
+                        未能获取模型列表（可手动填写）：{agentModelsError}
+                      </p>
+                    )}
                   </div>
 
                   {/* 最小用量连接测试：发一条 max_tokens:1 的探测请求验证接口/密钥/模型可用 */}

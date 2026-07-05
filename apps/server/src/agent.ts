@@ -2,6 +2,7 @@ import type {
   AgentChatResponse,
   AgentImageAction,
   AgentMessage,
+  AgentModelsBody,
   AgentTestBody,
   SettingsDTO,
 } from '@openflow/shared'
@@ -47,6 +48,96 @@ export function resolveChatCompletionsUrl(endpoint: string): string {
     const base = endpoint.replace(/\/+$/, '')
     return /\/chat\/completions$/i.test(base) ? base : `${base}/chat/completions`
   }
+}
+
+/**
+ * 从配置的端点推导 GET /models 地址（用于动态获取可用模型列表）。
+ * 若端点配成 .../chat/completions，剥掉该层取基址；保住查询串（如 Azure 的 ?api-version=）。
+ */
+export function resolveModelsUrl(endpoint: string): string {
+  try {
+    const url = new URL(endpoint)
+    let path = url.pathname.replace(/\/+$/, '').replace(/\/chat\/completions$/i, '')
+    if (!/\/models$/i.test(path)) path = `${path}/models`
+    url.pathname = path
+    return url.toString()
+  } catch {
+    // 非标准 URL：退回纯字符串拼接，交给 fetch 报错
+    const base = endpoint.replace(/\/+$/, '').replace(/\/chat\/completions$/i, '')
+    return /\/models$/i.test(base) ? base : `${base}/models`
+  }
+}
+
+/**
+ * 从 /models 响应稳健解析出模型 ID 列表。
+ * 兼容三种形态：OpenAI 的 { data: [{ id }] } / 顶层数组 / 字符串数组；去重后按字母排序。
+ */
+function parseModelList(data: unknown): string[] {
+  const arr: unknown[] = Array.isArray(data)
+    ? data
+    : data && typeof data === 'object' && Array.isArray((data as Record<string, unknown>).data)
+      ? ((data as Record<string, unknown>).data as unknown[])
+      : []
+  const ids = new Set<string>()
+  for (const item of arr) {
+    if (typeof item === 'string') {
+      if (item.trim()) ids.add(item.trim())
+    } else if (item && typeof item === 'object') {
+      const id = (item as Record<string, unknown>).id
+      if (typeof id === 'string' && id.trim()) ids.add(id.trim())
+    }
+  }
+  return [...ids].sort((a, b) => a.localeCompare(b))
+}
+
+/**
+ * 调 OpenAI 兼容端点的 GET /models 列出可用模型 ID。
+ * 端点/Key：入参非空优先，否则回退已存设置，再回退 env；端点缺失或响应为空/格式不符时抛可读错误。
+ * （前端据此把「手填模型名」换成动态下拉；抛错时前端回退手填。）
+ */
+export async function listAgentModels(
+  override: AgentModelsBody,
+  settings: SettingsDTO,
+): Promise<string[]> {
+  const endpoint = override.endpoint?.trim() || settings.agentEndpoint.trim() || AGENT_ENDPOINT
+  if (!endpoint) throw new Error('未配置 Agent 接口地址，请在设置中填写')
+  const apiKey = override.apiKey?.trim() || settings.agentApiKey.trim() || AGENT_API_KEY
+
+  const url = resolveModelsUrl(endpoint)
+  let res: Response
+  try {
+    res = await fetch(url, {
+      method: 'GET',
+      headers: { ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}) },
+      // 列模型应很快返回，30 秒足以判定
+      signal: AbortSignal.timeout(30_000),
+    })
+  } catch (e) {
+    if (e instanceof Error && e.name === 'TimeoutError') {
+      throw new Error(`获取模型列表超时（30 秒无响应）：${url}，请检查 Agent 接口地址`)
+    }
+    const cause = e instanceof Error && e.cause instanceof Error ? e.cause.message : undefined
+    throw new Error(
+      `获取模型列表失败（${url}）：${cause ?? (e instanceof Error ? e.message : String(e))}`,
+    )
+  }
+  const raw = await res.text().catch(() => '')
+  let data: unknown = null
+  try {
+    data = JSON.parse(raw)
+  } catch {
+    // 非 JSON 响应，data 留 null
+  }
+  if (!res.ok) {
+    throw new Error(
+      `获取模型列表失败 HTTP ${res.status}：${extractLlmError(data) ?? (raw.trim().slice(0, 300) || '(空响应)')}`,
+    )
+  }
+  const models = parseModelList(data)
+  if (models.length === 0) {
+    throw new Error(`该端点未返回可用模型（GET /models 响应为空或格式不符）：${url}`)
+  }
+  return models
 }
 
 /** 从 LLM 错误响应里尽量取可读信息。 */

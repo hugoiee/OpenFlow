@@ -1,6 +1,13 @@
 import { Hono } from 'hono'
-import type { AgentChatBody, AgentMessage, AgentTestBody, AgentTestResponse } from '@openflow/shared'
-import { runAgentChat, runAgentConnectionTest } from '../agent'
+import type {
+  AgentChatBody,
+  AgentMessage,
+  AgentModelsBody,
+  AgentModelsResponse,
+  AgentTestBody,
+  AgentTestResponse,
+} from '@openflow/shared'
+import { listAgentModels, runAgentChat, runAgentConnectionTest } from '../agent'
 import { readSettings } from '../settings-store'
 
 export const agent = new Hono()
@@ -46,6 +53,23 @@ agent.post('/agent/test', async (c) => {
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e)
     // 配置缺失可自行修复回 400；上游调用失败回 502
+    return c.json({ error: message }, message.includes('请在设置中填写') ? 400 : 502)
+  }
+})
+
+// 动态获取模型列表：调端点 GET /models 列出可用模型 ID，供前端把「手填模型名」换成下拉。
+// 入参 endpoint/apiKey 可省略——省略/空则回退已存设置（apiKey 空 = 用已保存的密钥）。
+agent.post('/agent/models', async (c) => {
+  const body = await c.req.json<AgentModelsBody>().catch(() => ({}) as AgentModelsBody)
+  try {
+    const models = await listAgentModels(
+      { endpoint: body?.endpoint, apiKey: body?.apiKey },
+      readSettings(),
+    )
+    return c.json({ models } satisfies AgentModelsResponse)
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
+    // 配置缺失可自行修复回 400；上游调用 / 端点不支持回 502
     return c.json({ error: message }, message.includes('请在设置中填写') ? 400 : 502)
   }
 })

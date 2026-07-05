@@ -1,6 +1,8 @@
 import type {
   AgentChatBody,
   AgentChatResponse,
+  AgentModelsBody,
+  AgentModelsResponse,
   AgentTestBody,
   AgentTestResponse,
   CreateTaskResponse,
@@ -143,6 +145,16 @@ export function testAgentConnectionApi(body: AgentTestBody): Promise<AgentTestRe
     method: 'POST',
     body: JSON.stringify(body),
   })
+}
+
+// ---- 动态获取模型列表 ----
+// 后端调端点 GET /models 列出可用模型 ID；endpoint/apiKey 省略=用已存设置（apiKey 空=已保存密钥）。
+export async function listAgentModelsApi(body: AgentModelsBody = {}): Promise<string[]> {
+  const { models } = await request<AgentModelsResponse>('/agent/models', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+  return models
 }
 
 // ---- 任务查询（轮询 / 重连）----
