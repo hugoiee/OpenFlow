@@ -76,7 +76,7 @@ type FlowState = {
     videoVariant?: VideoVariant,
   ) => void
   /** 在指定画布坐标新建一个素材节点（上传中态），返回新节点 id。 */
-  addAssetNode: (kind: 'image' | 'audio', position: { x: number; y: number }) => string
+  addAssetNode: (kind: 'image' | 'audio' | 'video', position: { x: number; y: number }) => string
   /** 删除某个节点（如素材上传失败时移除占位节点）。 */
   removeNode: (nodeId: string) => void
   updateNodeData: (nodeId: string, data: Partial<FlowNode['data']>) => void
@@ -357,7 +357,7 @@ export const useFlowStore = create<FlowState>()((set, get) => {
         type: 'asset',
         position,
         data: {
-          label: kind === 'image' ? '图像素材' : '音频素材',
+          label: kind === 'image' ? '图像素材' : kind === 'video' ? '视频素材' : '音频素材',
           kind,
           url: '',
           uploading: true,

@@ -276,14 +276,19 @@ export const LLM_NODE_META = {
   handle: '!bg-violet-500 dark:!bg-violet-400',
 } as const
 
-/** 素材节点（image/audio）的展示元信息（标题回退文案 + 连接点配色，按种类区分）。 */
-export const ASSET_NODE_META: Record<'image' | 'audio', { label: string; handle: string }> = {
-  image: {
-    label: '图像素材',
-    handle: '!bg-amber-500 dark:!bg-amber-400',
-  },
-  audio: {
-    label: '音频素材',
-    handle: '!bg-sky-500 dark:!bg-sky-400',
-  },
-}
+/** 素材节点（image/audio/video）的展示元信息（标题回退文案 + 连接点配色，按种类区分）。 */
+export const ASSET_NODE_META: Record<'image' | 'audio' | 'video', { label: string; handle: string }> =
+  {
+    image: {
+      label: '图像素材',
+      handle: '!bg-amber-500 dark:!bg-amber-400',
+    },
+    audio: {
+      label: '音频素材',
+      handle: '!bg-sky-500 dark:!bg-sky-400',
+    },
+    video: {
+      label: '视频素材',
+      handle: '!bg-rose-500 dark:!bg-rose-400',
+    },
+  }

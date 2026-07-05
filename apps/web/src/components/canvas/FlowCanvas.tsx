@@ -232,7 +232,7 @@ export function FlowCanvas() {
 
   // 建一个素材节点（先占位上传中），上传完成写回 URL；失败移除占位并提示
   const createAsset = async (
-    kind: 'image' | 'audio',
+    kind: 'image' | 'audio' | 'video',
     file: File,
     position: { x: number; y: number },
   ) => {
@@ -244,11 +244,8 @@ export function FlowCanvas() {
       updateNodeData(id, { url, uploading: false })
     } catch (e) {
       removeNode(id)
-      window.alert(
-        `${kind === 'image' ? '图像' : '音频'}素材上传失败：${
-          e instanceof Error ? e.message : String(e)
-        }`,
-      )
+      const label = kind === 'image' ? '图像' : kind === 'video' ? '视频' : '音频'
+      window.alert(`${label}素材上传失败：${e instanceof Error ? e.message : String(e)}`)
     }
   }
 
@@ -275,15 +272,16 @@ export function FlowCanvas() {
     if (files.length === 0) return
     event.preventDefault()
 
-    // 桌面拖入的图像 / 音频文件一律在落点建「素材」节点（纯源，连线到下游生成节点作输入）。
+    // 桌面拖入的图像 / 音频 / 视频文件一律在落点建「素材」节点（纯源，连线到下游节点作输入）。
     // 这是把资源送进画布的唯一入口——不再支持「拖到已有节点上追加」。
-    const assetJobs: { kind: 'image' | 'audio'; file: File }[] = []
+    const assetJobs: { kind: 'image' | 'audio' | 'video'; file: File }[] = []
     files.forEach((file) => {
       if (file.type.startsWith('image/')) assetJobs.push({ kind: 'image', file })
       else if (file.type.startsWith('audio/')) assetJobs.push({ kind: 'audio', file })
+      else if (file.type.startsWith('video/')) assetJobs.push({ kind: 'video', file })
     })
     if (assetJobs.length === 0) {
-      window.alert('仅支持拖入图像或音频文件')
+      window.alert('仅支持拖入图像 / 音频 / 视频文件')
       return
     }
 

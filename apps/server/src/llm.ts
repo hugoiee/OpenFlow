@@ -26,11 +26,14 @@ export async function runLlmCompletion(params: {
   prompt: string
   systemPrompt?: string
   images?: string[]
+  audios?: string[]
+  videos?: string[]
   temperature: number
   thinking: boolean
   settings: SettingsDTO
 }): Promise<{ text: string; reasoning: string }> {
-  const { model, prompt, systemPrompt, images, temperature, thinking, settings } = params
+  const { model, prompt, systemPrompt, images, audios, videos, temperature, thinking, settings } =
+    params
   const endpoint = settings.agentEndpoint.trim() || AGENT_ENDPOINT
   if (!endpoint) {
     throw new Error('未配置 LLM 接口地址（复用画布 Agent 设置），请在设置中填写 Agent 接口地址')
@@ -38,13 +41,19 @@ export async function runLlmCompletion(params: {
   if (!model.trim()) throw new Error('未选择模型')
   const apiKey = settings.agentApiKey.trim() || AGENT_API_KEY
 
-  // 多模态：有输入图时把 user 消息内容改成 [文本, image_url…]（OpenAI 兼容视觉格式）；否则纯文本
+  // 多模态：有图/音/视输入时把 user 内容改成内容块数组（OpenAI 兼容多模态格式）；否则纯文本。
+  // 图像用通用 image_url；音频 / 视频用 audio_url / video_url 内容块——具体键名各网关略有差异
+  // （有的用 input_audio），若目标网关不认可在此调整即可。
   const imageUrls = (images ?? []).map((u) => u.trim()).filter(Boolean)
+  const audioUrls = (audios ?? []).map((u) => u.trim()).filter(Boolean)
+  const videoUrls = (videos ?? []).map((u) => u.trim()).filter(Boolean)
   const userContent =
-    imageUrls.length > 0
+    imageUrls.length + audioUrls.length + videoUrls.length > 0
       ? [
           { type: 'text', text: prompt },
-          ...imageUrls.map((imgUrl) => ({ type: 'image_url', image_url: { url: imgUrl } })),
+          ...imageUrls.map((url) => ({ type: 'image_url', image_url: { url } })),
+          ...audioUrls.map((url) => ({ type: 'audio_url', audio_url: { url } })),
+          ...videoUrls.map((url) => ({ type: 'video_url', video_url: { url } })),
         ]
       : prompt
 

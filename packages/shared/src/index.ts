@@ -121,6 +121,10 @@ export type GenLlmBody = {
   systemPrompt?: string
   /** 多模态输入图 URL（= 连到各「图像输入」端点的上游图；有则作 image_url 内容发给视觉模型）。 */
   images?: string[]
+  /** 多模态输入音频 URL（= 连到各「音频输入」端点的上游音频素材；有则作 audio_url 内容发给模型）。 */
+  audios?: string[]
+  /** 多模态输入视频 URL（= 连到各「视频输入」端点的上游视频素材；有则作 video_url 内容发给模型）。 */
+  videos?: string[]
   /** 采样温度 0–2。 */
   temperature: number
   /** 是否开启思考：为 true 时请求体带 reasoning_effort 等原生推理参数。 */

@@ -24,6 +24,10 @@ export type LlmNodeData = {
   thinking: boolean
   /** 左侧图像输入端点数量（编号 1..N；默认 1，「添加图像输入」按钮递增）。多模态时把连入的图片发给模型。 */
   imageInputs?: number
+  /** 音频输入端点数量（编号 1..N；默认 0，「添加音频输入」按钮递增）。连入音频素材作音频理解输入。 */
+  audioInputs?: number
+  /** 视频输入端点数量（编号 1..N；默认 0，「添加视频输入」按钮递增）。连入视频素材作视频理解输入。 */
+  videoInputs?: number
   /** 是否正在生成。 */
   running?: boolean
   /** 生成的回答文本（未运行时为空）。 */
@@ -42,8 +46,8 @@ export type LlmNodeData = {
  */
 export type AssetNodeData = {
   label: string
-  /** 素材种类：图像 / 音频。 */
-  kind: 'image' | 'audio'
+  /** 素材种类：图像 / 音频 / 视频。 */
+  kind: 'image' | 'audio' | 'video'
   /** 上传后的媒体 URL（上传完成前为空）。 */
   url: string
   /** 原始文件名（展示用）。 */

@@ -17,6 +17,7 @@ import {
   LLM_TEMPERATURE_STEP,
   mergeModelOptions,
 } from '@/lib/nodeCatalog'
+import { ModelCapabilityBadges } from '@/components/model/ModelCapabilityBadges'
 import { type LlmNodeData } from '@/lib/types'
 import { useFlowStore } from '@/store/useFlowStore'
 import { useSettingsStore } from '@/store/useSettingsStore'
@@ -72,7 +73,10 @@ export function LlmParams({ id, data }: { id: string; data: LlmNodeData }) {
             <SelectContent>
               {options.map((m) => (
                 <SelectItem key={m} value={m} className="text-xs">
-                  {m}
+                  <span className="flex items-center gap-2">
+                    {m}
+                    <ModelCapabilityBadges model={m} />
+                  </span>
                 </SelectItem>
               ))}
             </SelectContent>

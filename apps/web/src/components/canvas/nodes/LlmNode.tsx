@@ -6,7 +6,12 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { NodeHeader } from './NodeHeader'
 import { NodeHandle } from './NodeHandle'
-import { AddInputControls, ImageInputHandles } from './ImageInputHandles'
+import {
+  AddInputControls,
+  AudioInputHandles,
+  ImageInputHandles,
+  VideoInputHandles,
+} from './ImageInputHandles'
 import { createLlmTaskApi } from '@/lib/api'
 import { pollTask } from '@/lib/taskPolling'
 import { LLM_MODEL_DEFAULT } from '@/lib/nodeCatalog'
@@ -27,7 +32,10 @@ export function LlmNode({ id, data, selected }: NodeProps<LlmNodeType>) {
   const result = data.result ?? ''
   const reasoning = data.reasoning ?? ''
   const running = data.running ?? false
+  // 图像默认 ≥1（沿用旧行为）；音频 / 视频 0 起步，点「Add Input」才出现端点
   const imageInputs = imageInputCount(data.imageInputs)
+  const audioInputs = Math.max(0, data.audioInputs ?? 0)
+  const videoInputs = Math.max(0, data.videoInputs ?? 0)
 
   const [copied, setCopied] = useState(false)
   const copyResult = async () => {
@@ -136,7 +144,10 @@ export function LlmNode({ id, data, selected }: NodeProps<LlmNodeType>) {
         label="System Prompt"
         title="System Prompt 输入"
       />
+      {/* 媒体输入端点竖向排列：图像(绿) → 音频(蓝) → 视频(玫红)，baseIndex 依次顺延 */}
       <ImageInputHandles count={imageInputs} baseIndex={2} />
+      <AudioInputHandles count={audioInputs} baseIndex={2 + imageInputs} />
+      <VideoInputHandles count={videoInputs} baseIndex={2 + imageInputs + audioInputs} />
       <NodeHeader id={id} icon={Sparkles} title={model} selected={selected} />
       <CardContent className="flex flex-col gap-2 px-3">
         {/* 思考过程（若返回）：可折叠，默认收起 */}
@@ -182,7 +193,7 @@ export function LlmNode({ id, data, selected }: NodeProps<LlmNodeType>) {
 
         {/* Add Input + 运行 并排 */}
         <div className="flex items-center gap-2">
-          <AddInputControls id={id} image={imageInputs} />
+          <AddInputControls id={id} image={imageInputs} audio={audioInputs} video={videoInputs} />
           <Button size="sm" onClick={handleRun} disabled={running} className="nodrag ml-auto h-8">
             {running ? (thinking ? '思考中…' : '生成中…') : '运行'}
           </Button>

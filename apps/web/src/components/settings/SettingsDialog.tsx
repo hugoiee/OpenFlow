@@ -28,6 +28,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import { ModelCapabilityBadges } from '@/components/model/ModelCapabilityBadges'
 import { testAgentConnectionApi } from '@/lib/api'
 import { mergeModelOptions } from '@/lib/nodeCatalog'
 import { cn } from '@/lib/utils'
@@ -301,7 +302,10 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
                       <SelectContent>
                         {modelOptions.map((m) => (
                           <SelectItem key={m} value={m}>
-                            {m}
+                            <span className="flex items-center gap-2">
+                              {m}
+                              <ModelCapabilityBadges model={m} />
+                            </span>
                           </SelectItem>
                         ))}
                       </SelectContent>

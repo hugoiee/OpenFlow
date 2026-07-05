@@ -202,13 +202,13 @@ export function triggerDownload(
   a.remove()
 }
 
-// ---- 文件上传（图片 / 音频）----
+// ---- 文件上传（图片 / 音频 / 视频）----
 // 走 multipart，不能复用 request()（它写死了 application/json）；让浏览器自带 boundary。
 // req_from（用户标识）由后端从全局设置注入，前端不再传。
-// kind 走 query：图片 → /api/upload，音频 → /api/upload-media（后端据此分流上游端点）。
+// kind 走 query：图片 → 图片端点，音频 / 视频 → 媒体端点（后端据此分流上游端点）。
 export async function uploadFilesApi(
   files: File[],
-  kind: 'image' | 'audio' = 'image',
+  kind: 'image' | 'audio' | 'video' = 'image',
 ): Promise<string[]> {
   const form = new FormData()
   files.forEach((f) => form.append('files', f))
