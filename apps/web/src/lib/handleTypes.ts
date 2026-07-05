@@ -40,10 +40,11 @@ export function sourceKind(node: FlowNode | undefined): SourceKind {
   if (!node) return 'other'
   if (node.type === 'prompt' || node.type === 'llm') return 'text'
   if (node.type === 'image') return 'image'
+  if (node.type === 'video') return 'video' // Seedance 视频生成节点的输出作视频源
   if (node.type === 'asset') {
     return node.data.kind === 'image' ? 'image' : node.data.kind === 'video' ? 'video' : 'audio'
   }
-  return 'other' // video 生成节点 / group 等
+  return 'other' // group 等
 }
 
 /** 连线颜色 = 其源节点输出的数据类型色（文本粉 / 图像绿 / 音频蓝 / 视频玫红 / 其余默认）。 */

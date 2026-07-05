@@ -191,8 +191,8 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
         )}
       </CardContent>
       <DownloadDialog open={dialogOpen} onOpenChange={setDialogOpen} target={downloadTarget} />
-      {/* 输出：Video（默认色） */}
-      <NodeHandle type="source" index={0} label="Video" title="视频输出" />
+      {/* 输出：Video（玫红）——可连下游节点的视频输入端点 */}
+      <NodeHandle type="source" index={0} tone="video" label="Video" title="视频输出" />
     </Card>
   )
 }

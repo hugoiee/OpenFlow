@@ -145,16 +145,22 @@ export function collectUpstreamAudio(project: Project, nodeId: string): string[]
 }
 
 /**
- * 收集所有指向 nodeId 的上游视频素材节点的 URL（作为 Any LLM 节点的视频理解输入）。
- * 按「视频输入端点编号」排序（video-0、video-1…），同端点内按连线顺序展平；URL 为空的素材不贡献。
+ * 收集所有指向 nodeId 的上游视频 URL（作为 Any LLM 节点的视频理解输入）。
+ * 来源：上游 video 生成节点(Seedance)的结果视频 + 上游视频素材节点的 URL。
+ * 按「视频输入端点编号」排序（video-0、video-1…），同端点内按连线顺序展平；URL 为空的来源不贡献。
  */
 export function collectUpstreamVideo(project: Project, nodeId: string): string[] {
   const entries: { slot: number; order: number; url: string }[] = []
   project.edges.forEach((e, order) => {
     if (e.target !== nodeId) return
     const src = project.nodes.find((n) => n.id === e.source)
-    if (src?.type === 'asset' && src.data.kind === 'video' && src.data.url) {
-      entries.push({ slot: handleSlot(e.targetHandle, VIDEO_INPUT_HANDLE_PREFIX), order, url: src.data.url })
+    const slot = handleSlot(e.targetHandle, VIDEO_INPUT_HANDLE_PREFIX)
+    if (src?.type === 'video') {
+      for (const url of (src.data.result ?? []).filter(Boolean)) {
+        entries.push({ slot, order, url })
+      }
+    } else if (src?.type === 'asset' && src.data.kind === 'video' && src.data.url) {
+      entries.push({ slot, order, url: src.data.url })
     }
   })
   entries.sort((a, b) => a.slot - b.slot || a.order - b.order)
