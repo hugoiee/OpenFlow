@@ -2,6 +2,20 @@ import path from 'node:path'
 import { app, BrowserWindow, dialog, nativeTheme } from 'electron'
 import { startServer, type RunningServer } from '@openflow/server/server'
 
+// —— GPU 硬件加速 ——
+// Windows 上 Electron 内置的 Chromium 常把本可用的 GPU 误列入黑名单、退回软件合成，
+// 画布平移/缩放要在 CPU 上逐帧重绘（阴影 / 点阵背景 / 图片视频）→ 明显卡顿；
+// 同一台机器的 Chrome 却流畅——因为 Chrome 的 GPU 黑名单更新更快、没拉黑这块卡。
+// 放开黑名单 + 打开 GPU 光栅化，让 Electron 吃到与 Chrome 同样的硬件加速。
+// ⚠️ 命令行开关必须在 app 就绪前设置才对 GPU 进程生效。
+app.commandLine.appendSwitch('ignore-gpu-blocklist')
+app.commandLine.appendSwitch('enable-gpu-rasterization')
+// 零拷贝纹理上传：配合 GPU 光栅化进一步提升合成性能。
+app.commandLine.appendSwitch('enable-zero-copy')
+// 注：曾试过 disable-frame-rate-limit（解 vsync 限帧），但去掉 vsync 会让帧节奏不均、
+// 缩放反而「不跟手」（Mac 上纯 20 节点画布实测更差），已移除。Win 的流畅度靠上面的
+// GPU 加速开关（尤其 ignore-gpu-blocklist）解决，而非解锁帧率。
+
 // 打包为 CJS，运行时用原生 __dirname 指向 dist-electron（import.meta.url 在 CJS 产物里为空）
 declare const __dirname: string
 const moduleDir = __dirname
@@ -111,6 +125,10 @@ if (process.env.OPENFLOW_SELFTEST) {
     try {
       await ensureServer()
       createWindow()
+      // 诊断：打印 GPU 各特性是硬件加速(enabled)还是软件(software/disabled)。
+      // 从终端启动应用可见此输出，用来确认上面的开关是否把 gpu_compositing /
+      // rasterization 从 software 变成了硬件加速。
+      console.log('[openflow][gpu]', JSON.stringify(app.getGPUFeatureStatus()))
     } catch (err) {
       // 内嵌服务启动失败（最常见：原生模块 better-sqlite3 的 ABI/平台不匹配）。
       // 若不处理，主进程会静默存活但无窗口（任务管理器有进程、界面不出现）——此处显式弹错并退出。
