@@ -93,7 +93,7 @@ apps/web/src/
   lib/modelCapabilities.ts     modelCapabilities(name)：按模型名正则**启发式推断**支持的能力（思考/图像/音频/视频理解，常见家族 gpt-4o/gemini/claude/o系列/deepseek/qwen-omni 等，未知模型全 false）+ hasAnyCapability + MODEL_CAPABILITY_LABELS/ORDER（供 Model 下拉展示能力图标；规则近似、易维护）
   lib/nodeMenu.ts              NODE_GROUPS：侧栏拖拽建节点 + 画布右键菜单点选建节点共用的分组清单（按文本/图像/视频三类，含类型/模型/图标/videoVariant）
   lib/id.ts                    newId(prefix)：生成简短唯一 id（项目/节点/连线用）
-  lib/appMeta.ts               应用元信息常量：APP_NAME='Open Flow' / APP_VERSION='0.2.0'（顶栏/侧栏 logo 展示）
+  lib/appMeta.ts               应用元信息常量：APP_NAME='Open Flow' / APP_VERSION（顶栏/侧栏 logo 展示；与 apps/desktop/package.json 的打包版本保持一致，发版时两处一起改）
   lib/utils.ts                 cn()：clsx + tailwind-merge 合并去重类名（shadcn 约定）
   hooks/useResizableWidth.ts   右侧停靠面板宽度可调 hook：宽度存 localStorage 跨会话保留 + onPointerDownResize 拖左缘手柄改宽（供 NodeInspector）
   components/ui/               shadcn/ui vendored（不参与 lint/format，勿手改）
