@@ -56,7 +56,9 @@ export function PromptNode({ id, data, selected, width, height }: NodeProps<Prom
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
-  const hasText = data.text.trim().length > 0
+  // 用本地输入值而非 data.text：提交已防抖，store 里的值可能滞后 300ms
+  const currentText = textField.value
+  const hasText = currentText.trim().length > 0
 
   const applyPreset = (content: string) => {
     updateNodeData(id, { text: content })
@@ -64,7 +66,7 @@ export function PromptNode({ id, data, selected, width, height }: NodeProps<Prom
   }
 
   const openSave = () => {
-    setTitle(defaultTitle(data.text))
+    setTitle(defaultTitle(currentText))
     setSaveCategory('common')
     setError('')
     setSaveOpen(true)
@@ -79,7 +81,7 @@ export function PromptNode({ id, data, selected, width, height }: NodeProps<Prom
     setSaving(true)
     setError('')
     try {
-      await addPreset(t, data.text, saveCategory)
+      await addPreset(t, currentText, saveCategory)
       setSaveOpen(false)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -233,7 +235,7 @@ export function PromptNode({ id, data, selected, width, height }: NodeProps<Prom
               />
             </div>
             <div className="max-h-32 overflow-y-auto whitespace-pre-wrap rounded-md border bg-muted/40 p-2 text-xs text-muted-foreground">
-              {data.text}
+              {currentText}
             </div>
             {error && <p className="text-xs text-destructive">{error}</p>}
           </div>
