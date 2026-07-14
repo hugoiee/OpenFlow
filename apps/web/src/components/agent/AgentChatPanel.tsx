@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { useResizableWidth } from '@/hooks/useResizableWidth'
 import { useAgentStore, type AgentChatItem } from '@/store/useAgentStore'
-import { useActiveProject } from '@/store/useFlowStore'
+import { useFlowStore } from '@/store/useFlowStore'
 
 const EMPTY_MESSAGES: AgentChatItem[] = []
 
@@ -12,11 +12,16 @@ const EMPTY_MESSAGES: AgentChatItem[] = []
 export function AgentChatToggle() {
   const panelOpen = useAgentStore((s) => s.panelOpen)
   const setPanelOpen = useAgentStore((s) => s.setPanelOpen)
-  // 与 NodeInspector 相同的出现条件：恰好选中一个 image/video 节点
-  const project = useActiveProject()
-  const selected = project?.nodes.filter((n) => n.selected) ?? []
-  const inspectorOpen =
-    selected.length === 1 && (selected[0].type === 'image' || selected[0].type === 'video')
+  // 与 NodeInspector 相同的出现条件：恰好选中一个 image/video/llm 节点。
+  // 窄订阅（selector 返回布尔）：画布高频编辑（打字/拖拽/resize）时该值不变则不重渲染。
+  const inspectorOpen = useFlowStore((s) => {
+    const project = s.projects.find((p) => p.id === s.activeProjectId)
+    const selected = project?.nodes.filter((n) => n.selected) ?? []
+    return (
+      selected.length === 1 &&
+      (selected[0].type === 'image' || selected[0].type === 'video' || selected[0].type === 'llm')
+    )
+  })
   if (panelOpen) return null
   return (
     <Button
