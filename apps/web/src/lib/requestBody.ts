@@ -1,7 +1,7 @@
 // 生成请求体的单一来源：LLM / 图像 / 视频节点「点击生成时发送的请求 JSON」都由这里构造。
 // 节点组件的 handleRun 与右侧 Inspector 的「请求 JSON 预览」共用，保证预览与实发一致、不漂移。
 
-import type { GenImageBody, GenLlmBody, GenVideoBody } from '@openflow/shared'
+import type { GenImageBody, GenLlmBody, GenPodcastBody, GenVideoBody } from '@openflow/shared'
 import {
   collectUpstreamAudio,
   collectUpstreamImages,
@@ -16,6 +16,13 @@ import {
   NANO_ASPECT_DEFAULT,
   NANO_IMAGE_SIZE_DEFAULT,
   NANO_VERSION_DEFAULT,
+  PODCAST_LINE_GAP_DEFAULT,
+  PODCAST_LOUDNESS_DEFAULT,
+  PODCAST_PITCH_DEFAULT,
+  PODCAST_ROLE_A_DEFAULT,
+  PODCAST_ROLE_B_DEFAULT,
+  PODCAST_SAMPLE_RATE_DEFAULT,
+  PODCAST_SPEECH_RATE_DEFAULT,
   SEEDANCE_DURATION_DEFAULT,
   SEEDANCE_RATIO_DEFAULT,
   SEEDANCE_RESOLUTION_DEFAULT,
@@ -24,7 +31,7 @@ import {
   imageApiModel,
   videoApiModel,
 } from './nodeCatalog'
-import type { ImageNode, LlmNode, Project, VideoNode } from './types'
+import type { ImageNode, LlmNode, PodcastNode, Project, VideoNode } from './types'
 
 /** 每行一个 URL 的文本框 → 去空的 URL 列表。 */
 function linesToUrls(text: string | undefined): string[] {
@@ -122,6 +129,40 @@ export function buildVideoRequest(project: Project, node: VideoNode): GenVideoBo
   }
 }
 
+/** 播客音频节点：POST /api/podcast 的请求体（脚本与角色都在节点自身，不走连线）。 */
+export function buildPodcastRequest(project: Project, node: PodcastNode): GenPodcastBody {
+  const d = node.data
+  return {
+    projectId: project.id,
+    nodeId: node.id,
+    script: d.script ?? '',
+    roles: [
+      { name: (d.roleAName ?? '').trim() || PODCAST_ROLE_A_DEFAULT, voiceId: (d.roleAVoice ?? '').trim() },
+      { name: (d.roleBName ?? '').trim() || PODCAST_ROLE_B_DEFAULT, voiceId: (d.roleBVoice ?? '').trim() },
+    ],
+    speechRate: d.speechRate ?? PODCAST_SPEECH_RATE_DEFAULT,
+    sampleRate: d.sampleRate ?? PODCAST_SAMPLE_RATE_DEFAULT,
+    loudnessRate: d.loudnessRate ?? PODCAST_LOUDNESS_DEFAULT,
+    pitch: d.pitch ?? PODCAST_PITCH_DEFAULT,
+    lineGapMs: d.lineGapMs ?? PODCAST_LINE_GAP_DEFAULT,
+    filterParenthesis: d.filterParenthesis ?? false,
+    disableMarkdownFilter: d.disableMarkdownFilter ?? false,
+    disableEmojiFilter: d.disableEmojiFilter ?? false,
+    explicitLanguage: (d.explicitLanguage ?? '').trim() || undefined,
+    contextText: (d.contextText ?? '').trim() || undefined,
+    aigcWatermark: d.aigcWatermark || undefined,
+    aigcMetadata: d.aigcMetaEnable
+      ? {
+          enable: true,
+          contentProducer: (d.aigcMetaContentProducer ?? '').trim() || undefined,
+          produceId: (d.aigcMetaProduceId ?? '').trim() || undefined,
+          contentPropagator: (d.aigcMetaContentPropagator ?? '').trim() || undefined,
+          propagateId: (d.aigcMetaPropagateId ?? '').trim() || undefined,
+        }
+      : undefined,
+  }
+}
+
 // ---- 上游实发请求体（右侧 Inspector「请求预览」用）----
 // 下面三个把「点击生成时发给后端 /api/* 的 GenXxxBody」再转成「后端实际打到上游网关的请求体」：
 //   图像 / 视频镜像 apps/server/src/provider.ts 的 runImageGen / runVideoGen（内网 AIGC 网关，
@@ -165,6 +206,51 @@ export function buildVideoUpstream(project: Project, node: VideoNode, reqFrom: s
       duration: body.duration,
       ...(body.ratio?.trim() ? { ratio: body.ratio } : {}),
     },
+  }
+}
+
+/**
+ * 播客音频：火山单向流式 TTS 的请求概要（镜像 volc-tts.ts runPodcastGen）。
+ * 后端按脚本逐行发多个请求（每句一个，speaker=该角色音色），此处汇总成一份预览：
+ * 角色 → 音色映射 + 每句共用的 req_params 形态 + 原始脚本。
+ */
+export function buildPodcastUpstream(project: Project, node: PodcastNode) {
+  const body = buildPodcastRequest(project, node)
+  // additions 镜像 volc-tts.ts synthesizeLine：只在有非默认项时下发（实发为 JSON 字符串）
+  const additions: Record<string, unknown> = {}
+  if (body.filterParenthesis) additions.max_length_to_filter_parenthesis = 100
+  if (body.disableMarkdownFilter) additions.disable_markdown_filter = true
+  if (body.disableEmojiFilter) additions.disable_emoji_filter = true
+  if (body.explicitLanguage) additions.explicit_language = body.explicitLanguage
+  if (body.aigcWatermark) additions.aigc_watermark = true
+  const meta = body.aigcMetadata
+  if (meta?.enable) {
+    additions.aigc_metadata = {
+      enable: true,
+      ...(meta.contentProducer ? { content_producer: meta.contentProducer } : {}),
+      ...(meta.produceId ? { produce_id: meta.produceId } : {}),
+      ...(meta.contentPropagator ? { content_propagator: meta.contentPropagator } : {}),
+      ...(meta.propagateId ? { propagate_id: meta.propagateId } : {}),
+    }
+  }
+  return {
+    'X-Api-Resource-Id': 'seed-tts-2.0',
+    roles: Object.fromEntries(body.roles.map((r) => [r.name, r.voiceId || '（未填音色 ID）'])),
+    req_params_per_line: {
+      speaker: '按行匹配角色名 → 对应音色 ID',
+      audio_params: {
+        // meta 水印不支持 pcm：开启时每句按 wav 请求、拼接前解出 PCM
+        format: meta?.enable ? 'wav' : 'pcm',
+        sample_rate: body.sampleRate,
+        speech_rate: body.speechRate,
+        loudness_rate: body.loudnessRate,
+      },
+      ...(Object.keys(additions).length ? { additions } : {}),
+      ...(body.pitch ? { post_process: { pitch: body.pitch } } : {}),
+      ...(body.contextText ? { context_texts: [body.contextText] } : {}),
+    },
+    line_gap_ms: body.lineGapMs,
+    script: body.script,
   }
 }
 

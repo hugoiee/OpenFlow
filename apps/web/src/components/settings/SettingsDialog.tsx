@@ -69,6 +69,7 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
   const uploadMediaEndpoint = useSettingsStore((s) => s.uploadMediaEndpoint)
   const agentEndpoint = useSettingsStore((s) => s.agentEndpoint)
   const hasAgentApiKey = useSettingsStore((s) => s.hasAgentApiKey)
+  const hasVolcTtsApiKey = useSettingsStore((s) => s.hasVolcTtsApiKey)
   const agentModel = useSettingsStore((s) => s.agentModel)
   const agentModelList = useSettingsStore((s) => s.agentModelList)
   const saveSettings = useSettingsStore((s) => s.saveSettings)
@@ -87,6 +88,7 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
   const [uploadMedia, setUploadMedia] = useState('')
   const [agentUrl, setAgentUrl] = useState('')
   const [agentKey, setAgentKey] = useState('')
+  const [volcKey, setVolcKey] = useState('')
   const [agentModelName, setAgentModelName] = useState('')
   // 手动模型列表草稿（每行一个）：进入下拉候选并在保存时持久化
   const [modelListText, setModelListText] = useState('')
@@ -106,6 +108,7 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
       setUploadMedia(uploadMediaEndpoint)
       setAgentUrl(agentEndpoint)
       setAgentKey('') // 密钥不回显（后端不回明文）；留空=保持已存值
+      setVolcKey('') // 同上：火山语音 Key 也是写入-only
       setAgentModelName(agentModel)
       setModelListText(agentModelList.join('\n'))
       setError('')
@@ -162,6 +165,7 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
         agentEndpoint: agentUrl.trim(),
         // 密钥字段为空 = 用户没改：省略以保持后端已存值（后端合并写只覆盖出现的字段）
         ...(agentKey.trim() ? { agentApiKey: agentKey.trim() } : {}),
+        ...(volcKey.trim() ? { volcTtsApiKey: volcKey.trim() } : {}),
         agentModel: agentModelName.trim(),
         agentModelList: modelList,
       })
@@ -371,6 +375,25 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
                         <span className="break-all">{testResult.message}</span>
                       </p>
                     )}
+                  </div>
+
+                  {/* 火山语音（播客 TTS）：独立于 Agent 的鉴权体系，写入-only 同 Agent Key */}
+                  <div className="mt-1 flex flex-col gap-1.5 border-t pt-3">
+                    <Label htmlFor="volcTtsApiKey">火山语音 API Key（播客 TTS 节点用）</Label>
+                    <Input
+                      id="volcTtsApiKey"
+                      type="password"
+                      value={volcKey}
+                      onChange={(e) => setVolcKey(e.target.value)}
+                      placeholder={
+                        hasVolcTtsApiKey
+                          ? '已保存（输入新值可更换，留空保持不变）'
+                          : '火山控制台 > API Key 管理 获取'
+                      }
+                    />
+                    <span className="text-xs text-muted-foreground">
+                      用于「播客 TTS（火山）」节点调豆包语音合成 2.0；音色 ID 在节点右侧面板填写。
+                    </span>
                   </div>
                 </>
               )}

@@ -1,6 +1,7 @@
 import type {
   GenImageBody,
   GenLlmBody,
+  GenPodcastBody,
   GenVideoBody,
   TaskDTO,
   TaskKind,
@@ -10,6 +11,7 @@ import { db } from './db'
 import { runLlmCompletion } from './llm'
 import { runImageGen, runVideoGen } from './provider'
 import { readSettings } from './settings-store'
+import { runPodcastGen } from './volc-tts'
 
 // 异步生成任务的持久化 + 进程内 runner。
 // 单进程（Node/Electron 内嵌）：POST 建行 → startTask fire 一个不 await 的 Promise 后台跑，
@@ -32,6 +34,7 @@ type TaskRow = {
 type ImageParams = GenImageBody
 type VideoParams = GenVideoBody
 type LlmParams = GenLlmBody
+type PodcastParams = GenPodcastBody
 
 function rowToDTO(row: TaskRow): TaskDTO {
   return {
@@ -56,7 +59,7 @@ export function createTask(input: {
   projectId: string
   nodeId: string
   kind: TaskKind
-  params: ImageParams | VideoParams | LlmParams
+  params: ImageParams | VideoParams | LlmParams | PodcastParams
 }): TaskDTO {
   const id = newId()
   const now = Date.now()
@@ -152,6 +155,30 @@ export function startTask(task: TaskDTO): void {
         ratio: typeof p.ratio === 'string' ? p.ratio : undefined,
         duration: typeof p.duration === 'number' ? p.duration : 6,
       })
+    } else if (task.kind === 'podcast') {
+      // podcast：逐行调火山 TTS 拼接成整期播客 WAV 落盘，result = [同源音频 URL]。
+      // result = [音频 URL, 计费字数合计]（前端展示 usage）
+      const p = JSON.parse(row.params) as PodcastParams
+      const { url, textWords } = await runPodcastGen({
+        script: p.script,
+        roles: Array.isArray(p.roles) ? p.roles : [],
+        options: {
+          speechRate: typeof p.speechRate === 'number' ? p.speechRate : undefined,
+          sampleRate: typeof p.sampleRate === 'number' ? p.sampleRate : undefined,
+          loudnessRate: typeof p.loudnessRate === 'number' ? p.loudnessRate : undefined,
+          pitch: typeof p.pitch === 'number' ? p.pitch : undefined,
+          filterParenthesis: p.filterParenthesis === true,
+          disableMarkdownFilter: p.disableMarkdownFilter === true,
+          disableEmojiFilter: p.disableEmojiFilter === true,
+          explicitLanguage: typeof p.explicitLanguage === 'string' ? p.explicitLanguage : undefined,
+          contextText: typeof p.contextText === 'string' ? p.contextText : undefined,
+          aigcWatermark: p.aigcWatermark === true,
+          aigcMetadata: p.aigcMetadata && typeof p.aigcMetadata === 'object' ? p.aigcMetadata : undefined,
+        },
+        lineGapMs: typeof p.lineGapMs === 'number' ? p.lineGapMs : undefined,
+        settings: s,
+      })
+      urls = [url, String(textWords)]
     } else {
       // llm：文本补全。result 打包成 [回答] 或 [回答, 思考]（思考文本供折叠展示）。
       const p = JSON.parse(row.params) as LlmParams

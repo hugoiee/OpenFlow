@@ -1,4 +1,4 @@
-import { Type, Image as ImageIcon, Banana, Sparkles, Clapperboard, Images, type LucideIcon } from 'lucide-react'
+import { Type, Image as ImageIcon, Banana, Sparkles, Clapperboard, Images, Podcast, type LucideIcon } from 'lucide-react'
 import { IMAGE_MODELS, LLM_MODEL_DEFAULT, VIDEO_MODELS, type VideoVariant } from '@/lib/nodeCatalog'
 import { type FlowNodeType } from '@/lib/types'
 
@@ -55,6 +55,13 @@ export const NODE_GROUPS: { label: string; items: NodeMenuItem[] }[] = [
         model: VIDEO_MODELS[0],
         videoVariant: 'reference' as const,
       },
+    ],
+  },
+  {
+    label: '音频模型',
+    items: [
+      // 双人对话播客：内置脚本 + 两个火山音色 ID，逐行 TTS 合成拼接
+      { type: 'podcast', label: '播客 TTS（火山）', icon: Podcast },
     ],
   },
 ]

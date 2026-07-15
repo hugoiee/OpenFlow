@@ -1,8 +1,8 @@
 import type { Edge, Node } from '@xyflow/react'
 import type { VideoTask, VideoVariant } from './nodeCatalog'
 
-/** 节点种类：文本 prompt / Any LLM / 图像生成 / 视频生成 / 桌面拖入的媒体素材。 */
-export type FlowNodeType = 'prompt' | 'llm' | 'image' | 'video' | 'asset'
+/** 节点种类：文本 prompt / Any LLM / 图像生成 / 视频生成 / 播客音频 / 桌面拖入的媒体素材。 */
+export type FlowNodeType = 'prompt' | 'llm' | 'image' | 'video' | 'podcast' | 'asset'
 
 /** 纯文字 prompt 节点的数据。 */
 export type PromptNodeData = {
@@ -95,6 +95,66 @@ export type GenerationNodeData = {
   taskId?: string
 }
 
+/**
+ * 播客音频节点（火山 TTS）：内置双人对话脚本 + 两个角色（角色名 ↔ 火山音色 ID），
+ * 运行时后端按「角色名: 台词」逐行合成并拼接成整期 WAV。终端节点（无连接点）。
+ */
+export type PodcastNodeData = {
+  label: string
+  /** 对话脚本：每行「角色名: 台词」，可用 [轻笑] 等方括号表演指令（豆包 TTS 2.0 支持）。 */
+  script: string
+  /** 角色 1 名字（脚本行首匹配用）。 */
+  roleAName: string
+  /** 角色 1 的火山音色 ID（控制台音色库复制）。 */
+  roleAVoice: string
+  /** 角色 2 名字。 */
+  roleBName: string
+  /** 角色 2 的火山音色 ID。 */
+  roleBVoice: string
+  /** 语速 speech_rate，[-50,100]（100=2 倍速，-50=0.5 倍速）。 */
+  speechRate?: number
+  /** 采样率 Hz（audio_params.sample_rate）；缺省 24000。 */
+  sampleRate?: number
+  /** 音量 loudness_rate，[-50,100]；缺省 0。 */
+  loudnessRate?: number
+  /** 音调 post_process.pitch，[-12,12]；缺省 0（不下发）。 */
+  pitch?: number
+  /** 句间停顿毫秒（本地拼接插入的静音）；缺省 300。 */
+  lineGapMs?: number
+  /** 过滤括号内的内容（additions.max_length_to_filter_parenthesis=100）。 */
+  filterParenthesis?: boolean
+  /** 解析并去除 Markdown 语法（additions.disable_markdown_filter）。 */
+  disableMarkdownFilter?: boolean
+  /** 解析过滤 Emoji（additions.disable_emoji_filter）。 */
+  disableEmojiFilter?: boolean
+  /** 显式朗读语种（additions.explicit_language）；空=自动。 */
+  explicitLanguage?: string
+  /** 语音指令（context_texts，作用于每句；不参与计费）。UI 已隐藏，字段保留兼容。 */
+  contextText?: string
+  /** AIGC 生成标识（additions.aigc_watermark，音频结尾节奏标识；逐句合成时每句结尾都有）。 */
+  aigcWatermark?: boolean
+  /** 是否启用 meta 隐式水印（additions.aigc_metadata.enable；开启时每句按 wav 请求）。 */
+  aigcMetaEnable?: boolean
+  /** meta 水印：合成服务提供者名称/编码（content_producer）。 */
+  aigcMetaContentProducer?: string
+  /** meta 水印：内容制作编号（produce_id）。 */
+  aigcMetaProduceId?: string
+  /** meta 水印：内容传播服务提供者名称/编码（content_propagator）。 */
+  aigcMetaContentPropagator?: string
+  /** meta 水印：内容传播编号（propagate_id）。 */
+  aigcMetaPropagateId?: string
+  /** 是否正在生成。 */
+  running?: boolean
+  /** 生成结果：同源音频 URL 列表（/api/files/xxx.wav），未运行时为空。 */
+  result?: string[]
+  /** 上次生成的计费字数合计（任务 result[1]，各句 usage.text_words 之和；含标点）。 */
+  textWords?: number
+  /** 上次运行的错误信息（成功则清空）。 */
+  error?: string
+  /** 进行中的异步任务 id：随节点存库，刷新后凭它重连轮询（关页面不丢结果）。 */
+  taskId?: string
+}
+
 /** 图像生成节点的数据：具名模型 + 可调选项 + 运行状态与结果。 */
 export type ImageNodeData = {
   label: string
@@ -140,9 +200,17 @@ export type PromptNode = Node<PromptNodeData, 'prompt'>
 export type LlmNode = Node<LlmNodeData, 'llm'>
 export type ImageNode = Node<ImageNodeData, 'image'>
 export type VideoNode = Node<GenerationNodeData, 'video'>
+export type PodcastNode = Node<PodcastNodeData, 'podcast'>
 export type AssetNode = Node<AssetNodeData, 'asset'>
 export type GroupNode = Node<GroupNodeData, 'group'>
-export type FlowNode = PromptNode | LlmNode | ImageNode | VideoNode | AssetNode | GroupNode
+export type FlowNode =
+  | PromptNode
+  | LlmNode
+  | ImageNode
+  | VideoNode
+  | PodcastNode
+  | AssetNode
+  | GroupNode
 
 /** 一个项目 = 一块画布。 */
 export type Project = {

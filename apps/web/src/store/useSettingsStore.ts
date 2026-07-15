@@ -15,6 +15,8 @@ type SettingsState = {
   agentEndpoint: string
   /** 服务端是否已配置 Agent API Key（明文不回传，只有这个标记）。 */
   hasAgentApiKey: boolean
+  /** 服务端是否已配置火山语音 API Key（播客 TTS 用；明文不回传，只有这个标记）。 */
+  hasVolcTtsApiKey: boolean
   /** 画布 Agent 的 LLM 模型名；为空=后端回退 env。 */
   agentModel: string
   /** 手动维护的模型候选列表（持久化）；与动态获取的 agentModels 取并集作下拉选项。 */
@@ -47,6 +49,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   uploadMediaEndpoint: '',
   agentEndpoint: '',
   hasAgentApiKey: false,
+  hasVolcTtsApiKey: false,
   agentModel: '',
   agentModelList: [],
   loaded: false,
@@ -64,6 +67,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
       uploadMediaEndpoint: dto.uploadMediaEndpoint,
       agentEndpoint: dto.agentEndpoint,
       hasAgentApiKey: dto.hasAgentApiKey ?? false,
+      hasVolcTtsApiKey: dto.hasVolcTtsApiKey ?? false,
       agentModel: dto.agentModel,
       agentModelList: dto.agentModelList ?? [],
       loaded: true,

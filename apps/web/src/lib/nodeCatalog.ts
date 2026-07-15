@@ -258,6 +258,73 @@ export const SEEDANCE_DURATION_MIN = 4
 export const SEEDANCE_DURATION_MAX = 15
 export const SEEDANCE_DURATION_DEFAULT = 6
 
+// ---- 播客音频（火山 TTS，seed-tts-2.0）专用选项 ----
+
+/** 播客节点默认角色名（脚本行首按此匹配；可在 Inspector 改）。 */
+export const PODCAST_ROLE_A_DEFAULT = '主持人'
+export const PODCAST_ROLE_B_DEFAULT = '嘉宾'
+
+/** 播客语速 speech_rate 范围（火山：100=2 倍速，-50=0.5 倍速）。 */
+export const PODCAST_SPEECH_RATE_MIN = -50
+export const PODCAST_SPEECH_RATE_MAX = 100
+export const PODCAST_SPEECH_RATE_DEFAULT = 0
+
+/** 播客音量 loudness_rate 范围（火山：100=2 倍音量，-50=0.5 倍）。 */
+export const PODCAST_LOUDNESS_MIN = -50
+export const PODCAST_LOUDNESS_MAX = 100
+export const PODCAST_LOUDNESS_DEFAULT = 0
+
+/** 播客音调 post_process.pitch 范围。 */
+export const PODCAST_PITCH_MIN = -12
+export const PODCAST_PITCH_MAX = 12
+export const PODCAST_PITCH_DEFAULT = 0
+
+/** 播客采样率选项 audio_params.sample_rate（Hz）。 */
+export const PODCAST_SAMPLE_RATE_OPTIONS = [8000, 16000, 22050, 24000, 32000, 44100, 48000] as const
+export const PODCAST_SAMPLE_RATE_DEFAULT = 24000
+
+/** 播客句间停顿（本地拼接插入的静音毫秒，非火山参数）。 */
+export const PODCAST_LINE_GAP_MIN = 0
+export const PODCAST_LINE_GAP_MAX = 2000
+export const PODCAST_LINE_GAP_DEFAULT = 300
+
+/** 播客显式朗读语种选项（additions.explicit_language；空值=自动检测）。 */
+export const PODCAST_LANGUAGE_OPTIONS: { value: string; label: string }[] = [
+  { value: '', label: '自动检测' },
+  { value: 'zh-cn', label: '中文（可中英混读）' },
+  { value: 'en', label: '英语' },
+  { value: 'ja', label: '日语' },
+  { value: 'ko', label: '韩语' },
+  { value: 'es-mx', label: '西班牙语（墨西哥）' },
+  { value: 'pt-br', label: '葡萄牙语（巴西）' },
+  { value: 'pt', label: '葡萄牙语' },
+  { value: 'id', label: '印度尼西亚语' },
+  { value: 'it', label: '意大利语' },
+  { value: 'de', label: '德语' },
+  { value: 'fr', label: '法语' },
+  { value: 'th', label: '泰语' },
+  { value: 'vi', label: '越南语' },
+  { value: 'ru', label: '俄语' },
+  { value: 'fil', label: '菲律宾语' },
+  { value: 'ms', label: '马来语' },
+  { value: 'ar', label: '阿拉伯语' },
+  { value: 'pl', label: '波兰语' },
+  { value: 'tr', label: '土耳其语' },
+  { value: 'sv', label: '瑞典语' },
+]
+
+/** 播客节点脚本占位提示（含格式约定与方括号表演指令示例）。 */
+export const PODCAST_SCRIPT_PLACEHOLDER = `每行「角色名: 台词」，如：
+主持人: 大家好 [轻笑] 欢迎收听本期节目。
+嘉宾: 谢谢主持人，很高兴来到这里。
+（[轻笑] 等方括号表演指令会原样交给豆包 TTS 2.0）`
+
+/** 播客节点的展示元信息。 */
+export const PODCAST_NODE_META = {
+  label: '播客 TTS',
+  model: '火山 seed-tts-2.0',
+} as const
+
 /** 生成类节点（image/video）的展示元信息（连接点配色）。 */
 export const GEN_NODE_META: Record<'image' | 'video', { label: string; handle: string }> = {
   image: {
