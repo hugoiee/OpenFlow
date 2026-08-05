@@ -172,7 +172,7 @@ export function LlmNode({ id, data, selected }: NodeProps<LlmNodeType>) {
       <ImageInputHandles count={imageInputs} baseIndex={2} />
       <AudioInputHandles count={audioInputs} baseIndex={2 + imageInputs} />
       <VideoInputHandles count={videoInputs} baseIndex={2 + imageInputs + audioInputs} />
-      <NodeHeader id={id} icon={Sparkles} title={model} selected={selected} />
+      <NodeHeader id={id} icon={Sparkles} title={data.label} subtitle={model} selected={selected} />
       <CardContent className="flex flex-col gap-2 px-3">
         {/* 思考过程（若返回）：可折叠，默认收起 */}
         {reasoning && !running && (

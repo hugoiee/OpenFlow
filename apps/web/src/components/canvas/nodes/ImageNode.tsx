@@ -124,7 +124,8 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
       <NodeHeader
         id={id}
         icon={data.model === 'Nano Banana' ? Banana : ImageIcon}
-        title={data.model}
+        title={data.label}
+        subtitle={data.model}
         selected={selected}
       />
       <CardContent className="flex flex-col gap-2 px-3">
