@@ -41,6 +41,11 @@ export function audioInputCount(audioInputs: number | undefined): number {
   return Math.max(1, audioInputs ?? 1)
 }
 
+/** 节点视频输入端点数量（含旧数据兜底）：默认 0（无旧数据可推断，纯新增能力）。 */
+export function videoInputCount(videoInputs: number | undefined): number {
+  return Math.max(0, videoInputs ?? 0)
+}
+
 /** 从 targetHandle 解析编号端点排序键：`${prefix}N`→N；其余（含旧的空 handle）→ -1（排最前，兼容旧连线）。 */
 function handleSlot(targetHandle: string | null | undefined, prefix: string): number {
   if (typeof targetHandle === 'string' && targetHandle.startsWith(prefix)) {

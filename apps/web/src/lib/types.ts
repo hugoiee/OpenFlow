@@ -69,6 +69,8 @@ export type GenerationNodeData = {
   imageInputs?: number
   /** 音频输入端点数量（编号 1..N；默认 1，「添加音频输入」按钮递增）。 */
   audioInputs?: number
+  /** 视频输入端点数量（参考图变体专用，编号 1..N；默认 0，「添加视频输入」按钮递增）。作参考视频喂给 video_list。 */
+  videoInputs?: number
   /** 输入图片 URL，每行一个（按 videoTask 决定其语义：首帧 / 首尾帧 / 参考图）。 */
   imagesText?: string
   /** 输入音频 URL，每行一个（作 audio_list；运行时与上游音频素材节点的 URL 合并）。 */

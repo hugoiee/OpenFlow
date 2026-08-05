@@ -1,7 +1,13 @@
+import { Agent } from 'undici'
 import type { GenImageBody, GenVideoBody } from '@openflow/shared'
 
 // AIGC 图像生成接口（当前无鉴权）；地址可用环境变量覆盖
 const AIGC_ENDPOINT = process.env.AIGC_ENDPOINT ?? 'http://10.75.202.161:8204/aigc'
+
+// Node 内置 fetch（undici）默认 headersTimeout/bodyTimeout 均为 300s：
+// seedance 视频生成（尤其 1080p、时长拉满）耗时常超 5 分钟，会被这个默认值提前掐断报 fetch failed。
+// 换一个超时拉到 30 分钟的自定义 dispatcher，专供 AIGC 生成调用（图像基本用不到，但共用无副作用）。
+const AIGC_DISPATCHER = new Agent({ headersTimeout: 1_800_000, bodyTimeout: 1_800_000 })
 
 // 生成请求的内部输入：在请求体（去掉 projectId/nodeId 这类元数据）基础上补
 // 全局署名 req_from + 可选端点（由 task-store 从设置注入）
@@ -111,7 +117,8 @@ export async function runImageGen(input: ImageGenInput): Promise<string[]> {
       image_list: input.images,
       config,
     }),
-  })
+    dispatcher: AIGC_DISPATCHER,
+  } as unknown as RequestInit)
   const data = (await res.json().catch(() => null)) as unknown
   if (!res.ok) {
     // 优先回可读错误；否则只回截断的原始体，避免把上游大响应整体透传给前端
@@ -168,7 +175,7 @@ export async function runVideoGen(input: VideoGenInput): Promise<string[]> {
       mode: input.mode,
       prompt: input.prompt,
       image_list: input.images,
-      video_list: [],
+      video_list: input.videos ?? [],
       audio_list: input.audios ?? [],
       // ratio 省略时不塞进 config，保持旧行为（由接口自行决定宽高比）
       config: {
@@ -177,7 +184,8 @@ export async function runVideoGen(input: VideoGenInput): Promise<string[]> {
         ...(input.ratio?.trim() ? { ratio: input.ratio } : {}),
       },
     }),
-  })
+    dispatcher: AIGC_DISPATCHER,
+  } as unknown as RequestInit)
   const data = (await res.json().catch(() => null)) as unknown
   if (!res.ok) {
     throw new Error(

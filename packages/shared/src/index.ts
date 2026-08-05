@@ -105,6 +105,8 @@ export type GenVideoBody = {
   images: string[]
   /** 输入音频 URL 列表（来自上游音频素材节点，作 audio_list；无则空）。 */
   audios?: string[]
+  /** 输入参考视频 URL 列表（参考图变体专用，来自上游视频生成节点/视频素材，作 video_list；无则空）。 */
+  videos?: string[]
   /** config.resolution，如 720p。 */
   resolution: string
   /** config.ratio（宽高比），如 16:9 / adaptive；省略则由后端回退默认。 */
