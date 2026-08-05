@@ -94,6 +94,7 @@ export function buildVideoRequest(project: Project, node: VideoNode): GenVideoBo
   const variant = d.videoVariant ?? (d.videoTask === 'reference' ? 'reference' : VIDEO_VARIANT_DEFAULT)
   const combined = [...collectUpstreamImages(project, id), ...linesToUrls(d.imagesText)]
   const audios = [...collectUpstreamAudio(project, id), ...linesToUrls(d.audiosText)]
+  const videos = collectUpstreamVideo(project, id)
   // 变体 → 后端 mode + 有序输入图；两变体都在无图（只连 Prompt）时退化为文生视频。
   //   参考图有图 → reference_image + 全部图；首尾帧 → first_last_frame + 前 2 张（First/Last）。
   let mode: string
@@ -115,6 +116,7 @@ export function buildVideoRequest(project: Project, node: VideoNode): GenVideoBo
     prompt: collectUpstreamPrompt(project, id, { handle: 'user' }),
     images,
     audios,
+    videos: variant === 'reference' && videos.length > 0 ? videos : undefined,
     resolution: d.resolution ?? SEEDANCE_RESOLUTION_DEFAULT,
     // adaptive（自适应）=不约束宽高比、等价旧行为，故不传；仅选了固定比例时下发
     ratio: ratio === SEEDANCE_RATIO_DEFAULT ? undefined : ratio,
@@ -157,7 +159,7 @@ export function buildVideoUpstream(project: Project, node: VideoNode, reqFrom: s
     mode: body.mode,
     prompt: body.prompt,
     image_list: body.images,
-    video_list: [] as string[],
+    video_list: body.videos ?? [],
     audio_list: body.audios ?? [],
     // ratio 省略（自适应）时不塞进 config，与后端保持一致
     config: {

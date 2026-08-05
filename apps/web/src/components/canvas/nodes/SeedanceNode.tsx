@@ -7,10 +7,10 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { DownloadDialog, type DownloadTarget } from '@/components/canvas/DownloadDialog'
 import { NodeHeader } from './NodeHeader'
 import { NodeHandle } from './NodeHandle'
-import { AddInputControls, AudioInputHandles, ImageInputHandles } from './ImageInputHandles'
+import { AddInputControls, AudioInputHandles, ImageInputHandles, VideoInputHandles } from './ImageInputHandles'
 import { createVideoTaskApi } from '@/lib/api'
 import { pollTask } from '@/lib/taskPolling'
-import { audioInputCount, imageInputCount, imageInputHandleId } from '@/lib/graph'
+import { audioInputCount, imageInputCount, imageInputHandleId, videoInputCount } from '@/lib/graph'
 import { VIDEO_VARIANT_DEFAULT } from '@/lib/nodeCatalog'
 import { buildVideoRequest } from '@/lib/requestBody'
 import { type VideoNode as VideoNodeType } from '@/lib/types'
@@ -40,15 +40,18 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
   const isReference = variant === 'reference'
   const imageInputs = imageInputCount(data.imageInputs)
   const audioInputs = audioInputCount(data.audioInputs)
-  // 左侧端点竖向排位：Prompt(0) → 图像端点 → 音频端点。frames 固定 2 张图，reference 为 imageInputs
+  // 参考视频输入端点：仅参考图变体可用（首尾帧变体不支持参考视频），默认 0
+  const videoInputs = isReference ? videoInputCount(data.videoInputs) : 0
+  // 左侧端点竖向排位：Prompt(0) → 图像端点 → 音频端点 → 视频端点。frames 固定 2 张图，reference 为 imageInputs
   const imageSlots = isReference ? imageInputs : 2
   const audioBaseIndex = 1 + imageSlots
+  const videoBaseIndex = audioBaseIndex + audioInputs
 
   // 「Add Input」/ 切换变体 动态增减端点后，通知 React Flow 重新测量本节点 handle，否则新增端点无法连线
   const updateNodeInternals = useUpdateNodeInternals()
   useEffect(() => {
     updateNodeInternals(id)
-  }, [id, imageSlots, audioInputs, updateNodeInternals])
+  }, [id, imageSlots, audioInputs, videoInputs, updateNodeInternals])
 
   const fail = (message: string) => {
     updateNodeData(id, { running: false, error: message, taskId: undefined })
@@ -120,7 +123,7 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
         selected ? 'ring-2 ring-primary' : ''
       }`}
     >
-      {/* 左侧输入端点：Prompt（必填，粉实心）+ 图像端点（绿）+ 音频端点（蓝） */}
+      {/* 左侧输入端点：Prompt（必填，粉实心）+ 图像端点（绿）+ 音频端点（蓝）+ 视频端点（玫红，仅参考图变体） */}
       <NodeHandle type="target" index={0} tone="prompt" label="Prompt" required title="Prompt 输入（必填）" />
       {isReference ? (
         <ImageInputHandles count={imageInputs} baseIndex={1} />
@@ -131,6 +134,7 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
         </>
       )}
       <AudioInputHandles count={audioInputs} baseIndex={audioBaseIndex} />
+      {isReference && <VideoInputHandles count={videoInputs} baseIndex={videoBaseIndex} />}
       <NodeHeader
         id={id}
         icon={Video}
@@ -172,12 +176,13 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
           )}
         </div>
 
-        {/* Add Input（图标按钮：参考图=图+音，首尾帧=仅音）+ 生成 并排 */}
+        {/* Add Input（图标按钮：参考图=图+音+视频，首尾帧=仅音）+ 生成 并排 */}
         <div className="flex flex-wrap items-center gap-2">
           <AddInputControls
             id={id}
             image={isReference ? imageInputs : undefined}
             audio={audioInputs}
+            video={isReference ? videoInputs : undefined}
           />
           <Button size="sm" onClick={handleRun} disabled={running} className="nodrag ml-auto h-8">
             {running ? '生成中…' : '生成'}

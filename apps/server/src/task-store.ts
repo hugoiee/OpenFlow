@@ -148,6 +148,7 @@ export function startTask(task: TaskDTO): void {
         prompt: p.prompt,
         images: Array.isArray(p.images) ? p.images : [],
         audios: Array.isArray(p.audios) ? p.audios : [],
+        videos: Array.isArray(p.videos) ? p.videos : [],
         resolution: p.resolution || '720p',
         ratio: typeof p.ratio === 'string' ? p.ratio : undefined,
         duration: typeof p.duration === 'number' ? p.duration : 6,
