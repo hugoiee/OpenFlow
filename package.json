@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "pnpm --filter @openflow/web dev",
     "server": "pnpm --filter @openflow/server dev",
-    "dev:all": "concurrently -n web,server -c cyan,magenta \"pnpm --filter @openflow/web dev\" \"pnpm --filter @openflow/server dev\"",
+    "dev:all": "concurrently -n server,web -c magenta,cyan \"pnpm --filter @openflow/server dev\" \"node scripts/wait-for-port.mjs 8787 && pnpm --filter @openflow/web dev\"",
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",

@@ -12,6 +12,12 @@ asar: true
 asarUnpack:
   - '**/node_modules/better-sqlite3/**'
 npmRebuild: true
+# electron-builder 默认的 win 工具链是 x86_64 二进制（makensis / osslsigncode），
+# 在 Apple Silicon 上没装 Rosetta 2 就会 "bad CPU type in executable"。
+# 改用 26.x 的新工具链包（含 arm64 原生二进制）在 mac 上交叉打包 win。
+toolsets:
+  nsis: 1.2.1
+  winCodeSign: 1.1.0
 mac:
   # 同时出 Apple Silicon(arm64) 与 Intel(x64) 两套安装包；分开构建、各自内置对应 arch 的原生模块
   target:
