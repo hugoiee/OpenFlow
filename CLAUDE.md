@@ -173,6 +173,14 @@ apps/desktop/
 - **端点分发友好**：内网 AIGC/上传地址不写死，改由设置面板填（存后端 settings）；打包发给不同网络的人也能自行改地址。
 - **pnpm 注意**：`@electron/rebuild` 用 git 引用 `@electron/node-gyp`，`pnpm-workspace.yaml` 里用 `overrides` 覆盖成 npm 发布版绕开 exotic-subdep 拦截；`electron` 的 postinstall 需在 `allowBuilds` 放行。
 
+## Git 工作流（分支与推送规则）
+
+- **`main` 是唯一长期分支**（稳定/发布），**禁止直接 push**——任何改动（功能/修复/文档）一律：从最新 `main` 拉临时分支（`feature/<名>` / `fix/<名>` / `docs/<名>`）→ 提交 → **PR 合并进 main**。
+- 仓库为私有 + 免费套餐，**分支保护规则不生效**（已建 Ruleset 处于待生效状态）——以上规则靠约定执行，人和 AI 工具都必须遵守。
+- PR 合并后**删除对应的临时分支**（不留长期分支；仓库已开/建议开启 GitHub 的 Automatically delete head branches）。
+- 提交信息沿用现有风格（`feat: ✨` / `fix: 🐛` / `docs: 📝` / `chore: 🔖` 等 gitmoji 前缀）；提交前跑「编码规范」末条的 lint/typecheck/build。
+- 若 `main` 意外被直接推送导致与他处分叉：先 `git merge-tree --write-tree` 干跑查冲突，尽快把分叉合回，不要放任分叉变大。
+
 ## 编码规范
 
 - 组件文件 PascalCase，函数组件具名导出。
