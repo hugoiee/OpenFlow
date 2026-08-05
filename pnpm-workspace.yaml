@@ -5,6 +5,9 @@ allowBuilds:
   better-sqlite3: true
   esbuild: true
   electron: true
+  # electron-builder 26 起把 squirrel-windows 支持挂进依赖树；我们只出 nsis，
+  # 不需要它 postinstall 拉 Squirrel 二进制，故显式拒绝构建
+  electron-winstaller: false
 # @electron/rebuild 用 git 引用 @electron/node-gyp（pnpm 默认拦 exotic subdep）；
 # 覆盖成 npm 上同一 fork 的发布版，避免走 git 且更可复现
 overrides:
