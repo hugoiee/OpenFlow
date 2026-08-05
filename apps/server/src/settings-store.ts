@@ -11,6 +11,7 @@ type SettingsRow = {
   agent_api_key: string
   agent_model: string
   agent_model_list: string
+  volc_tts_api_key: string
 }
 
 const SINGLETON = 'singleton'
@@ -34,7 +35,7 @@ function parseModelList(raw: string | null | undefined): string[] {
 function ensureRow(): SettingsRow {
   let row = db
     .prepare(
-      'SELECT id, default_req_from, aigc_endpoint, upload_endpoint, upload_media_endpoint, agent_endpoint, agent_api_key, agent_model, agent_model_list FROM settings WHERE id = ?',
+      'SELECT id, default_req_from, aigc_endpoint, upload_endpoint, upload_media_endpoint, agent_endpoint, agent_api_key, agent_model, agent_model_list, volc_tts_api_key FROM settings WHERE id = ?',
     )
     .get(SINGLETON) as SettingsRow | undefined
   if (!row) {
@@ -49,6 +50,7 @@ function ensureRow(): SettingsRow {
       agent_api_key: '',
       agent_model: '',
       agent_model_list: '[]',
+      volc_tts_api_key: '',
     }
   }
   return row
@@ -65,6 +67,7 @@ export function readSettings(): SettingsDTO {
     agentApiKey: row.agent_api_key ?? '',
     agentModel: row.agent_model ?? '',
     agentModelList: parseModelList(row.agent_model_list),
+    volcTtsApiKey: row.volc_tts_api_key ?? '',
   }
 }
 
@@ -73,7 +76,7 @@ export function writeSettings(patch: Partial<SettingsDTO>): void {
   const cur = readSettings()
   const next = { ...cur, ...patch }
   db.prepare(
-    'UPDATE settings SET default_req_from = ?, aigc_endpoint = ?, upload_endpoint = ?, upload_media_endpoint = ?, agent_endpoint = ?, agent_api_key = ?, agent_model = ?, agent_model_list = ? WHERE id = ?',
+    'UPDATE settings SET default_req_from = ?, aigc_endpoint = ?, upload_endpoint = ?, upload_media_endpoint = ?, agent_endpoint = ?, agent_api_key = ?, agent_model = ?, agent_model_list = ?, volc_tts_api_key = ? WHERE id = ?',
   ).run(
     next.defaultReqFrom,
     next.aigcEndpoint,
@@ -83,6 +86,7 @@ export function writeSettings(patch: Partial<SettingsDTO>): void {
     next.agentApiKey,
     next.agentModel,
     JSON.stringify(next.agentModelList ?? []),
+    next.volcTtsApiKey,
     SINGLETON,
   )
 }

@@ -14,6 +14,8 @@ import { tasks } from './routes/tasks'
 import { promptPresets } from './routes/prompt-presets'
 import { download } from './routes/download'
 import { agent } from './routes/agent'
+import { podcast } from './routes/podcast'
+import { files } from './routes/files'
 
 export interface CreateAppOptions {
   /** 前端静态产物目录（Electron 生产环境注入）；提供则在根路径托管 SPA。 */
@@ -86,6 +88,8 @@ export function createApp(opts: CreateAppOptions = {}): Hono {
   app.route('/api/prompt-presets', promptPresets)
   app.route('/api', download)
   app.route('/api', agent)
+  app.route('/api', podcast)
+  app.route('/api', files)
 
   if (opts.staticDir) mountStatic(app, opts.staticDir)
 

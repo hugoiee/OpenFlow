@@ -1,18 +1,26 @@
 import { memo, useMemo, useState } from 'react'
 import { Textarea } from '@/components/ui/textarea'
 import { useResizableWidth } from '@/hooks/useResizableWidth'
-import { buildImageUpstream, buildLlmUpstream, buildVideoUpstream } from '@/lib/requestBody'
+import {
+  buildImageUpstream,
+  buildLlmUpstream,
+  buildPodcastUpstream,
+  buildVideoUpstream,
+} from '@/lib/requestBody'
 import {
   type ImageNode as ImageNodeT,
   type LlmNode as LlmNodeT,
+  type PodcastNode as PodcastNodeT,
   type Project,
   type VideoNode as VideoNodeT,
 } from '@/lib/types'
+import { PODCAST_NODE_META } from '@/lib/nodeCatalog'
 import { useActiveProject } from '@/store/useFlowStore'
 import { useSettingsStore } from '@/store/useSettingsStore'
 import { ImageInput } from './ImageInput'
 import { ImageParams } from './ImageParams'
 import { LlmParams } from './LlmParams'
+import { PodcastParams } from './PodcastParams'
 import { VideoParams } from './VideoParams'
 
 /**
@@ -26,7 +34,13 @@ export function NodeInspector() {
   const selected = project.nodes.filter((n) => n.selected)
   if (selected.length !== 1) return null
   const node = selected[0]
-  if (node.type !== 'image' && node.type !== 'video' && node.type !== 'llm') return null
+  if (
+    node.type !== 'image' &&
+    node.type !== 'video' &&
+    node.type !== 'llm' &&
+    node.type !== 'podcast'
+  )
+    return null
   // key={node.id}：切换选中节点时重置内部状态（上传态 / 文件输入），避免串台
   return <NodeInspectorPanel key={node.id} node={node} project={project} />
 }
@@ -82,7 +96,7 @@ function NodeInspectorPanel({
   node,
   project,
 }: {
-  node: ImageNodeT | VideoNodeT | LlmNodeT
+  node: ImageNodeT | VideoNodeT | LlmNodeT | PodcastNodeT
   project: Project
 }) {
   const id = node.id
@@ -102,14 +116,19 @@ function NodeInspectorPanel({
         ? buildImageUpstream(project, node, reqFrom)
         : node.type === 'video'
           ? buildVideoUpstream(project, node, reqFrom)
-          : buildLlmUpstream(project, node),
+          : node.type === 'podcast'
+            ? buildPodcastUpstream(project, node)
+            : buildLlmUpstream(project, node),
     [project, node, reqFrom],
   )
-  // 预览标签上的上游地址：图像 / 视频走 AIGC 端点，LLM 走 Agent 端点的 /chat/completions
+  // 预览标签上的上游地址：图像 / 视频走 AIGC 端点，LLM 走 Agent 端点的 /chat/completions，
+  // 播客走火山单向流式 TTS（脚本逐句各发一个请求）
   const upstreamEndpoint =
     node.type === 'llm'
       ? chatCompletionsLabel(agentEndpoint)
-      : aigcEndpoint.trim() || '…/aigc（后端默认端点）'
+      : node.type === 'podcast'
+        ? 'https://openspeech.bytedance.com/api/v3/tts/unidirectional（逐句一请求）'
+        : aigcEndpoint.trim() || '…/aigc（后端默认端点）'
   const requestJson = useMemo(() => JSON.stringify(requestBody, null, 2), [requestBody])
 
   return (
@@ -125,7 +144,9 @@ function NodeInspectorPanel({
       />
       <div className="flex flex-col gap-0.5">
         <span className="text-xs text-muted-foreground">{node.data.label}</span>
-        <h2 className="text-sm font-semibold">{node.data.model}</h2>
+        <h2 className="text-sm font-semibold">
+          {node.type === 'podcast' ? PODCAST_NODE_META.model : node.data.model}
+        </h2>
       </div>
 
       {/* 图像：输入图（画廊态）+ 模型参数；视频：整套参数；LLM：Model/Temperature/Thinking */}
@@ -139,6 +160,8 @@ function NodeInspectorPanel({
         </>
       ) : node.type === 'video' ? (
         <VideoParams id={id} data={node.data} />
+      ) : node.type === 'podcast' ? (
+        <PodcastParams id={id} data={node.data} />
       ) : (
         <LlmParams id={id} data={node.data} />
       )}

@@ -11,7 +11,9 @@ settings.get('/', (c) => {
   return c.json({
     ...s,
     agentApiKey: '',
+    volcTtsApiKey: '',
     hasAgentApiKey: Boolean(s.agentApiKey),
+    hasVolcTtsApiKey: Boolean(s.volcTtsApiKey),
   } satisfies SettingsDTO)
 })
 
@@ -29,6 +31,7 @@ settings.put('/', async (c) => {
   if (typeof body.agentEndpoint === 'string') patch.agentEndpoint = body.agentEndpoint.trim()
   if (typeof body.agentApiKey === 'string') patch.agentApiKey = body.agentApiKey.trim()
   if (typeof body.agentModel === 'string') patch.agentModel = body.agentModel.trim()
+  if (typeof body.volcTtsApiKey === 'string') patch.volcTtsApiKey = body.volcTtsApiKey.trim()
   // 手动模型列表：传数组则整体覆盖（trim/去空/去重）；非数组则忽略保持原值
   if (Array.isArray(body.agentModelList)) {
     const list: string[] = []

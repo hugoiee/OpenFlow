@@ -23,6 +23,10 @@ import {
   IMAGE_SIZE_DEFAULT,
   LLM_MODEL_DEFAULT,
   LLM_TEMPERATURE_DEFAULT,
+  PODCAST_NODE_META,
+  PODCAST_ROLE_A_DEFAULT,
+  PODCAST_ROLE_B_DEFAULT,
+  PODCAST_SPEECH_RATE_DEFAULT,
   SEEDANCE_DURATION_DEFAULT,
   SEEDANCE_RATIO_DEFAULT,
   SEEDANCE_RESOLUTION_DEFAULT,
@@ -156,6 +160,25 @@ function createNode(
       },
     }
   }
+  if (type === 'podcast') {
+    // 播客音频节点（火山 TTS）：内置脚本 + 双角色音色；运行状态/结果初始为空。
+    return {
+      id: newId('n_'),
+      type: 'podcast',
+      position,
+      data: {
+        label: PODCAST_NODE_META.label,
+        script: '',
+        roleAName: PODCAST_ROLE_A_DEFAULT,
+        roleAVoice: '',
+        roleBName: PODCAST_ROLE_B_DEFAULT,
+        roleBVoice: '',
+        speechRate: PODCAST_SPEECH_RATE_DEFAULT,
+        running: false,
+        result: [],
+      },
+    }
+  }
   if (type === 'image') {
     // 图像生成节点：带具名模型 + 可调选项默认值；运行状态/结果初始为空。
     // 统一带上 Image 2 与 Nano Banana 两套字段默认值，后端按 model 取舍。
@@ -206,6 +229,7 @@ const AGENT_PLACE_FALLBACK_HEIGHT: Record<string, number> = {
   llm: 280,
   image: 380,
   video: 400,
+  podcast: 320,
   asset: 220,
 }
 
@@ -268,6 +292,9 @@ export const useFlowStore = create<FlowState>()((set, get) => {
             return { ...node, data: { ...node.data, running: false, error: undefined } }
           }
           if (node.type === 'llm') {
+            return { ...node, data: { ...node.data, running: false, error: undefined } }
+          }
+          if (node.type === 'podcast') {
             return { ...node, data: { ...node.data, running: false, error: undefined } }
           }
           // 素材节点：uploading 是瞬时态，载入时复位，避免刷新后卡在「上传中…」
@@ -472,9 +499,10 @@ export const useFlowStore = create<FlowState>()((set, get) => {
       patchActive((p) => {
         const node = createNode(type, p.nodes.length, model, position, videoVariant)
         const fromNode = p.nodes.find((n) => n.id === from.nodeId)
-        // 除 asset（纯源，只出不进）外都有输入(target) handle；从输出端拉出却选了无输入口的节点（asset）时，
-        // 无处可连 → 只建节点不连线，避免生成一条挂空的坏边。
-        const canBeTarget = type !== 'asset'
+        // asset（纯源，只出不进）无输入 handle，podcast（终端节点）无任何 handle；
+        // 拉线选了这类节点时无处可连 → 只建节点不连线，避免生成一条挂空的坏边。
+        const canBeTarget = type !== 'asset' && type !== 'podcast'
+        const canBeSource = type !== 'podcast'
         let edge: Edge | null = null
         if (from.handleType === 'source') {
           // 从输出端拉出：源=既有节点，目标=新节点默认输入口；类型不匹配（如图像→新 LLM 的 Prompt 口）则只建节点
@@ -487,7 +515,7 @@ export const useFlowStore = create<FlowState>()((set, get) => {
               type: 'default',
             }
           }
-        } else if (isValidTypedConnection(node, fromNode, from.handleId)) {
+        } else if (canBeSource && isValidTypedConnection(node, fromNode, from.handleId)) {
           // 从输入端拉出：源=新节点，目标=既有节点的该端点；类型不匹配（如从图像端点拉出却选 Prompt）则只建节点
           edge = {
             id: newId('e_'),

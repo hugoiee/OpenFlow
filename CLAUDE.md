@@ -13,7 +13,7 @@
 工作区右侧有**画布 Agent 聊天面板**（可收起，偏好存 localStorage）：用自然语言说想法/想要的画面，后端调 OpenAI 兼容 LLM 产出
 `{reply, actions}` 计划，前端把每个 action 落成一组「Prompt 节点（写好提示词）→ 图像节点（Agent 选模型）」并连线、建生图任务，
 结果沿用节点自身的 taskId 重连轮询展示；Agent 的接口地址/API Key/模型名在设置面板配置。
-顶栏还有 **Prompt 预设** 库（全局共享的常用/System 提示词，Prompt 节点卡片可一键选用或「存为预设」；存后端 `prompt_presets` 表、首次启动播种默认 3 条）。
+**播客 TTS（火山）节点**（音频类）：节点内置双人对话脚本（每行「角色名: 台词」，支持 [轻笑] 等方括号表演指令透传），右侧 Inspector 配两个角色的火山音色 ID + 语速；运行走异步任务，后端逐行调火山单向流式 TTS（seed-tts-2.0）合成 pcm、行间插静音拼成整期 WAV 落盘（<数据目录>/files，经 GET /api/files/:name 同源服务），节点 <audio> 播放 + 下载；鉴权用设置里的火山语音 API Key（写入-only，env 回退 VOLC_TTS_API_KEY），不需要 req_from；终端节点（无连接点）。顶栏还有 **Prompt 预设** 库（全局共享的常用/System 提示词，Prompt 节点卡片可一键选用或「存为预设」；存后端 `prompt_presets` 表、首次启动播种默认 3 条）。
 图像/视频结果卡片有**下载**按钮（经后端 `/api/download` 同源代理跨域拉流、按响应类型自动补扩展名、可自定义文件名）。**前后端架构**：
 数据存后端 SQLite，AIGC 调用经后端代理（绕开 CORS）。单用户、无鉴权。
 
@@ -46,7 +46,7 @@ pnpm --filter @openflow/desktop dev        # Electron 开发（自动切 electro
 ## 目录结构
 
 ```
-packages/shared/src/index.ts   ProjectDTO / SettingsDTO(defaultReqFrom + aigcEndpoint/uploadEndpoint/uploadMediaEndpoint + agentEndpoint/agentApiKey/agentModel) / SaveSettingsBody(defaultReqFrom 必填 + 其余可选，省略保持原值) / GenImageBody / GenVideoBody(含 projectId/nodeId + audios → audio_list) / GenLlmBody(projectId/nodeId + model/prompt/systemPrompt? + images?/audios?/videos? 多模态输入 + temperature/thinking) / TaskDTO(id/projectId/nodeId/kind/status/result/error；llm 的 result=[回答] 或 [回答,思考]) + TaskKind('image'|'video'|'llm') + TaskStatus + CreateTaskResponse + 画布 Agent 契约(AgentMessage / AgentChatBody / AgentImageAction{prompt,model,title?} / AgentChatResponse{reply,actions} + 连接测试 AgentTestBody·AgentTestResponse + 动态模型列表 AgentModelsBody{endpoint?,apiKey?}·AgentModelsResponse{models}) + Prompt 预设契约(PromptPresetCategory 'common'|'system' / PromptPresetDTO{id,title,content,category,时间戳} / SavePromptPresetBody{title 必填 + content/category 可选})
+packages/shared/src/index.ts   ProjectDTO / SettingsDTO(defaultReqFrom + aigcEndpoint/uploadEndpoint/uploadMediaEndpoint + agentEndpoint/agentApiKey/agentModel) / SaveSettingsBody(defaultReqFrom 必填 + 其余可选，省略保持原值) / GenImageBody / GenVideoBody(含 projectId/nodeId + audios → audio_list) / GenLlmBody(projectId/nodeId + model/prompt/systemPrompt? + images?/audios?/videos? 多模态输入 + temperature/thinking) / TaskDTO(id/projectId/nodeId/kind/status/result/error；llm 的 result=[回答] 或 [回答,思考]) + TaskKind('image'|'video'|'llm'|'podcast') + 播客契约(PodcastRole{name,voiceId} / GenPodcastBody{projectId/nodeId/script/roles×2 + 可调项 speechRate/sampleRate/loudnessRate/pitch/lineGapMs(本地句间静音)/filterParenthesis/disableMarkdownFilter/disableEmojiFilter/explicitLanguage/contextText(语音指令，UI 已隐藏字段保留)/aigcWatermark/aigcMetadata{enable+四元信息字段}，全部可省略走默认}；podcast 任务 result=[音频 URL, 计费字数(各句 usage.text_words 合计)]) + SettingsDTO.volcTtsApiKey(写入-only，GET 恒空串 + hasVolcTtsApiKey) + TaskStatus + CreateTaskResponse + 画布 Agent 契约(AgentMessage / AgentChatBody / AgentImageAction{prompt,model,title?} / AgentChatResponse{reply,actions} + 连接测试 AgentTestBody·AgentTestResponse + 动态模型列表 AgentModelsBody{endpoint?,apiKey?}·AgentModelsResponse{models}) + Prompt 预设契约(PromptPresetCategory 'common'|'system' / PromptPresetDTO{id,title,content,category,时间戳} / SavePromptPresetBody{title 必填 + content/category 可选})
 apps/server/src/
   index.ts                     独立开发入口（tsx，固定 8787）：调 startServer()，数据走源码相对目录；并 re-export createApp/startServer
   app.ts                       createApp({staticDir?})：挂 /api 路由（含 /api/tasks）+ import './task-store'（启动即对账中断任务）+ 可选在根路径托管前端 SPA（供 Electron 生产用；HashRouter 故非 /api 路径统一回退 index.html，含目录穿越防护）
@@ -67,6 +67,9 @@ apps/server/src/
   routes/tasks.ts              GET /api/tasks/:id(轮询单任务，缺失 404) / GET /api/tasks?projectId=&nodeId=(取节点最近一次任务，重连兜底)
   routes/upload.ts             POST /api/upload(文件上传代理：按 query kind 分流转发 multipart——图片(kind=image)→uploadEndpoint、音频/视频(kind=audio|video)→uploadMediaEndpoint（均从设置注入，空回退对应 env）；req_from 从全局设置注入，为空返回 400 拒发)
   routes/agent.ts              POST /api/agent/chat(画布 Agent 对话：过滤非法消息并截取最近 20 条历史 → runAgentChat 同步调 LLM 返 {reply,actions}；配置缺失 400、上游失败 502；本接口不建任务——画布动作与生图任务由前端执行) / POST /api/agent/test(最小用量连接测试) / POST /api/agent/models(动态获取模型列表：body 可带 endpoint/apiKey override，省略回退已存设置 → listAgentModels 返 {models}；配置缺失 400、上游/端点不支持 502)
+  routes/podcast.ts            POST /api/podcast(播客音频生成：校验 script/roles×2 + 火山 Key 缺失 400 早失败 → createTask/startTask 建任务返回 {taskId}，kind=podcast；不需要 req_from)
+  routes/files.ts              GET /api/files/:name(后端生成文件的同源服务：<数据目录>/files 下按文件名取，防目录穿越；播客 WAV 经此播放/下载)
+  volc-tts.ts                  播客合成核心：resolveVolcTts(设置 volcTtsApiKey 优先→env VOLC_TTS_API_KEY，缺失抛可读错误；端点 env VOLC_TTS_ENDPOINT 回退官方地址) / parsePodcastScript(每行「角色名: 台词」中英冒号均可、长角色名优先匹配、无前缀行并入上一句、首句无法识别抛错) / runPodcastGen(逐行串行调火山单向流式 HTTP 拿 base64 pcm——流式 JSON 包括号平衡解析、code 0/20000000(结束包) 之外才抛错，行间插句间静音(lineGapMs 默认 300ms)拼单声道 16bit WAV 落盘，返回 /api/files/xxx.wav)；每句请求带 audio_params{sample_rate/speech_rate/loudness_rate} + additions(JSON 字符串，仅非默认项：括号过滤/markdown/emoji/explicit_language) + post_process.pitch(非 0 才发) + context_texts(语音指令) + additions.aigc_watermark/aigc_metadata(meta 水印不支持 pcm——enable 时每句改按 wav 请求、wavToPcm 解出 data 块再拼接)；每句结束包 usage.text_words 累加随结果返回
   routes/prompt-presets.ts     Prompt 预设 CRUD：GET /api/prompt-presets(列表) / POST(新建) / PUT /:id(更新) / DELETE /:id；parseBody 校验(title trim 非空、content 允许空、category 归一为 'common'|'system')
   routes/download.ts           GET /api/download?url=&kind=&name=(下载同源代理：fetch 跨域结果资源流式回传 + 按 Content-Type/URL 后缀/kind 推断扩展名 + 清洗文件名去路径分隔/保留字 + Content-Disposition 用 RFC 5987 filename* 兼容中文)
 apps/web/src/
@@ -117,6 +120,7 @@ apps/web/src/
     nodes/LlmNode.tsx          Any LLM 节点：卡片展示回答文本（思考文本若返回则 <details> 折叠）+ 复制按钮；左侧输入端点 Prompt/System Prompt + 图像(image-)/音频(audio-)/视频(video-) 三种多模态输入端点（「Add Input」三按钮各自递增 imageInputs/audioInputs/videoInputs，图像默认≥1、音视频 0 起步）；运行收集上游 Prompt/LLM 文本 + 图/音/视素材→createLlmTaskApi 建任务→pollTask 轮询→展示；带 taskId 载入时 useEffect 重连轮询（重连路径失败 silent、点击运行失败弹窗）；Model/Temperature/Thinking 参数在右侧 Inspector 编辑
     nodes/ImageNode.tsx        图像生成节点：输入图**来自连线**（上游图像素材/生成结果，右侧 Inspector 的 ImageInput 只读预览，不再上传/手填 URL）/按模型(Image 2 走尺寸/质量/张数；Nano Banana 走 version/宽高比/尺寸)；运行收集上游 Prompt 文本→createImageTaskApi 建任务→pollTask 轮询→展示结果图；带 taskId 载入时 useEffect 重连轮询（关页面不丢结果；重连/Agent 触发路径失败 **silent 不弹 alert** 只节点内联报错，点击运行路径失败仍弹窗）；Handle 左进右出（req_from 署名走全局设置，节点不再单设）
     nodes/SeedanceNode.tsx     视频生成节点（seedance）：输入图/输入音频**均来自连线**（上游图像素材·生成结果 / 音频素材，经节点左侧端点连入；Inspector 只有 version/mode/分辨率/时长参数，无上传/手填 UI）；运行时输入图 = 上游图像(连线)、音频 = 上游音频素材(连线) 作 audios→createVideoTaskApi 建任务→pollTask 轮询→<video> 展示；带 taskId 载入时 useEffect 重连轮询；Handle 左进右出——**右侧 Video 输出端点为视频源（玫红），可连下游 Any LLM 节点的视频输入端点**（sourceKind(video)='video'，结果视频经 collectUpstreamVideo 喂给下游）；req_from 署名走全局设置，节点不再单设
+    nodes/PodcastNode.tsx      播客音频节点（火山 TTS）：内置脚本 Textarea（useCompositionField 防抖+IME）+ 运行 →createPodcastTaskApi 建任务→pollTask 轮询→<audio> 播放 + 下载（同源 URL 直接 <a download>）+ 计费字数展示（result[1]）；带 taskId 载入时重连轮询；NodeResizer 可调大小；终端节点无 handle（结果是相对 URL，发不去外部网关故不作下游输入源；addConnectedNode 对 podcast 特判不连线）
     nodes/AssetNode.tsx        素材节点（桌面拖入）：图像素材显示缩略图 / 音频素材显示 <audio> / 视频素材显示 <video>；上传中骨架、失败内联；仅右侧 source Handle（纯源，图像绿/音频蓝/视频玫红，连下游作输入）
     nodes/GroupNode.tsx        分组容器节点：半透明虚线框包住子节点（子节点 parentId 指向它、渲染在其上方，拖框子节点跟随）；顶部工具条改名 + 取消分组；NodeResizer 可调大小；无连接点
     nodes/NodeHeader.tsx       各节点共用卡片头部：图标 + 名称 + 复制 + 删除按钮（默认隐藏，hover/选中时显示）；复制按钮调 duplicateNode()——在原节点正右侧（让开整宽 + 间距，不重叠）生成副本，保留参数与结果快照、清 taskId/运行态，选中态转到副本（group 容器无此头部故不可复制）
@@ -129,6 +133,7 @@ apps/web/src/
     ImageInput.tsx             输入图**只读预览**（图像节点用）：上游连线图排前 + 旧数据手填 URL 排后，按发送顺序编号；无输入图时提示「拖图片到画布空白处建素材节点连线」（不再上传/手填 URL）
     ImageParams.tsx            图像节点参数控件：按模型分两套（Image 2 走 size/quality/n；Nano Banana 走 version/aspectRatio/imageSize）；旧尺寸回退到受支持默认
     VideoParams.tsx            视频节点（Seedance）参数控件：version + 分辨率/宽高比并排 + 时长滑块；输入图/音频改由连线决定（无上传/手填 UI）
+    PodcastParams.tsx          播客节点参数：两个角色（角色名 + 火山音色 ID，从火山控制台音色库复制）+ 音频参数（采样率下拉 / 语速 / 音量 / 音调 / 句间停顿滑块）+ 文本处理开关（过滤括号内容——会连 [轻笑] 表演指令一起滤、过滤 Markdown、过滤 Emoji、朗读语种下拉）+ AIGC 水印（aigc_watermark 生成标识开关——逐句合成每句结尾都有；aigc_metadata meta 隐式水印开关 + 四个元信息小输入，开启时每句按 wav 请求）；语音指令（context_texts）UI 已隐藏、字段保留
     LlmParams.tsx              Any LLM 节点参数：Model **下拉**（候选 = 手动模型列表(设置里维护) ∪ 端点动态获取，经 mergeModelOptions 合并；挂载时自动拉 + 「刷新」按钮重取；已选值置顶保留；并集为空才回退手填输入框；每个选项后缀 <ModelCapabilityBadges> 能力图标）+ Temperature 滑块 + Thinking 开关
     components/model/ModelCapabilityBadges.tsx  模型能力小图标：读 modelCapabilities(name) 只渲染推断支持的能力（思考=Brain/图像=Eye/音频=AudioLines/视频=Video，各带中文 tooltip），供设置 Agent 模型名下拉与 Any LLM 节点 Model 下拉的选项共用（Radix SelectValue 会连带在 trigger 显示已选模型的图标）
 apps/desktop/

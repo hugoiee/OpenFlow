@@ -29,8 +29,12 @@ export type SettingsDTO = {
    * 与端点 GET /models 动态获取的结果取并集。供不支持 /models 的网关手填多个模型。
    */
   agentModelList: string[]
+  /** 火山引擎语音 API Key（播客 TTS 用，控制台>API Key 管理获取）；GET 不回明文（恒为空串），以 hasVolcTtsApiKey 表示已配置。 */
+  volcTtsApiKey: string
   /** 服务端是否已存有 Agent API Key（GET 响应专用；明文不回传）。 */
   hasAgentApiKey?: boolean
+  /** 服务端是否已存有火山语音 API Key（GET 响应专用；明文不回传）。 */
+  hasVolcTtsApiKey?: boolean
 }
 
 /** PUT /api/settings 请求体：省略的字段保持原值（合并写入）。 */
@@ -51,6 +55,8 @@ export type SaveSettingsBody = {
   agentModel?: string
   /** 手动维护的模型候选列表（传数组则整体覆盖，含空数组=清空；省略=保持原值）。 */
   agentModelList?: string[]
+  /** 火山语音 API Key（空串=清空回退 env；省略=保持原值）。 */
+  volcTtsApiKey?: string
 }
 
 /** POST /api/aigc 请求体（图像生成，经后端代理到 AIGC 接口）。req_from 由后端从全局设置注入。 */
@@ -133,8 +139,68 @@ export type GenLlmBody = {
   thinking: boolean
 }
 
+/** 播客的一个说话角色：脚本里的角色名 + 火山音色库的音色 ID（voice_type/speaker）。 */
+export type PodcastRole = {
+  /** 脚本行首的角色名（如 主持人 / 嘉宾），用于按「角色名: 台词」匹配行。 */
+  name: string
+  /** 火山音色 ID（如 zh_female_vv_uranus_bigtts），从控制台音色库复制。 */
+  voiceId: string
+}
+
+/**
+ * POST /api/podcast 请求体（双人对话播客音频，经后端逐行调火山单向流式 TTS 合成后拼接）。
+ * 鉴权用设置里的火山 API Key（volcTtsApiKey），与内网 AIGC 网关无关、不需要 req_from。
+ */
+export type GenPodcastBody = {
+  /** 归属项目 id（用于建任务、按节点重连）。 */
+  projectId: string
+  /** 发起生成的节点 id（用于建任务、按节点重连）。 */
+  nodeId: string
+  /**
+   * 对话脚本：每行「角色名: 台词」（中英文冒号均可），未带角色前缀的行并入上一行台词。
+   * 台词内可用方括号表演指令（如 [轻笑] [叹气]），原样透传给豆包 TTS 2.0。
+   */
+  script: string
+  /** 两个说话角色（固定 2 个：脚本按 name 匹配，各自用 voiceId 合成）。 */
+  roles: PodcastRole[]
+  /** 语速，火山 speech_rate，[-50,100]（100=2 倍速，-50=0.5 倍速）；省略为 0。 */
+  speechRate?: number
+  /** 采样率 Hz（audio_params.sample_rate）；省略为 24000。 */
+  sampleRate?: number
+  /** 音量，火山 loudness_rate，[-50,100]（100=2 倍音量，-50=0.5 倍）；省略为 0。 */
+  loudnessRate?: number
+  /** 音调，火山 post_process.pitch，[-12,12]；省略为 0（不下发）。 */
+  pitch?: number
+  /** 句间停顿毫秒（本地拼接时插入的静音，非火山参数）；省略为 300。 */
+  lineGapMs?: number
+  /** 过滤括号内的内容（additions.max_length_to_filter_parenthesis=100）；省略/false 不过滤。 */
+  filterParenthesis?: boolean
+  /** 解析并去除 Markdown 语法（additions.disable_markdown_filter=true）；省略/false 保留原始字符。 */
+  disableMarkdownFilter?: boolean
+  /** 解析过滤 Emoji（additions.disable_emoji_filter=true）。 */
+  disableEmojiFilter?: boolean
+  /** 显式指定朗读语种（additions.explicit_language，如 zh-cn / en / ja）；省略/空=自动。 */
+  explicitLanguage?: string
+  /** 语音指令（context_texts，如「用轻松愉快的语气」；不参与计费）；省略/空=不下发。 */
+  contextText?: string
+  /** AIGC 生成标识（additions.aigc_watermark）：在合成音频结尾添加节奏标识。注意逐句合成时每句结尾都会有。 */
+  aigcWatermark?: boolean
+  /** meta 隐式水印（additions.aigc_metadata）：enable=true 时每句改按 wav 请求（pcm 不支持）再解出 PCM 拼接。 */
+  aigcMetadata?: {
+    enable: boolean
+    /** 合成服务提供者的名称或编码（content_producer）。 */
+    contentProducer?: string
+    /** 内容制作编号（produce_id）。 */
+    produceId?: string
+    /** 内容传播服务提供者的名称或编码（content_propagator）。 */
+    contentPropagator?: string
+    /** 内容传播编号（propagate_id）。 */
+    propagateId?: string
+  }
+}
+
 /** 异步生成任务的种类 / 状态。 */
-export type TaskKind = 'image' | 'video' | 'llm'
+export type TaskKind = 'image' | 'video' | 'llm' | 'podcast'
 export type TaskStatus = 'pending' | 'running' | 'succeeded' | 'failed'
 
 /** 任务 DTO：前端轮询用；不含请求体 params（内部持久化，不外泄）。 */
@@ -144,7 +210,7 @@ export type TaskDTO = {
   nodeId: string
   kind: TaskKind
   status: TaskStatus
-  /** 成功前为空。image/video 为结果 URL 列表；llm 为 [回答文本] 或 [回答文本, 思考文本]。 */
+  /** 成功前为空。image/video 为结果 URL 列表；llm 为 [回答文本] 或 [回答文本, 思考文本]；podcast 为 [音频 URL, 计费字数(usage.text_words 合计)]。 */
   result: string[]
   /** 失败时的可读错误信息。 */
   error?: string

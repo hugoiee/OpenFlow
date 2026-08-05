@@ -14,6 +14,10 @@ function sourceRelativeDataDir(): string {
 const dataDir = process.env.OPENFLOW_DATA_DIR?.trim() || sourceRelativeDataDir()
 mkdirSync(dataDir, { recursive: true })
 
+/** 后端生成文件（如播客音频）的落盘目录：<数据目录>/files，经 GET /api/files/:name 对外服务。 */
+export const generatedFilesDir = join(dataDir, 'files')
+mkdirSync(generatedFilesDir, { recursive: true })
+
 export const db = new Database(join(dataDir, 'openflow.db'))
 db.pragma('journal_mode = WAL')
 
@@ -35,7 +39,8 @@ db.exec(`
     agent_endpoint TEXT NOT NULL DEFAULT '',
     agent_api_key TEXT NOT NULL DEFAULT '',
     agent_model TEXT NOT NULL DEFAULT '',
-    agent_model_list TEXT NOT NULL DEFAULT '[]'
+    agent_model_list TEXT NOT NULL DEFAULT '[]',
+    volc_tts_api_key TEXT NOT NULL DEFAULT ''
   );
 
   -- 异步生成任务：点「生成」后后端建行并后台跑 AIGC，前端凭 taskId 轮询/刷新重连。
@@ -77,6 +82,7 @@ for (const col of [
   'agent_endpoint',
   'agent_api_key',
   'agent_model',
+  'volc_tts_api_key',
 ]) {
   if (!settingsColNames.has(col)) {
     db.exec(`ALTER TABLE settings ADD COLUMN ${col} TEXT NOT NULL DEFAULT ''`)
