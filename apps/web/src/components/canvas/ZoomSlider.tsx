@@ -1,4 +1,4 @@
-import { Magnet, Map as MapIcon, Maximize, Minus, Plus } from 'lucide-react'
+import { Magnet, Map as MapIcon, Maximize, Minus, Mouse, Plus, Touchpad } from 'lucide-react'
 import {
   Panel,
   useReactFlow,
@@ -21,6 +21,8 @@ export function ZoomSlider({
   onToggleSnap,
   minimapEnabled,
   onToggleMinimap,
+  trackpadEnabled,
+  onToggleTrackpad,
   ...props
 }: Omit<PanelProps, 'children'> & {
   orientation?: 'horizontal' | 'vertical'
@@ -30,6 +32,9 @@ export function ZoomSlider({
   /** 缩略图是否显示；提供 onToggleMinimap 时才渲染缩略图开关按钮。 */
   minimapEnabled?: boolean
   onToggleMinimap?: () => void
+  /** 触控板模式是否开启（双指滑动平移、捏合缩放）；提供 onToggleTrackpad 时才渲染模式切换按钮。 */
+  trackpadEnabled?: boolean
+  onToggleTrackpad?: () => void
 }) {
   const { zoom } = useViewport()
   const { zoomTo, zoomIn, zoomOut, fitView } = useReactFlow()
@@ -80,6 +85,22 @@ export function ZoomSlider({
       <Button variant="ghost" size="icon" onClick={() => fitView({ duration: 300 })}>
         <Maximize className="h-4 w-4" />
       </Button>
+      {onToggleTrackpad && (
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-pressed={trackpadEnabled}
+          title={
+            trackpadEnabled
+              ? '触控板模式（双指平移 / 捏合缩放），点击切回鼠标模式'
+              : '鼠标模式（滚轮缩放），点击切到触控板模式'
+          }
+          onClick={onToggleTrackpad}
+          className={cn(trackpadEnabled && 'bg-accent text-accent-foreground')}
+        >
+          {trackpadEnabled ? <Touchpad className="h-4 w-4" /> : <Mouse className="h-4 w-4" />}
+        </Button>
+      )}
       {onToggleSnap && (
         <Button
           variant="ghost"
