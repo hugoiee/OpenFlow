@@ -175,11 +175,12 @@ apps/desktop/
 
 ## Git 工作流（分支与推送规则）
 
-- **`main` 是唯一长期分支**（稳定/发布），**禁止直接 push**——任何改动（功能/修复/文档）一律：从最新 `main` 拉临时分支（`feature/<名>` / `fix/<名>` / `docs/<名>`）→ 提交 → **PR 合并进 main**。
+- **双分支模型**：`dev` = 开发/集成分支，**一切日常操作的基点**；`main` = 发布分支，**只接受来自 `dev` 的 PR 合并**——禁止直接 push main，也不接受其他分支直接 PR 进 main。
+- **改动流程**：从最新 `dev` 拉临时分支（`feature/<名>` / `fix/<名>` / `docs/<名>`）→ 提交 → **PR 合并回 `dev`**；累积到发布点后再发起 **`dev` → `main` 的发布 PR**。
+- 发布 PR 合并后：把 `dev` 快进同步到 main 的合并提交（保持两支一致）；已合并的临时分支**随手删除**（不留长期分支，建议开启 GitHub 的 Automatically delete head branches）。
 - 仓库为私有 + 免费套餐，**分支保护规则不生效**（已建 Ruleset 处于待生效状态）——以上规则靠约定执行，人和 AI 工具都必须遵守。
-- PR 合并后**删除对应的临时分支**（不留长期分支；仓库已开/建议开启 GitHub 的 Automatically delete head branches）。
 - 提交信息沿用现有风格（`feat: ✨` / `fix: 🐛` / `docs: 📝` / `chore: 🔖` 等 gitmoji 前缀）；提交前跑「编码规范」末条的 lint/typecheck/build。
-- 若 `main` 意外被直接推送导致与他处分叉：先 `git merge-tree --write-tree` 干跑查冲突，尽快把分叉合回，不要放任分叉变大。
+- 若 `main` 意外被直接推送导致与 `dev` 分叉：先 `git merge-tree --write-tree` 干跑查冲突，尽快把 main 合回 dev，不要放任分叉变大。
 
 ## 编码规范
 
