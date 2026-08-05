@@ -27,7 +27,8 @@ export function AssetNode({ id, data, selected }: NodeProps<AssetNodeType>) {
       <NodeHeader
         id={id}
         icon={kind === 'image' ? ImageIcon : kind === 'video' ? Video : Music}
-        title={data.fileName || meta.label}
+        title={data.label || meta.label}
+        subtitle={data.fileName}
         selected={selected}
       />
       <CardContent className="flex flex-col gap-2 px-3">
