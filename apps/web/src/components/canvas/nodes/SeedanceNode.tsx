@@ -138,7 +138,8 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
       <NodeHeader
         id={id}
         icon={Video}
-        title={`${data.model} · ${isReference ? '参考图' : '首尾帧'}`}
+        title={data.label}
+        subtitle={`${data.model} · ${isReference ? '参考图' : '首尾帧'}`}
         selected={selected}
       />
       <CardContent className="flex flex-col gap-2 px-3">

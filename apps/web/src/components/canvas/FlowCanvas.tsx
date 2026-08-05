@@ -27,6 +27,7 @@ import { useThemeStore } from '@/store/useThemeStore'
 // 节点吸附偏好的 localStorage 键；网格步长与 <Background> 默认点距（20）一致，吸附落点对齐可见网格
 const SNAP_STORAGE_KEY = 'openflow-snap-grid'
 const MINIMAP_STORAGE_KEY = 'openflow-minimap'
+const TRACKPAD_STORAGE_KEY = 'openflow-trackpad'
 const SNAP_GRID: [number, number] = [20, 20]
 
 // 拉线松开在空白处时，记录连线从哪个节点的哪一端（source=输出端 / target=输入端）发起，
@@ -73,6 +74,15 @@ export function FlowCanvas() {
     localStorage.setItem(MINIMAP_STORAGE_KEY, minimapOpen ? '1' : '0')
   }, [minimapOpen])
   const toggleMinimap = useCallback(() => setMinimapOpen((v) => !v), [])
+
+  // 触控板模式：双指滑动=平移、捏合=缩放（Figma 式）；默认关（鼠标模式：滚轮=缩放）；由 ZoomSlider 模式按钮切换
+  const [trackpadMode, setTrackpadMode] = useState(
+    () => localStorage.getItem(TRACKPAD_STORAGE_KEY) === '1',
+  )
+  useEffect(() => {
+    localStorage.setItem(TRACKPAD_STORAGE_KEY, trackpadMode ? '1' : '0')
+  }, [trackpadMode])
+  const toggleTrackpad = useCallback(() => setTrackpadMode((v) => !v), [])
 
   // 画布右键菜单：记录光标处（相对画布容器的 top/left）+ 落点（flow 坐标），点选即在该处建节点
   const wrapperRef = useRef<HTMLDivElement>(null)
@@ -370,6 +380,11 @@ export function FlowCanvas() {
         panOnDrag={[1]}
         selectionMode={SelectionMode.Partial}
         panActivationKeyCode="Space"
+        // 鼠标/触控板模式：鼠标=滚轮缩放；触控板=双指滑动平移（捏合缩放两模式都由 zoomOnPinch 处理，
+        // 浏览器把触控板捏合上报为 ctrl+wheel）
+        panOnScroll={trackpadMode}
+        zoomOnScroll={!trackpadMode}
+        zoomOnPinch
       >
         <Background />
         {/* 左下角竖向堆叠：缩略图在上，缩放条紧贴其下方 */}
@@ -388,6 +403,8 @@ export function FlowCanvas() {
           onToggleSnap={toggleSnap}
           minimapEnabled={minimapOpen}
           onToggleMinimap={toggleMinimap}
+          trackpadEnabled={trackpadMode}
+          onToggleTrackpad={toggleTrackpad}
         />
       </ReactFlow>
       {menu && (
