@@ -6,6 +6,8 @@ export type ProjectDTO = {
   name: string
   nodes: unknown[]
   edges: unknown[]
+  /** 是否置顶：首页把置顶项目单独成区排在最前。 */
+  pinned: boolean
 }
 
 /** GET /api/settings 响应：全局调用方署名 + AIGC/上传端点。空字符串表示回退后端默认。 */

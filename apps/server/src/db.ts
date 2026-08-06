@@ -27,6 +27,7 @@ db.exec(`
     name TEXT NOT NULL,
     nodes TEXT NOT NULL DEFAULT '[]',
     edges TEXT NOT NULL DEFAULT '[]',
+    pinned INTEGER NOT NULL DEFAULT 0,
     updated_at INTEGER NOT NULL
   );
 
@@ -70,6 +71,12 @@ db.exec(`
     updated_at INTEGER NOT NULL
   );
 `)
+
+// 旧库迁移：projects 早期无 pinned 列，补上（已有项目默认不置顶）
+const projectCols = db.prepare('PRAGMA table_info(projects)').all() as { name: string }[]
+if (!projectCols.some((col) => col.name === 'pinned')) {
+  db.exec(`ALTER TABLE projects ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0`)
+}
 
 // 旧库迁移：settings 表按需补列（早期版本可能缺；旧的供应商列若存在则留存不读）
 const settingsCols = db.prepare('PRAGMA table_info(settings)').all() as { name: string }[]

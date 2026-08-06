@@ -1,10 +1,14 @@
+import { useMemo, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Pin } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Separator } from '@/components/ui/separator'
 import { SettingsDialog } from '@/components/settings/SettingsDialog'
 import { PromptPresetsDialog } from '@/components/presets/PromptPresetsDialog'
 import { ThemeToggle } from '@/components/theme/ThemeToggle'
 import { ProjectCard } from '@/components/home/ProjectCard'
 import { useFlowStore } from '@/store/useFlowStore'
+import type { Project } from '@/lib/types'
 
 export function HomePage() {
   const navigate = useNavigate()
@@ -17,6 +21,38 @@ export function HomePage() {
     const id = await addProject()
     navigate(`/project/${id}`)
   }
+
+  // 置顶项目与其他项目分成两组（各自保持后端排好的顺序），渲染到两个独立容器里 —— 不同行显示
+  const [pinnedProjects, otherProjects] = useMemo(
+    () => [projects.filter((p) => p.pinned), projects.filter((p) => !p.pinned)],
+    [projects],
+  )
+
+  const renderProjects = (list: Project[]) =>
+    homeView === 'grid' ? (
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-4">
+        {list.map((p) => (
+          <ProjectCard key={p.id} project={p} view="grid" />
+        ))}
+      </div>
+    ) : (
+      <div className="mx-auto flex max-w-2xl flex-col gap-2">
+        {list.map((p) => (
+          <ProjectCard key={p.id} project={p} view="list" />
+        ))}
+      </div>
+    )
+
+  const sectionTitle = (text: string, icon?: ReactNode) => (
+    <div
+      className={`mb-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground ${
+        homeView === 'list' ? 'mx-auto max-w-2xl' : ''
+      }`}
+    >
+      {icon}
+      {text}
+    </div>
+  )
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
@@ -68,17 +104,24 @@ export function HomePage() {
             </p>
             <Button onClick={createProject}>+ 新建项目</Button>
           </div>
-        ) : homeView === 'grid' ? (
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-4">
-            {projects.map((p) => (
-              <ProjectCard key={p.id} project={p} view="grid" />
-            ))}
-          </div>
+        ) : pinnedProjects.length === 0 ? (
+          // 没有置顶项目时不显示分区标题，布局与未启用置顶时一致
+          renderProjects(otherProjects)
         ) : (
-          <div className="mx-auto flex max-w-2xl flex-col gap-2">
-            {projects.map((p) => (
-              <ProjectCard key={p.id} project={p} view="list" />
-            ))}
+          <div className="flex flex-col gap-4">
+            <section>
+              {sectionTitle('置顶', <Pin className="size-3.5" />)}
+              {renderProjects(pinnedProjects)}
+            </section>
+            {otherProjects.length > 0 && (
+              <>
+                <Separator className={homeView === 'list' ? 'mx-auto max-w-2xl' : ''} />
+                <section>
+                  {sectionTitle('其他项目')}
+                  {renderProjects(otherProjects)}
+                </section>
+              </>
+            )}
           </div>
         )}
       </main>

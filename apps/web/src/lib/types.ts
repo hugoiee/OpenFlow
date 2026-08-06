@@ -220,5 +220,7 @@ export type Project = {
   name: string
   nodes: FlowNode[]
   edges: Edge[]
+  /** 是否置顶：首页把置顶项目单独成区排在最前。 */
+  pinned: boolean
 }
 
