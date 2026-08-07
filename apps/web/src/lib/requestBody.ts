@@ -4,10 +4,14 @@
 import type { GenImageBody, GenLlmBody, GenPodcastBody, GenVideoBody } from '@openflow/shared'
 import {
   collectUpstreamAudio,
+  collectUpstreamAudioRefs,
   collectUpstreamImages,
+  collectUpstreamImageRefs,
   collectUpstreamPrompt,
   collectUpstreamVideo,
+  collectUpstreamVideoRefs,
 } from './graph'
+import { applyMentions } from './mentions'
 import {
   IMAGE_SIZE_DEFAULT,
   IMAGE_SIZE_OPTIONS,
@@ -31,7 +35,7 @@ import {
   imageApiModel,
   videoApiModel,
 } from './nodeCatalog'
-import type { ImageNode, LlmNode, PodcastNode, Project, VideoNode } from './types'
+import type { ImageNode, LlmNode, PodcastNode, Project, PromptMentionRef, VideoNode } from './types'
 
 /** 每行一个 URL 的文本框 → 去空的 URL 列表。 */
 function linesToUrls(text: string | undefined): string[] {
@@ -68,12 +72,16 @@ export function buildImageRequest(project: Project, node: ImageNode): GenImageBo
   const id = node.id
   const d = node.data
   // 输入图 = 上游 image/素材（按图像端点编号）在前，手动填/传的在后
-  const images = [...collectUpstreamImages(project, id), ...linesToUrls(d.imagesText)]
+  const imageRefs = collectUpstreamImageRefs(project, id)
+  const images = [...imageRefs.map((r) => r.url), ...linesToUrls(d.imagesText)]
+  // 上游 Prompt 链里的 @ 引用 → <<<image_N>>> 占位符（N 按实发 images 列表算；列表本身不变）
+  const mentions: PromptMentionRef[] = []
+  const rawPrompt = collectUpstreamPrompt(project, id, { handle: 'user', mentionsOut: mentions })
   const base = {
     projectId: project.id,
     nodeId: id,
     model: imageApiModel(d.model),
-    prompt: collectUpstreamPrompt(project, id, { handle: 'user' }),
+    prompt: applyMentions(rawPrompt, mentions, imageRefs, { image: images, audio: [], video: [] }),
     images,
   }
   if (imageApiModel(d.model) === 'nano-banana') {
@@ -99,9 +107,12 @@ export function buildVideoRequest(project: Project, node: VideoNode): GenVideoBo
   const id = node.id
   const d = node.data
   const variant = d.videoVariant ?? (d.videoTask === 'reference' ? 'reference' : VIDEO_VARIANT_DEFAULT)
-  const combined = [...collectUpstreamImages(project, id), ...linesToUrls(d.imagesText)]
-  const audios = [...collectUpstreamAudio(project, id), ...linesToUrls(d.audiosText)]
-  const videos = collectUpstreamVideo(project, id)
+  const imageRefs = collectUpstreamImageRefs(project, id)
+  const audioRefs = collectUpstreamAudioRefs(project, id)
+  const videoRefs = collectUpstreamVideoRefs(project, id)
+  const combined = [...imageRefs.map((r) => r.url), ...linesToUrls(d.imagesText)]
+  const audios = [...audioRefs.map((r) => r.url), ...linesToUrls(d.audiosText)]
+  const videos = videoRefs.map((r) => r.url)
   // 变体 → 后端 mode + 有序输入图；两变体都在无图（只连 Prompt）时退化为文生视频。
   //   参考图有图 → reference_image + 全部图；首尾帧 → first_last_frame + 前 2 张（First/Last）。
   let mode: string
@@ -114,16 +125,26 @@ export function buildVideoRequest(project: Project, node: VideoNode): GenVideoBo
     images = variant === 'frames' ? combined.slice(0, 2) : []
   }
   const ratio = d.ratio ?? SEEDANCE_RATIO_DEFAULT
+  const sentVideos = variant === 'reference' && videos.length > 0 ? videos : undefined
+  // 上游 Prompt 链里的 @ 引用 → <<<image_N>>>/<<<audio_N>>>/<<<video_N>>> 占位符：
+  // N 按「最终实发」列表算（frames 变体 slice 掉的图、非 reference 变体不发的视频 → 引用悬空原样保留）
+  const mentions: PromptMentionRef[] = []
+  const rawPrompt = collectUpstreamPrompt(project, id, { handle: 'user', mentionsOut: mentions })
+  const prompt = applyMentions(rawPrompt, mentions, [...imageRefs, ...audioRefs, ...videoRefs], {
+    image: images,
+    audio: audios,
+    video: sentVideos ?? [],
+  })
   return {
     projectId: project.id,
     nodeId: id,
     model: videoApiModel(d.model),
     version: d.version ?? SEEDANCE_VERSION_DEFAULT,
     mode,
-    prompt: collectUpstreamPrompt(project, id, { handle: 'user' }),
+    prompt,
     images,
     audios,
-    videos: variant === 'reference' && videos.length > 0 ? videos : undefined,
+    videos: sentVideos,
     resolution: d.resolution ?? SEEDANCE_RESOLUTION_DEFAULT,
     // adaptive（自适应）=不约束宽高比、等价旧行为，故不传；仅选了固定比例时下发
     ratio: ratio === SEEDANCE_RATIO_DEFAULT ? undefined : ratio,

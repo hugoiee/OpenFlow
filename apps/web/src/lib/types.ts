@@ -4,10 +4,27 @@ import type { VideoTask, VideoVariant } from './nodeCatalog'
 /** 节点种类：文本 prompt / Any LLM / 图像生成 / 视频生成 / 播客音频 / 桌面拖入的媒体素材。 */
 export type FlowNodeType = 'prompt' | 'llm' | 'image' | 'video' | 'podcast' | 'asset'
 
+/** @ 引用的资源种类（与实发列表 image_list/audio_list/video_list 对应）。 */
+export type MentionKind = 'image' | 'audio' | 'video'
+
+/**
+ * Prompt 文本中一个 `@[显示名]` token 的身份映射：显示名是插入时的快照（源节点后续改名不影响解析），
+ * 身份 = 源节点 id + 资源种类 + 生成节点结果序号（素材节点无 resultIndex）。
+ * 构建请求时按身份在下游节点的上游资源里找到 URL，替换为 <<<kind_N>>> 占位符；找不到则 token 原样保留。
+ */
+export type PromptMentionRef = {
+  name: string
+  nodeId: string
+  kind: MentionKind
+  resultIndex?: number
+}
+
 /** 纯文字 prompt 节点的数据。 */
 export type PromptNodeData = {
   label: string
   text: string
+  /** 文本中 @ 引用的身份映射表（旧数据无此字段，兜底空）。 */
+  mentions?: PromptMentionRef[]
 }
 
 /**
