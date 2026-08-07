@@ -9,26 +9,19 @@ import { sanitizeMentionName, uniqueMentionName } from './mentions'
 import { VIDEO_VARIANT_DEFAULT } from './nodeCatalog'
 import { type FlowNode, type MentionKind, type Project, type PromptMentionRef } from './types'
 
-/**
- * Any LLM 节点的「System Prompt 输入端点」的 handle id。
- * LLM 节点有两个左侧输入：默认端点（无 id，收用户 Prompt）+ 此端点（收系统提示词）。
- * 历史连线的 targetHandle 为空 → 归入用户 Prompt（向后兼容）。
- */
-export const LLM_SYSTEM_HANDLE = 'system'
-
 /** 图像输入端点 handle id 前缀：第 i 个图像端点为 `image-${i}`（i 从 0 起，展示编号 i+1）。 */
 export const IMAGE_INPUT_HANDLE_PREFIX = 'image-'
 export function imageInputHandleId(index: number): string {
   return `${IMAGE_INPUT_HANDLE_PREFIX}${index}`
 }
 
-/** 音频输入端点 handle id 前缀：第 i 个音频端点为 `audio-${i}`（视频 / Any LLM 节点用）。 */
+/** 音频输入端点 handle id 前缀：第 i 个音频端点为 `audio-${i}`（旧数据用，现连线一律归并到 res）。 */
 export const AUDIO_INPUT_HANDLE_PREFIX = 'audio-'
 export function audioInputHandleId(index: number): string {
   return `${AUDIO_INPUT_HANDLE_PREFIX}${index}`
 }
 
-/** 视频输入端点 handle id 前缀：第 i 个视频端点为 `video-${i}`（Any LLM 节点用，接视频素材）。 */
+/** 视频输入端点 handle id 前缀：第 i 个视频端点为 `video-${i}`（旧数据用，现连线一律归并到 res）。 */
 export const VIDEO_INPUT_HANDLE_PREFIX = 'video-'
 export function videoInputHandleId(index: number): string {
   return `${VIDEO_INPUT_HANDLE_PREFIX}${index}`
@@ -37,7 +30,7 @@ export function videoInputHandleId(index: number): string {
 /**
  * 图像/视频生成节点的**统一资源输入端点** handle id：图/音/视素材与上游生成结果都连这一个口，
  * 具体用哪个资源由上游 Prompt 里的 @ 引用指定（无 @ 时全发）。旧编号端点（image-N/audio-N/video-N）
- * 连线在载入时经 normalizeResourceEdges 归并到此端点；LLM 节点仍用编号端点，视频首尾帧变体仍用
+ * 连线在载入时经 normalizeResourceEdges 归并到此端点；视频首尾帧变体仍用
  * image-0/image-1 作 First/Last 专用端点。
  */
 export const RES_INPUT_HANDLE = 'res'
@@ -66,8 +59,8 @@ function handleSlot(targetHandle: string | null | undefined, prefix: string): nu
   return -1
 }
 
-/** 收集时的端点过滤：不传=全部；'user'=默认 Prompt 端点（空 handle）；'system'=系统提示词端点。 */
-type PromptHandle = 'user' | 'system'
+/** 收集时的端点过滤：不传=全部（prompt 链）；'user'=只认默认 Prompt 端点（空 handle），排除 res 等资源端点。 */
+type PromptHandle = 'user'
 
 /** 边的 targetHandle 是否命中所选输入端点。 */
 function edgeMatchesHandle(
@@ -75,19 +68,17 @@ function edgeMatchesHandle(
   handle: PromptHandle | undefined,
 ): boolean {
   if (!handle) return true // 未指定：所有指向本节点的连线（video/prompt 链）
-  if (handle === 'system') return targetHandle === LLM_SYSTEM_HANDLE
-  return !targetHandle // 'user'：仅默认 Prompt 端点（空 handle）；排除 system 与 image-* 端点
+  return !targetHandle // 'user'：仅默认 Prompt 端点（空 handle）；排除 res 等资源端点
 }
 
 /**
  * 收集所有指向 nodeId 的上游文本，拼成生成指令。
- * 来源：上游 prompt 节点的文本 + 上游 Any LLM 节点的输出文本（其右侧输出端点接下游作 prompt）。
- * prompt 节点有左侧输入：会**递归**并入它自己的上游文本（上游在前、本节点文本在后），
- * 从而支持「Prompt → Prompt → 图像」这类链式拼接；LLM 节点的输出（result）为终点，不再回溯其上游
- * （其结果已是加工产物，避免与喂给它的 prompt 重复计算）。visited 做环路防护（同一节点只计一次）。
+ * 来源：上游 prompt 节点的文本。prompt 节点有左侧输入：会**递归**并入它自己的上游文本
+ * （上游在前、本节点文本在后），从而支持「Prompt → Prompt → 图像」这类链式拼接。
+ * visited 做环路防护（同一节点只计一次）。
  *
- * opts.handle：LLM 节点区分两个输入端点时传入（'user' 收用户 Prompt / 'system' 收系统提示词）；
- * 图像/视频/prompt 链不传，收全部上游。递归进上游 prompt 节点时不再过滤端点（prompt 只有单一输入）。
+ * opts.handle：图像/视频节点传 'user'，只认默认 Prompt 端点、排除资源端点 res；
+ * prompt 链递归时不传，收全部上游（prompt 只有单一输入）。
  */
 export function collectUpstreamPrompt(
   project: Project,
@@ -103,9 +94,8 @@ export function collectUpstreamPrompt(
       .map((e) => e.source),
   )
   return project.nodes
-    .filter((n) => (n.type === 'prompt' || n.type === 'llm') && sourceIds.has(n.id))
+    .filter((n) => n.type === 'prompt' && sourceIds.has(n.id))
     .map((n) => {
-      if (n.type === 'llm') return n.data.result ?? ''
       if (n.type === 'prompt') {
         // 沿途收集各 prompt 节点的 @ 引用映射（供下游 build 时替换占位符）
         opts.mentionsOut?.push(...(n.data.mentions ?? []))
@@ -176,11 +166,6 @@ export function collectUpstreamImageRefs(project: Project, nodeId: string): Upst
   return entries.map((e) => e.ref)
 }
 
-/** 同 collectUpstreamImageRefs，仅取 URL（原有调用方用）。 */
-export function collectUpstreamImages(project: Project, nodeId: string): string[] {
-  return collectUpstreamImageRefs(project, nodeId).map((r) => r.url)
-}
-
 /**
  * 收集所有指向 nodeId 的上游音频素材引用（作为视频节点的 audio_list）。
  * 按「音频输入端点编号」排序（audio-0、audio-1…），旧的空 handle 连线排最前（兼容）；
@@ -210,13 +195,8 @@ export function collectUpstreamAudioRefs(project: Project, nodeId: string): Upst
   return entries.map((e) => e.ref)
 }
 
-/** 同 collectUpstreamAudioRefs，仅取 URL（原有调用方用）。 */
-export function collectUpstreamAudio(project: Project, nodeId: string): string[] {
-  return collectUpstreamAudioRefs(project, nodeId).map((r) => r.url)
-}
-
 /**
- * 收集所有指向 nodeId 的上游视频引用（作为 Any LLM 节点的视频理解输入 / Seedance 参考视频）。
+ * 收集所有指向 nodeId 的上游视频引用（作为 Seedance 参考视频）。
  * 来源：上游 video 生成节点(Seedance)的结果视频 + 上游视频素材节点的 URL。
  * 按「视频输入端点编号」排序（video-0、video-1…），同端点内按连线顺序展平；URL 为空的来源不贡献。
  */
@@ -254,15 +234,10 @@ export function collectUpstreamVideoRefs(project: Project, nodeId: string): Upst
   return entries.map((e) => e.ref)
 }
 
-/** 同 collectUpstreamVideoRefs，仅取 URL（原有调用方用）。 */
-export function collectUpstreamVideo(project: Project, nodeId: string): string[] {
-  return collectUpstreamVideoRefs(project, nodeId).map((r) => r.url)
-}
-
 /**
  * 把旧「编号端点」（image-N/audio-N/video-N 及更早的空 handle）连线归并到统一资源端点 res：
  * 仅处理目标为图像/视频生成节点、源为资源节点（asset/image/video）的连线；
- * 视频首尾帧变体的 image-0/image-1（First/Last 专用端点）保留不动；LLM 节点连线不动。
+ * 视频首尾帧变体的 image-0/image-1（First/Last 专用端点）保留不动。
  * 归并时按同目标同资源类型的旧排序键（端点编号在前、连线顺序在后）重排该子组，
  * 保证归并后「按连线顺序采集」与旧「按端点编号采集」次序一致。无需归并时原样返回。
  */
@@ -285,7 +260,7 @@ export function normalizeResourceEdges(nodes: FlowNode[], edges: Edge[]): Edge[]
     if (src?.type === 'asset') kind = src.data.kind
     else if (src?.type === 'image') kind = 'image'
     else if (src?.type === 'video') kind = 'video'
-    else return // prompt/llm 等文本源：不是资源连线
+    else return // prompt 等文本源：不是资源连线
     if (e.targetHandle === RES_INPUT_HANDLE) return // 已是统一端点
     if (target.type === 'video' && kind === 'image') {
       const variant =
@@ -381,7 +356,7 @@ function mentionBaseName(ref: UpstreamRef): string {
  * 从 promptNodeId 出发沿下游收集可 @ 的资源候选：
  * 沿 source === 当前节点 的边找下游；下游是 prompt → 递归（prompt 链，visited 防环）；
  * 下游是 image 生成节点 → 并入其上游图像引用；下游是 video 生成节点 → 并入其图/音/视三类引用；
- * llm / podcast 等其他类型跳过（@ 仅对图像/视频生成请求生效）。
+ * podcast 等其他类型跳过（@ 仅对图像/视频生成请求生效）。
  * 多下游取并集（按身份键去重）；不含手填 imagesText/audiosText（无节点身份可引用）。
  */
 export function collectMentionCandidates(project: Project, promptNodeId: string): MentionCandidate[] {

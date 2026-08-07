@@ -5,7 +5,6 @@ import type { FlowNode } from './types'
 import {
   AUDIO_INPUT_HANDLE_PREFIX,
   IMAGE_INPUT_HANDLE_PREFIX,
-  LLM_SYSTEM_HANDLE,
   RES_INPUT_HANDLE,
   VIDEO_INPUT_HANDLE_PREFIX,
 } from './graph'
@@ -39,7 +38,7 @@ export type SourceKind = 'text' | 'image' | 'audio' | 'video' | 'other'
 
 export function sourceKind(node: FlowNode | undefined): SourceKind {
   if (!node) return 'other'
-  if (node.type === 'prompt' || node.type === 'llm') return 'text'
+  if (node.type === 'prompt') return 'text'
   if (node.type === 'image') return 'image'
   if (node.type === 'video') return 'video' // Seedance 视频生成节点的输出作视频源
   if (node.type === 'asset') {
@@ -64,8 +63,10 @@ export function targetAccepts(
   targetHandle: string | null | undefined,
 ): readonly SourceKind[] | null {
   if (targetHandle === RES_INPUT_HANDLE) {
-    // 统一资源端点：图像节点只吃图（音/视频对生图无意义）；视频节点图/音/视都收
-    return targetNode?.type === 'video' ? (['image', 'audio', 'video'] as const) : (['image'] as const)
+    // 统一资源端点：视频节点图/音/视都收；图像节点只吃图（音/视频对生图无意义）；
+    // 其余节点类型压根没有 res 端点 → 一律不收（批量连线按钮会拿 res 试连任意落点节点）
+    if (targetNode?.type === 'video') return ['image', 'audio', 'video'] as const
+    return targetNode?.type === 'image' ? (['image'] as const) : ([] as const)
   }
   if (typeof targetHandle === 'string' && targetHandle.startsWith(IMAGE_INPUT_HANDLE_PREFIX)) {
     return ['image'] // 图像输入端点只接图像
@@ -76,14 +77,10 @@ export function targetAccepts(
   if (typeof targetHandle === 'string' && targetHandle.startsWith(VIDEO_INPUT_HANDLE_PREFIX)) {
     return ['video'] // 视频输入端点只接视频
   }
-  if (targetHandle === LLM_SYSTEM_HANDLE) return ['text'] // System Prompt 只接文本
-  // 默认（空 handle）端点：Prompt/LLM/图像/视频 节点的默认口都是 Prompt（只接文本）
+  // 默认（空 handle）端点：Prompt/图像/视频 节点的默认口都是 Prompt（只接文本）
   if (
     targetNode &&
-    (targetNode.type === 'prompt' ||
-      targetNode.type === 'llm' ||
-      targetNode.type === 'image' ||
-      targetNode.type === 'video')
+    (targetNode.type === 'prompt' || targetNode.type === 'image' || targetNode.type === 'video')
   ) {
     return ['text']
   }

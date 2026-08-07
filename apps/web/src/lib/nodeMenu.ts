@@ -1,5 +1,5 @@
-import { Type, Image as ImageIcon, Banana, Sparkles, Clapperboard, Images, Podcast, type LucideIcon } from 'lucide-react'
-import { IMAGE_MODELS, LLM_MODEL_DEFAULT, VIDEO_MODELS, type VideoVariant } from '@/lib/nodeCatalog'
+import { Type, Image as ImageIcon, Banana, Clapperboard, Images, Podcast, type LucideIcon } from 'lucide-react'
+import { IMAGE_MODELS, VIDEO_MODELS, type VideoVariant } from '@/lib/nodeCatalog'
 import { type FlowNodeType } from '@/lib/types'
 
 // 可添加节点的清单项：类型 + 展示名 + 图标（+ 图像/视频类的预置模型 + 视频变体）。
@@ -19,13 +19,12 @@ const IMAGE_ICONS: Record<string, LucideIcon> = {
 }
 
 // 节点清单按输出形态分三类：文本 / 图像 / 视频。
-// 侧栏（拖拽建节点）与画布右键菜单（点选建节点）共用同一份，避免两处漂移。
+// 建节点只有两个入口——画布空白右键新建、端点拉线松开在空白处建节点+连线——共用同一份清单。
 export const NODE_GROUPS: { label: string; items: NodeMenuItem[] }[] = [
   {
     label: '文本',
     items: [
       { type: 'prompt', label: 'Prompt 节点', icon: Type },
-      { type: 'llm', label: 'Any LLM', icon: Sparkles, model: LLM_MODEL_DEFAULT },
     ],
   },
   {

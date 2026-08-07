@@ -27,7 +27,7 @@ export type SettingsDTO = {
   /** 画布 Agent 的 LLM 模型名（如 gpt-4o / doubao-xxx）；为空时回退 env AGENT_MODEL。 */
   agentModel: string
   /**
-   * 手动维护的模型名列表：作 Agent 模型名 / Any LLM 节点下拉的持久候选项，
+   * 手动维护的模型名列表：作 Agent 模型名下拉的持久候选项，
    * 与端点 GET /models 动态获取的结果取并集。供不支持 /models 的网关手填多个模型。
    */
   agentModelList: string[]
@@ -117,30 +117,6 @@ export type GenVideoBody = {
   duration: number
 }
 
-/** POST /api/llm 请求体（Any LLM 文本生成，经后端复用画布 Agent 的 endpoint/key 调 /chat/completions）。 */
-export type GenLlmBody = {
-  /** 归属项目 id（用于建任务、按节点重连）。 */
-  projectId: string
-  /** 发起生成的节点 id（用于建任务、按节点重连）。 */
-  nodeId: string
-  /** 模型名（作 chat/completions 的 model；取自节点下拉）。 */
-  model: string
-  /** 生成指令（= 连到「Prompt 输入」端点的上游文本按连线拼接）。 */
-  prompt: string
-  /** 系统提示词（= 连到「System Prompt 输入」端点的上游文本；为空则不下发 system 消息）。 */
-  systemPrompt?: string
-  /** 多模态输入图 URL（= 连到各「图像输入」端点的上游图；有则作 image_url 内容发给视觉模型）。 */
-  images?: string[]
-  /** 多模态输入音频 URL（= 连到各「音频输入」端点的上游音频素材；有则作 audio_url 内容发给模型）。 */
-  audios?: string[]
-  /** 多模态输入视频 URL（= 连到各「视频输入」端点的上游视频素材；有则作 video_url 内容发给模型）。 */
-  videos?: string[]
-  /** 采样温度 0–2。 */
-  temperature: number
-  /** 是否开启思考：为 true 时请求体带 reasoning_effort 等原生推理参数。 */
-  thinking: boolean
-}
-
 /** 播客的一个说话角色：脚本里的角色名 + 火山音色库的音色 ID（voice_type/speaker）。 */
 export type PodcastRole = {
   /** 脚本行首的角色名（如 主持人 / 嘉宾），用于按「角色名: 台词」匹配行。 */
@@ -202,7 +178,7 @@ export type GenPodcastBody = {
 }
 
 /** 异步生成任务的种类 / 状态。 */
-export type TaskKind = 'image' | 'video' | 'llm' | 'podcast'
+export type TaskKind = 'image' | 'video' | 'podcast'
 export type TaskStatus = 'pending' | 'running' | 'succeeded' | 'failed'
 
 /** 任务 DTO：前端轮询用；不含请求体 params（内部持久化，不外泄）。 */
@@ -212,7 +188,7 @@ export type TaskDTO = {
   nodeId: string
   kind: TaskKind
   status: TaskStatus
-  /** 成功前为空。image/video 为结果 URL 列表；llm 为 [回答文本] 或 [回答文本, 思考文本]；podcast 为 [音频 URL, 计费字数(usage.text_words 合计)]。 */
+  /** 成功前为空。image/video 为结果 URL 列表；podcast 为 [音频 URL, 计费字数(usage.text_words 合计)]。 */
   result: string[]
   /** 失败时的可读错误信息。 */
   error?: string
