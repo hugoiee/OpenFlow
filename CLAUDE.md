@@ -157,6 +157,8 @@ apps/web/src/
 apps/desktop/
   src/main.ts                  Electron 主进程：dataDir=userData → startServer(内嵌后端)；生产固定端口 42617（保证 localStorage origin 稳定，主题/homeView 偏好可跨启动保留；被占用才回退随机端口）+ 托管 SPA 后 loadURL(localhost)，开发连 VITE_DEV_SERVER_URL(5173)；窗口 backgroundColor 跟随 nativeTheme 明暗（防暗色用户启动白闪）；含 OPENFLOW_SELFTEST 无界面自检分支
   src/preload.ts               预加载：contextIsolation，仅暴露 window.openflow.desktop 标记（渲染进程只用 fetch 访问本地 /api）
+  src/external-links.ts        外链归属判定 classifyLink(url, appOrigin) → internal/external/ignore：主进程据此把站外 http(s) 交给 shell.openExternal（**新版本提醒、结果图/视频等 target="_blank" 一律走系统默认浏览器**，Electron 默认会开成没有地址栏的新 BrowserWindow）；非 http(s) 一律丢弃（不让页面内容驱动系统去开本地文件/自定义协议）；接线在 main.ts 的 web-contents-created（setWindowOpenHandler + will-navigate 双拦）
+  src/external-links.test.ts   上述判定的 node:test 单测（`pnpm --filter @openflow/desktop test`，走 node --experimental-strip-types 直接跑 TS，不引测试依赖）
   scripts/build.mjs            esbuild 把 main/preload + @openflow/server 打成 CJS(dist-electron/*.cjs，better-sqlite3/electron 外部化) + 拷 apps/web/dist → dist-electron/web
   scripts/sqlite-abi.mjs       在 Node/Electron ABI 间切 better-sqlite3（node=prebuild-install / electron=electron-rebuild / win=prebuild-install 拉 win32-x64+Electron ABI 预编译产物，供 mac 交叉打包 win）
   electron-builder.yml         打包配置：asar + better-sqlite3 解包(asarUnpack)；mac dmg/zip(arm64+x64,identity:null 未签名)、win nsis(x64 未签名)；`toolsets`(nsis 1.2.1 / winCodeSign 1.1.0) 指定含 arm64 原生二进制的 win 工具链——见「桌面端打包」的 Apple Silicon 说明
