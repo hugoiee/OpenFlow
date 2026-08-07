@@ -1,17 +1,13 @@
-import { Link } from 'react-router-dom'
 import { APP_NAME, APP_VERSION } from '@/lib/appMeta'
 
-// 品牌标记：四节点连线 mark（内联 SVG）+ 应用名 + 版本号。点击回首页。
+// 品牌标记：四节点连线 mark（内联 SVG）+ 应用名 + 版本号。**纯展示不可点**——
+// 回首页由顶栏里独立的「首页」按钮负责，logo 不再兼作导航入口。
 // 现由工作区顶栏（WorkspaceHeader）使用（工作区已无侧栏）。
 // 「深色」节点用 currentColor（= text-foreground），随主题明暗自适应；
 // 蓝色固定。与 public/favicon.svg 同一图形（favicon 靠 prefers-color-scheme 自适应）。
 export function AppLogo({ className }: { className?: string }) {
   return (
-    <Link
-      to="/"
-      title="返回首页"
-      className={`flex items-center gap-2 transition-opacity hover:opacity-70 ${className ?? ''}`}
-    >
+    <div className={`flex select-none items-center gap-2 ${className ?? ''}`}>
       <svg
         viewBox="0 0 256 256"
         fill="none"
@@ -39,6 +35,6 @@ export function AppLogo({ className }: { className?: string }) {
         <span className="text-sm font-semibold text-foreground">{APP_NAME}</span>
         <span className="text-[10px] font-medium text-muted-foreground">v{APP_VERSION}</span>
       </div>
-    </Link>
+    </div>
   )
 }

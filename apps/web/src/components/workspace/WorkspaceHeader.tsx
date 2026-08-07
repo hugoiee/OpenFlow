@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronRight, Download, Library, LogOut, Settings } from 'lucide-react'
+import { ChevronRight, Download, Home, Library, LogOut, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { SettingsDialog } from '@/components/settings/SettingsDialog'
@@ -13,7 +13,7 @@ import { useSettingsStore } from '@/store/useSettingsStore'
 
 /**
  * 工作区顶栏：贴合规划布局。
- * 左：品牌 logo（含版本号，点击回首页）+ 新版本提醒 + 可点击改名的项目名；
+ * 左：品牌 logo（含版本号，纯展示）+ 新版本提醒 + 首页按钮 + 可点击改名的项目名；
  * 右：账号（邮箱前缀 + 退出）· 预设 · 主题 · 设置。
  * 工作区已无侧栏，logo / 版本 / 更新提醒都落在本栏（新建节点走画布右键菜单）。
  */
@@ -53,8 +53,8 @@ export function WorkspaceHeader({ projectId }: { projectId: string }) {
 
   return (
     <header className="flex h-14 shrink-0 items-center gap-2 border-b bg-background px-2">
-      {/* 品牌 logo + 版本号（点击回首页）——原在侧栏头部，侧栏移除后落到顶栏 */}
-      <AppLogo className="shrink-0 pl-1 pr-1" />
+      {/* 品牌 logo + 版本号（纯展示不可点）——原在侧栏头部，侧栏移除后落到顶栏 */}
+      <AppLogo className="shrink-0 px-1" />
 
       {/* 新版本提醒：紧跟版本号，只在查到更高版本时出现，点击去 Release 页下载 */}
       {update.hasUpdate && (
@@ -69,6 +69,16 @@ export function WorkspaceHeader({ projectId }: { projectId: string }) {
         </a>
       )}
 
+      {/* 层级面包屑：首页（回首页的唯一入口）> 项目名称 */}
+      <button
+        type="button"
+        onClick={() => navigate('/')}
+        title="返回首页"
+        className="ml-1 flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+      >
+        <Home className="size-4" />
+        首页
+      </button>
       <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />
 
       {editing ? (
