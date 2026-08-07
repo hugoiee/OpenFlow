@@ -56,11 +56,15 @@ jobs:
       is_release: ${{ steps.v.outputs.is_release }}
       prerelease: ${{ steps.v.outputs.prerelease }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
+          # setup-node v5 起会读根 package.json 的 packageManager 字段自动开缓存
+          # （v6 起虽已收窄到只对 npm 生效，我们是 pnpm 不会命中）。这一步刻意不装依赖，
+          # 显式关掉免得将来默认再变、在没有 pnpm 的环境里去恢复缓存。
+          package-manager-cache: false
       # 刻意不装依赖：check-version.mjs 只用 node 内置模块，保持这一步够快
 
       - name: 解析版本 & 校验三处一致
@@ -126,21 +130,21 @@ jobs:
             artifact: openflow-win
             timeout: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # 不传 version：action 会读根 package.json 的 packageManager 字段。
       # 必须是 pnpm 10.x —— pnpm-workspace.yaml 的 allowBuilds 是 pnpm 10 字段，
       # pnpm 9 会静默忽略，导致 electron / better-sqlite3 的 postinstall 不执行。
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           # 22.x：better-sqlite3 11.x 有对应 ABI 的预编译产物，不必从源码编译
           node-version-file: .nvmrc
           cache: pnpm
 
       - name: 恢复 electron / toolset / prebuild 下载缓存
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             .cache/electron-builder
@@ -224,7 +228,9 @@ jobs:
           "./$EXE"
           echo "selftest 退出码 0 ✓"
 
-      - uses: actions/upload-artifact@v4
+      # ⚠️ upload-artifact 与下面 release job 的 download-artifact 要同轮升级：
+      # 二者跨大版本换过 artifact 服务端协议，一边新一边旧会取不到产物。
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
           path: |
@@ -248,9 +254,9 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true # 把 openflow-mac / openflow-win 摊平到 dist/ 一层
