@@ -1,6 +1,7 @@
 import path from 'node:path'
-import { app, BrowserWindow, dialog, nativeTheme } from 'electron'
+import { app, BrowserWindow, dialog, nativeTheme, shell } from 'electron'
 import { startServer, type RunningServer } from '@openflow/server/server'
+import { classifyLink } from './external-links'
 
 // —— GPU 硬件加速 ——
 // Windows 上 Electron 内置的 Chromium 常把本可用的 GPU 误列入黑名单、退回软件合成，
@@ -69,6 +70,35 @@ function createWindow() {
     mainWindow = null
   })
 }
+
+/** 应用自身页面的 origin：生产 = 内嵌服务的 localhost:端口（端口被占时会回退随机口，故运行时现取）。 */
+function currentAppOrigin(): string | null {
+  const base = DEV_URL ?? (server ? `http://localhost:${server.port}/` : null)
+  if (!base) return null
+  try {
+    return new URL(base).origin
+  } catch {
+    return null
+  }
+}
+
+// —— 外链一律交给系统默认浏览器 ——
+// Electron 默认把 target="_blank" / window.open 开成新的 BrowserWindow：没有地址栏、
+// 没有前进后退、也没有用户在系统浏览器里的登录态，用来看 GitHub Release 下载页很难用。
+// 挂在 app 上而不是单个窗口上，将来新开的窗口/webview 自动同样受管。
+app.on('web-contents-created', (_event, contents) => {
+  contents.setWindowOpenHandler(({ url }) => {
+    if (classifyLink(url, currentAppOrigin()) === 'external') void shell.openExternal(url)
+    // 应用内部并不使用弹窗，故 internal/ignore 也一并 deny——绝不产出第二个 Electron 窗口
+    return { action: 'deny' }
+  })
+  // 没写 target 的外链会让当前窗口整个导航走（应用直接「变成」网页且回不来）
+  contents.on('will-navigate', (event, url) => {
+    if (classifyLink(url, currentAppOrigin()) !== 'external') return
+    event.preventDefault()
+    void shell.openExternal(url)
+  })
+})
 
 /** 无界面自检：验证 Electron 运行时下 better-sqlite3(原生模块) + 内嵌服务 + DB 读写全通。 */
 async function runSelfTest() {
