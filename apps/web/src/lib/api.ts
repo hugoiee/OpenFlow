@@ -54,7 +54,7 @@ export function createProjectApi(name?: string): Promise<ProjectDTO> {
 
 export function updateProjectApi(
   id: string,
-  patch: Partial<Pick<ProjectDTO, 'name' | 'nodes' | 'edges'>>,
+  patch: Partial<Pick<ProjectDTO, 'name' | 'nodes' | 'edges' | 'pinned'>>,
 ): Promise<ProjectDTO> {
   return request<ProjectDTO>(`/projects/${id}`, {
     method: 'PUT',

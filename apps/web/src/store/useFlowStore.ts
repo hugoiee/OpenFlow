@@ -66,6 +66,8 @@ type FlowState = {
   // 项目管理
   addProject: (name?: string) => Promise<string>
   renameProject: (id: string, name: string) => void
+  /** 置顶 / 取消置顶：首页把置顶项目单独成区排在最前（状态持久化到后端）。 */
+  setProjectPinned: (id: string, pinned: boolean) => void
   deleteProject: (id: string) => void
   setActiveProject: (id: string) => void
   setHomeView: (view: HomeView) => void
@@ -308,6 +310,7 @@ export const useFlowStore = create<FlowState>()((set, get) => {
           nodes,
           // 旧编号端点连线归并到统一资源端点 res（首尾帧 First/Last 保留；保持旧采集次序）
           edges: normalizeResourceEdges(nodes, d.edges as Edge[]),
+          pinned: d.pinned ?? false,
         }
       })
       set({ projects, loaded: true })
@@ -320,6 +323,7 @@ export const useFlowStore = create<FlowState>()((set, get) => {
         name: dto.name,
         nodes: dto.nodes as FlowNode[],
         edges: dto.edges as Edge[],
+        pinned: dto.pinned ?? false,
       }
       set((state) => ({
         projects: [project, ...state.projects],
@@ -336,6 +340,15 @@ export const useFlowStore = create<FlowState>()((set, get) => {
       }))
       updateProjectApi(id, { name: trimmed }).catch((e) =>
         console.error('[openflow] 重命名失败', e),
+      )
+    },
+
+    setProjectPinned: (id, pinned) => {
+      set((state) => ({
+        projects: state.projects.map((p) => (p.id === id ? { ...p, pinned } : p)),
+      }))
+      updateProjectApi(id, { pinned }).catch((e) =>
+        console.error('[openflow] 置顶失败', e),
       )
     },
 
