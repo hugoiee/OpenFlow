@@ -1,22 +1,26 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronRight, Home, Library, LogOut, Settings } from 'lucide-react'
+import { ChevronRight, Download, Library, LogOut, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { SidebarTrigger } from '@/components/ui/sidebar'
 import { SettingsDialog } from '@/components/settings/SettingsDialog'
 import { PromptPresetsDialog } from '@/components/presets/PromptPresetsDialog'
 import { ThemeToggle } from '@/components/theme/ThemeToggle'
+import { AppLogo } from '@/components/workspace/AppLogo'
+import { useUpdateCheck } from '@/hooks/useUpdateCheck'
 import { useFlowStore } from '@/store/useFlowStore'
 import { useSettingsStore } from '@/store/useSettingsStore'
 
 /**
  * 工作区顶栏：贴合规划布局。
- * 左：侧栏开合 + 可点击改名的项目名；右：账号（邮箱前缀 + 退出）· 预设 · 主题 · 设置。
- * 品牌 logo 在侧栏头部（AppLogo），与本栏同高连成一条顶部横带。
+ * 左：品牌 logo（含版本号，点击回首页）+ 新版本提醒 + 可点击改名的项目名；
+ * 右：账号（邮箱前缀 + 退出）· 预设 · 主题 · 设置。
+ * 工作区已无侧栏，logo / 版本 / 更新提醒都落在本栏（新建节点走画布右键菜单）。
  */
 export function WorkspaceHeader({ projectId }: { projectId: string }) {
   const navigate = useNavigate()
+  // 有新版本才提示（仅桌面端，Web 版 supported=false 不发请求也不渲染）
+  const update = useUpdateCheck()
   const projectName = useFlowStore(
     (s) => s.projects.find((p) => p.id === projectId)?.name ?? '',
   )
@@ -49,18 +53,22 @@ export function WorkspaceHeader({ projectId }: { projectId: string }) {
 
   return (
     <header className="flex h-14 shrink-0 items-center gap-2 border-b bg-background px-2">
-      <SidebarTrigger className="size-9 shrink-0" />
+      {/* 品牌 logo + 版本号（点击回首页）——原在侧栏头部，侧栏移除后落到顶栏 */}
+      <AppLogo className="shrink-0 pl-1 pr-1" />
 
-      {/* 层级面包屑：首页（可点返回）> 项目名称 */}
-      <button
-        type="button"
-        onClick={() => navigate('/')}
-        title="返回首页"
-        className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-      >
-        <Home className="size-4" />
-        首页
-      </button>
+      {/* 新版本提醒：紧跟版本号，只在查到更高版本时出现，点击去 Release 页下载 */}
+      {update.hasUpdate && (
+        <a
+          href={update.url}
+          target="_blank"
+          rel="noreferrer"
+          title={`有新版本 v${update.latest}，点击去下载`}
+          className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[11px] font-medium text-primary-foreground transition-opacity hover:opacity-90"
+        >
+          <Download className="size-3" />新版本 v{update.latest}
+        </a>
+      )}
+
       <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />
 
       {editing ? (
