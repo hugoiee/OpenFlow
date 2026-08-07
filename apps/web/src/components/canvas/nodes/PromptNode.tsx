@@ -18,7 +18,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useCompositionFieldControls } from '@/hooks/useCompositionField'
 import { useMentionMenu } from '@/hooks/useMentionMenu'
 import { pruneMentions } from '@/lib/mentions'
-import { MentionMenu } from './MentionMenu'
+import { MentionHighlights, MentionMenu } from './MentionMenu'
 import { NodeHeader } from './NodeHeader'
 import { NodeHandle } from './NodeHandle'
 import { useFlowStore } from '@/store/useFlowStore'
@@ -46,6 +46,8 @@ const DEFAULT_HEIGHT = 200
 export function PromptNode({ id, data, selected, width, height }: NodeProps<PromptNodeType>) {
   const updateNodeData = useFlowStore((s) => s.updateNodeData)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+  // @ tag 高亮层（渲染在 Textarea 正后方，与其字体/内边距逐像素对齐，滚动时同步）
+  const overlayRef = useRef<HTMLDivElement | null>(null)
   const {
     field: textField,
     setValue: setText,
@@ -153,8 +155,17 @@ export function PromptNode({ id, data, selected, width, height }: NodeProps<Prom
       <NodeHeader id={id} icon={Type} title={data.label} selected={selected} />
       {/* flex-1 + min-h-0：内容区吃掉除页头/工具条外的剩余高度，输入框随之填满 */}
       <CardContent className="flex min-h-0 flex-1 flex-col gap-2 px-3">
-        {/* relative 容器：@ 引用菜单锚在 Textarea 正下方 */}
+        {/* relative 容器：@ 引用菜单锚在 Textarea 正下方；@ tag 高亮层垫在 Textarea 后面 */}
         <div className="relative flex min-h-0 flex-1 flex-col">
+          {/* 高亮层：与 Textarea 同字体/内边距/换行，整体文字透明、只给 token 画底色药丸；
+              暗色模式的输入框底色也移到这层（Textarea 本身转透明，露出药丸） */}
+          <div
+            ref={overlayRef}
+            aria-hidden
+            className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words rounded-lg border border-transparent px-2.5 py-2 text-sm text-transparent dark:bg-input/30"
+          >
+            <MentionHighlights text={textField.value} mentions={data.mentions} />
+          </div>
           <Textarea
             {...textField}
             ref={textareaRef}
@@ -162,8 +173,12 @@ export function PromptNode({ id, data, selected, width, height }: NodeProps<Prom
             onBlur={handleTextBlur}
             onKeyDown={mention.onKeyDown}
             onClick={mention.close}
+            onScroll={(e) => {
+              // 高亮层滚动跟随（内容一致故 scrollHeight 相同）
+              if (overlayRef.current) overlayRef.current.scrollTop = e.currentTarget.scrollTop
+            }}
             placeholder="在这里写 prompt…（输入 @ 可引用下游节点的连线资源）"
-            className="nodrag field-sizing-fixed min-h-0 w-full flex-1 resize-none text-sm"
+            className="nodrag field-sizing-fixed relative min-h-0 w-full flex-1 resize-none bg-transparent text-sm dark:bg-transparent"
           />
           {mention.open && (
             <MentionMenu

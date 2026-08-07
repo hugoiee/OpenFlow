@@ -1,6 +1,7 @@
 import { Image as ImageIcon, Music4, Video } from 'lucide-react'
 import type { MentionCandidate } from '@/lib/graph'
-import type { MentionKind } from '@/lib/types'
+import { HANDLE_COLORS } from '@/lib/handleTypes'
+import type { MentionKind, PromptMentionRef } from '@/lib/types'
 
 const KIND_ICON: Record<MentionKind, typeof ImageIcon> = {
   image: ImageIcon,
@@ -9,6 +10,49 @@ const KIND_ICON: Record<MentionKind, typeof ImageIcon> = {
 }
 
 const KIND_LABEL: Record<MentionKind, string> = { image: '图像', audio: '音频', video: '视频' }
+
+/** @ tag 底色（按资源类型取端点配色，'59' 后缀 ≈ 35% 透明度）。 */
+const KIND_TAG_BG: Record<MentionKind, string> = {
+  image: `${HANDLE_COLORS.image}59`,
+  audio: `${HANDLE_COLORS.audio}59`,
+  video: `${HANDLE_COLORS.video}59`,
+}
+
+/** 切片用：外层捕获组保住 token 本身、内部不再捕获（split 会把所有捕获组塞进结果）。 */
+const TOKEN_SPLIT_RE = /(@\[[^\]\n]+\])/g
+/** 单个 token 的整体匹配（切片再验证 + 提取显示名）。 */
+const TOKEN_EXACT_RE = /^@\[([^\]\n]+)\]$/
+
+/**
+ * Prompt 文本的 @ tag 高亮层内容：把文本按 token 切片，命中 mentions 映射的 token
+ * 渲染成带底色的圆角片段（文字透明——真实文字由上层 Textarea 绘制，这里只画「底色药丸」）。
+ * 未命中映射的 @[...]（手打/悬空到映射被清理）不上色。
+ */
+export function MentionHighlights({
+  text,
+  mentions,
+}: {
+  text: string
+  mentions?: PromptMentionRef[]
+}) {
+  const kindByName = new Map((mentions ?? []).map((m) => [m.name, m.kind]))
+  const parts = text.split(TOKEN_SPLIT_RE)
+  return (
+    <>
+      {parts.map((part, i) => {
+        const m = TOKEN_EXACT_RE.exec(part)
+        const kind = m ? kindByName.get(m[1]) : undefined
+        if (!kind) return <span key={i}>{part}</span>
+        return (
+          <span key={i} className="rounded-[4px]" style={{ backgroundColor: KIND_TAG_BG[kind] }}>
+            {part}
+          </span>
+        )
+      })}
+      {'\n'}
+    </>
+  )
+}
 
 /**
  * @ 引用候选菜单（自绘绝对定位浮层，锚在 Textarea 正下方；逻辑见 hooks/useMentionMenu）。

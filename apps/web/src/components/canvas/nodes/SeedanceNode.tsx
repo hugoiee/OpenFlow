@@ -7,10 +7,9 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { DownloadDialog, type DownloadTarget } from '@/components/canvas/DownloadDialog'
 import { NodeHeader } from './NodeHeader'
 import { NodeHandle } from './NodeHandle'
-import { AddInputControls, AudioInputHandles, ImageInputHandles, VideoInputHandles } from './ImageInputHandles'
 import { createVideoTaskApi } from '@/lib/api'
 import { pollTask } from '@/lib/taskPolling'
-import { audioInputCount, imageInputCount, imageInputHandleId, videoInputCount } from '@/lib/graph'
+import { RES_INPUT_HANDLE, imageInputHandleId } from '@/lib/graph'
 import { VIDEO_VARIANT_DEFAULT } from '@/lib/nodeCatalog'
 import { buildVideoRequest } from '@/lib/requestBody'
 import { type VideoNode as VideoNodeType } from '@/lib/types'
@@ -38,20 +37,14 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
   // 变体：frames（首尾帧）/ reference（参考图）。旧数据按 legacy videoTask 推断。
   const variant = data.videoVariant ?? (data.videoTask === 'reference' ? 'reference' : VIDEO_VARIANT_DEFAULT)
   const isReference = variant === 'reference'
-  const imageInputs = imageInputCount(data.imageInputs)
-  const audioInputs = audioInputCount(data.audioInputs)
-  // 参考视频输入端点：仅参考图变体可用（首尾帧变体不支持参考视频），默认 0
-  const videoInputs = isReference ? videoInputCount(data.videoInputs) : 0
-  // 左侧端点竖向排位：Prompt(0) → 图像端点 → 音频端点 → 视频端点。frames 固定 2 张图，reference 为 imageInputs
-  const imageSlots = isReference ? imageInputs : 2
-  const audioBaseIndex = 1 + imageSlots
-  const videoBaseIndex = audioBaseIndex + audioInputs
+  // 左侧端点竖向排位：Prompt(0) → （frames 时 First/Last 两个专用图像端点）→ 统一资源端点
+  const resIndex = isReference ? 1 : 3
 
-  // 「Add Input」/ 切换变体 动态增减端点后，通知 React Flow 重新测量本节点 handle，否则新增端点无法连线
+  // 切换变体动态增减端点后，通知 React Flow 重新测量本节点 handle，否则新出现的端点无法连线
   const updateNodeInternals = useUpdateNodeInternals()
   useEffect(() => {
     updateNodeInternals(id)
-  }, [id, imageSlots, audioInputs, videoInputs, updateNodeInternals])
+  }, [id, variant, updateNodeInternals])
 
   const fail = (message: string) => {
     updateNodeData(id, { running: false, error: message, taskId: undefined })
@@ -123,18 +116,24 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
         selected ? 'ring-2 ring-primary' : ''
       }`}
     >
-      {/* 左侧输入端点：Prompt（必填，粉实心）+ 图像端点（绿）+ 音频端点（蓝）+ 视频端点（玫红，仅参考图变体） */}
+      {/* 左侧输入端点：Prompt（必填，粉实心）+（首尾帧变体：First/Last 专用图像端点）+
+          统一资源端点（接图/音/视任意源；用哪个由上游 Prompt 里 @ 引用指定，没 @ 则全发；
+          首尾帧变体下资源端点收音频等，图序仍由 First/Last 决定） */}
       <NodeHandle type="target" index={0} tone="prompt" label="Prompt" required title="Prompt 输入（必填）" />
-      {isReference ? (
-        <ImageInputHandles count={imageInputs} baseIndex={1} />
-      ) : (
+      {!isReference && (
         <>
           <NodeHandle type="target" id={imageInputHandleId(0)} index={1} tone="image" label="First Frame" title="首帧" />
           <NodeHandle type="target" id={imageInputHandleId(1)} index={2} tone="image" label="Last Frame" title="尾帧" />
         </>
       )}
-      <AudioInputHandles count={audioInputs} baseIndex={audioBaseIndex} />
-      {isReference && <VideoInputHandles count={videoInputs} baseIndex={videoBaseIndex} />}
+      <NodeHandle
+        type="target"
+        id={RES_INPUT_HANDLE}
+        index={resIndex}
+        tone="video"
+        label="Assets"
+        title="资源输入（图/音/视都可连多份，Prompt 里 @ 指定用哪个）"
+      />
       <NodeHeader
         id={id}
         icon={Video}
@@ -177,14 +176,7 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
           )}
         </div>
 
-        {/* Add Input（图标按钮：参考图=图+音+视频，首尾帧=仅音）+ 生成 并排 */}
-        <div className="flex flex-wrap items-center gap-2">
-          <AddInputControls
-            id={id}
-            image={isReference ? imageInputs : undefined}
-            audio={audioInputs}
-            video={isReference ? videoInputs : undefined}
-          />
+        <div className="flex items-center gap-2">
           <Button size="sm" onClick={handleRun} disabled={running} className="nodrag ml-auto h-8">
             {running ? '生成中…' : '生成'}
           </Button>

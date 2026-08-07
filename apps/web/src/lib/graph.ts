@@ -4,8 +4,10 @@
 //   - 上游 image 节点 / 图像素材节点 → 结果图（作为下游的输入图）
 //   - 上游 音频素材节点 → 音频 URL（作为视频节点的 audio_list）
 
+import type { Edge } from '@xyflow/react'
 import { sanitizeMentionName, uniqueMentionName } from './mentions'
-import { type MentionKind, type Project, type PromptMentionRef } from './types'
+import { VIDEO_VARIANT_DEFAULT } from './nodeCatalog'
+import { type FlowNode, type MentionKind, type Project, type PromptMentionRef } from './types'
 
 /**
  * Any LLM 节点的「System Prompt 输入端点」的 handle id。
@@ -31,6 +33,14 @@ export const VIDEO_INPUT_HANDLE_PREFIX = 'video-'
 export function videoInputHandleId(index: number): string {
   return `${VIDEO_INPUT_HANDLE_PREFIX}${index}`
 }
+
+/**
+ * 图像/视频生成节点的**统一资源输入端点** handle id：图/音/视素材与上游生成结果都连这一个口，
+ * 具体用哪个资源由上游 Prompt 里的 @ 引用指定（无 @ 时全发）。旧编号端点（image-N/audio-N/video-N）
+ * 连线在载入时经 normalizeResourceEdges 归并到此端点；LLM 节点仍用编号端点，视频首尾帧变体仍用
+ * image-0/image-1 作 First/Last 专用端点。
+ */
+export const RES_INPUT_HANDLE = 'res'
 
 /** 节点图像输入端点数量（含旧数据兜底）：至少 1。 */
 export function imageInputCount(imageInputs: number | undefined): number {
@@ -121,6 +131,8 @@ export type UpstreamRef = {
   resultIndex?: number
   label: string
   fileName?: string
+  /** 连线的原始 targetHandle（视频首尾帧变体据此区分 First/Last 专用端点与统一资源端点）。 */
+  handle?: string | null
 }
 
 /**
@@ -141,7 +153,7 @@ export function collectUpstreamImageRefs(project: Project, nodeId: string): Upst
         entries.push({
           slot,
           order,
-          ref: { url, nodeId: src.id, kind: 'image', resultIndex: i, label: src.data.label },
+          ref: { url, nodeId: src.id, kind: 'image', resultIndex: i, label: src.data.label, handle: e.targetHandle },
         })
       })
     } else if (src?.type === 'asset' && src.data.kind === 'image' && src.data.url) {
@@ -154,6 +166,7 @@ export function collectUpstreamImageRefs(project: Project, nodeId: string): Upst
           kind: 'image',
           label: src.data.label,
           fileName: src.data.fileName,
+          handle: e.targetHandle,
         },
       })
     }
@@ -188,6 +201,7 @@ export function collectUpstreamAudioRefs(project: Project, nodeId: string): Upst
           kind: 'audio',
           label: src.data.label,
           fileName: src.data.fileName,
+          handle: e.targetHandle,
         },
       })
     }
@@ -218,7 +232,7 @@ export function collectUpstreamVideoRefs(project: Project, nodeId: string): Upst
         entries.push({
           slot,
           order,
-          ref: { url, nodeId: src.id, kind: 'video', resultIndex: i, label: src.data.label },
+          ref: { url, nodeId: src.id, kind: 'video', resultIndex: i, label: src.data.label, handle: e.targetHandle },
         })
       })
     } else if (src?.type === 'asset' && src.data.kind === 'video' && src.data.url) {
@@ -231,6 +245,7 @@ export function collectUpstreamVideoRefs(project: Project, nodeId: string): Upst
           kind: 'video',
           label: src.data.label,
           fileName: src.data.fileName,
+          handle: e.targetHandle,
         },
       })
     }
@@ -242,6 +257,63 @@ export function collectUpstreamVideoRefs(project: Project, nodeId: string): Upst
 /** 同 collectUpstreamVideoRefs，仅取 URL（原有调用方用）。 */
 export function collectUpstreamVideo(project: Project, nodeId: string): string[] {
   return collectUpstreamVideoRefs(project, nodeId).map((r) => r.url)
+}
+
+/**
+ * 把旧「编号端点」（image-N/audio-N/video-N 及更早的空 handle）连线归并到统一资源端点 res：
+ * 仅处理目标为图像/视频生成节点、源为资源节点（asset/image/video）的连线；
+ * 视频首尾帧变体的 image-0/image-1（First/Last 专用端点）保留不动；LLM 节点连线不动。
+ * 归并时按同目标同资源类型的旧排序键（端点编号在前、连线顺序在后）重排该子组，
+ * 保证归并后「按连线顺序采集」与旧「按端点编号采集」次序一致。无需归并时原样返回。
+ */
+export function normalizeResourceEdges(nodes: FlowNode[], edges: Edge[]): Edge[] {
+  const byId = new Map(nodes.map((n) => [n.id, n]))
+  const kindPrefix: Record<MentionKind, string> = {
+    image: IMAGE_INPUT_HANDLE_PREFIX,
+    audio: AUDIO_INPUT_HANDLE_PREFIX,
+    video: VIDEO_INPUT_HANDLE_PREFIX,
+  }
+  const next = edges.slice()
+  let changed = false
+  // 按「目标节点 × 资源类型」分组待归并连线的下标（保持出现顺序）
+  const groups = new Map<string, { kind: MentionKind; indices: number[] }>()
+  next.forEach((e, i) => {
+    const target = byId.get(e.target)
+    if (target?.type !== 'image' && target?.type !== 'video') return
+    const src = byId.get(e.source)
+    let kind: MentionKind
+    if (src?.type === 'asset') kind = src.data.kind
+    else if (src?.type === 'image') kind = 'image'
+    else if (src?.type === 'video') kind = 'video'
+    else return // prompt/llm 等文本源：不是资源连线
+    if (e.targetHandle === RES_INPUT_HANDLE) return // 已是统一端点
+    if (target.type === 'video' && kind === 'image') {
+      const variant =
+        target.data.videoVariant ?? (target.data.videoTask === 'reference' ? 'reference' : VIDEO_VARIANT_DEFAULT)
+      if (
+        variant !== 'reference' &&
+        (e.targetHandle === imageInputHandleId(0) || e.targetHandle === imageInputHandleId(1))
+      ) {
+        return // 首尾帧变体的 First/Last 专用端点保留
+      }
+    }
+    const key = `${e.target}#${kind}`
+    const group = groups.get(key)
+    if (group) group.indices.push(i)
+    else groups.set(key, { kind, indices: [i] })
+  })
+  for (const { kind, indices } of groups.values()) {
+    const prefix = kindPrefix[kind]
+    // 旧采集排序键（slot 在前、连线顺序在后）重排子组，写回原下标位（indices 本身升序）
+    const sorted = indices
+      .map((i) => next[i])
+      .sort((a, b) => handleSlot(a.targetHandle, prefix) - handleSlot(b.targetHandle, prefix))
+    sorted.forEach((e, j) => {
+      next[indices[j]] = { ...e, targetHandle: RES_INPUT_HANDLE }
+    })
+    changed = true
+  }
+  return changed ? next : edges
 }
 
 /** Prompt 节点 @ 菜单的一个候选项：身份 + 消歧后的显示名 + 预览 URL。 */

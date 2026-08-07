@@ -34,10 +34,49 @@ export function uniqueMentionName(base: string, taken: ReadonlySet<string>): str
   }
 }
 
+/** 按显示名解析一个 token 到具体上游资源：mentions 查身份（同名取首个）→ refs 按身份匹配。 */
+function resolveMention(
+  name: string,
+  mentions: PromptMentionRef[],
+  refs: UpstreamRef[],
+): UpstreamRef | undefined {
+  // 同名 mention 取首个（跨 prompt 节点同名不同身份的碰撞概率极低，取首个无实际危害）
+  const m = mentions.find((x) => x.name === name)
+  if (!m) return undefined
+  return refs.find(
+    (r) =>
+      r.nodeId === m.nodeId && r.kind === m.kind && (r.resultIndex ?? -1) === (m.resultIndex ?? -1),
+  )
+}
+
+/**
+ * 按 @ 在 prompt 中的出现顺序收集「被 @ 到且当前仍连线」的资源（身份去重，分资源类型返回）。
+ * 供「只发被 @ 的资源」筛选语义：某类返回非空 → 该类实发列表 = 这些资源（@ 序）；
+ * 返回空（没 @ 或全悬空）→ 该类退化为全发连线资源。悬空引用不计入。
+ */
+export function collectMentionedRefs(
+  prompt: string,
+  mentions: PromptMentionRef[],
+  refs: UpstreamRef[],
+): Record<MentionKind, UpstreamRef[]> {
+  const out: Record<MentionKind, UpstreamRef[]> = { image: [], audio: [], video: [] }
+  if (!mentions.length || !prompt.includes('@[')) return out
+  const seen = new Set<string>()
+  for (const match of prompt.matchAll(MENTION_TOKEN_RE)) {
+    const ref = resolveMention(match[1], mentions, refs)
+    if (!ref) continue
+    const key = `${ref.nodeId}#${ref.kind}#${ref.resultIndex ?? -1}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    out[ref.kind].push(ref)
+  }
+  return out
+}
+
 /**
  * 把拼接完成的 prompt 中可解析的 @[name] 替换为 <<<kind_N>>> 占位符。
  * N = 该引用对应资源 URL 在「实发列表 lists[kind]」中的 1 基首次出现位置
- * （重复 URL 取首个；frames 变体被 slice 裁掉的图不在列表中 → 原样保留）。
+ * （重复 URL 取首个；不在实发列表中——被 frames 裁掉 / 被 @ 筛选掉——则原样保留）。
  */
 export function applyMentions(
   prompt: string,
@@ -47,13 +86,7 @@ export function applyMentions(
 ): string {
   if (!mentions.length || !prompt.includes('@[')) return prompt
   return prompt.replace(MENTION_TOKEN_RE, (raw, name: string) => {
-    // 同名 mention 取首个（跨 prompt 节点同名不同身份的碰撞概率极低，取首个无实际危害）
-    const m = mentions.find((x) => x.name === name)
-    if (!m) return raw
-    const ref = refs.find(
-      (r) =>
-        r.nodeId === m.nodeId && r.kind === m.kind && (r.resultIndex ?? -1) === (m.resultIndex ?? -1),
-    )
+    const ref = resolveMention(name, mentions, refs)
     if (!ref) return raw
     const idx = lists[ref.kind].indexOf(ref.url)
     return idx < 0 ? raw : `<<<${ref.kind}_${idx + 1}>>>`

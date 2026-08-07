@@ -3,6 +3,7 @@
 
 import type { GenImageBody, GenLlmBody, GenPodcastBody, GenVideoBody } from '@openflow/shared'
 import {
+  IMAGE_INPUT_HANDLE_PREFIX,
   collectUpstreamAudio,
   collectUpstreamAudioRefs,
   collectUpstreamImages,
@@ -10,8 +11,9 @@ import {
   collectUpstreamPrompt,
   collectUpstreamVideo,
   collectUpstreamVideoRefs,
+  type UpstreamRef,
 } from './graph'
-import { applyMentions } from './mentions'
+import { applyMentions, collectMentionedRefs } from './mentions'
 import {
   IMAGE_SIZE_DEFAULT,
   IMAGE_SIZE_OPTIONS,
@@ -68,15 +70,21 @@ export function buildLlmRequest(project: Project, node: LlmNode): GenLlmBody {
 }
 
 /** 图像生成节点：POST /api/aigc 的请求体（按模型 Image 2 / Nano Banana 取舍参数）。 */
+/** @ 筛选：该类有被 @ 到的资源 → 只发这些（@ 序）；一个都没有 → 全发连线资源（连线序）。 */
+function pickRefs(mentioned: UpstreamRef[], all: UpstreamRef[]): string[] {
+  return (mentioned.length ? mentioned : all).map((r) => r.url)
+}
+
 export function buildImageRequest(project: Project, node: ImageNode): GenImageBody {
   const id = node.id
   const d = node.data
-  // 输入图 = 上游 image/素材（按图像端点编号）在前，手动填/传的在后
   const imageRefs = collectUpstreamImageRefs(project, id)
-  const images = [...imageRefs.map((r) => r.url), ...linesToUrls(d.imagesText)]
-  // 上游 Prompt 链里的 @ 引用 → <<<image_N>>> 占位符（N 按实发 images 列表算；列表本身不变）
   const mentions: PromptMentionRef[] = []
   const rawPrompt = collectUpstreamPrompt(project, id, { handle: 'user', mentionsOut: mentions })
+  // 统一资源端点 + @ 调用：prompt 里 @ 到图像 → 只发被 @ 的（@ 序）；没 @ → 全发（连线序）。
+  // 手动填/传的旧 URL（无身份，不可被 @）始终追加在后。
+  const mentioned = collectMentionedRefs(rawPrompt, mentions, imageRefs)
+  const images = [...pickRefs(mentioned.image, imageRefs), ...linesToUrls(d.imagesText)]
   const base = {
     projectId: project.id,
     nodeId: id,
@@ -110,27 +118,34 @@ export function buildVideoRequest(project: Project, node: VideoNode): GenVideoBo
   const imageRefs = collectUpstreamImageRefs(project, id)
   const audioRefs = collectUpstreamAudioRefs(project, id)
   const videoRefs = collectUpstreamVideoRefs(project, id)
-  const combined = [...imageRefs.map((r) => r.url), ...linesToUrls(d.imagesText)]
-  const audios = [...audioRefs.map((r) => r.url), ...linesToUrls(d.audiosText)]
-  const videos = videoRefs.map((r) => r.url)
-  // 变体 → 后端 mode + 有序输入图；两变体都在无图（只连 Prompt）时退化为文生视频。
-  //   参考图有图 → reference_image + 全部图；首尾帧 → first_last_frame + 前 2 张（First/Last）。
-  let mode: string
-  let images: string[]
-  if (variant === 'reference' && combined.length > 0) {
-    mode = 'reference_image'
-    images = combined
-  } else {
-    mode = 'first_last_frame'
-    images = variant === 'frames' ? combined.slice(0, 2) : []
-  }
-  const ratio = d.ratio ?? SEEDANCE_RATIO_DEFAULT
-  const sentVideos = variant === 'reference' && videos.length > 0 ? videos : undefined
-  // 上游 Prompt 链里的 @ 引用 → <<<image_N>>>/<<<audio_N>>>/<<<video_N>>> 占位符：
-  // N 按「最终实发」列表算（frames 变体 slice 掉的图、非 reference 变体不发的视频 → 引用悬空原样保留）
+  const allRefs = [...imageRefs, ...audioRefs, ...videoRefs]
   const mentions: PromptMentionRef[] = []
   const rawPrompt = collectUpstreamPrompt(project, id, { handle: 'user', mentionsOut: mentions })
-  const prompt = applyMentions(rawPrompt, mentions, [...imageRefs, ...audioRefs, ...videoRefs], {
+  // 统一资源端点 + @ 调用：各类资源分别看——被 @ 到 → 只发被 @ 的（@ 序）；没 @ → 全发（连线序）
+  const mentioned = collectMentionedRefs(rawPrompt, mentions, allRefs)
+  const audios = [...pickRefs(mentioned.audio, audioRefs), ...linesToUrls(d.audiosText)]
+  // 变体 → 后端 mode + 有序输入图；两变体都在无图（只连 Prompt）时退化为文生视频。
+  //   参考图有图 → reference_image + 统一端点图（@ 筛选后）；
+  //   首尾帧 → first_last_frame + First/Last 专用端点（image-0/1）前 2 张，**不受 @ 筛选**（图序即端点语义）。
+  let mode: string
+  let images: string[]
+  if (variant === 'frames') {
+    const framesRefs = imageRefs.filter(
+      (r) => typeof r.handle === 'string' && r.handle.startsWith(IMAGE_INPUT_HANDLE_PREFIX),
+    )
+    mode = 'first_last_frame'
+    images = [...framesRefs.map((r) => r.url), ...linesToUrls(d.imagesText)].slice(0, 2)
+  } else {
+    const combined = [...pickRefs(mentioned.image, imageRefs), ...linesToUrls(d.imagesText)]
+    mode = combined.length > 0 ? 'reference_image' : 'first_last_frame'
+    images = combined
+  }
+  const ratio = d.ratio ?? SEEDANCE_RATIO_DEFAULT
+  const pickedVideos = pickRefs(mentioned.video, videoRefs)
+  const sentVideos = variant === 'reference' && pickedVideos.length > 0 ? pickedVideos : undefined
+  // @ 引用 → <<<image_N>>>/<<<audio_N>>>/<<<video_N>>> 占位符：N 按「最终实发」列表算
+  // （被 @ 筛选掉 / frames 裁掉 / 非 reference 不发的视频 → 引用悬空原样保留）
+  const prompt = applyMentions(rawPrompt, mentions, allRefs, {
     image: images,
     audio: audios,
     video: sentVideos ?? [],

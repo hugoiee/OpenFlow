@@ -153,8 +153,8 @@ function NodeInspectorPanel({
       {node.type === 'image' ? (
         <>
           <div className="flex flex-col gap-2">
-            <span className="text-[11px] text-muted-foreground">输入图（来自连线）</span>
-            <ImageInput id={id} imagesText={node.data.imagesText ?? ''} />
+            <span className="text-[11px] text-muted-foreground">输入图（实发列表）</span>
+            <ImageInput node={node} />
           </div>
           <ImageParams id={id} data={node.data} />
         </>
