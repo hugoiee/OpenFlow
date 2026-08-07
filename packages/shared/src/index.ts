@@ -317,3 +317,19 @@ export type AgentModelsBody = {
 export type AgentModelsResponse = {
   models: string[]
 }
+
+/**
+ * GET /api/update-check 响应：客户端「检查更新」用。
+ * 后端只负责查 GitHub Releases 的最新版本（绕 CORS + 进程内缓存防撞匿名 API 限流），
+ * **不做版本比较**——当前版本只有前端的 APP_VERSION 一处权威来源，
+ * 让后端也持有一份会变成第三处版本双写。是否有更新由前端判断。
+ * 网络失败 / 尚未发布过版本时也返回 2xx（latest 为空 + error），前端静默处理，不打扰用户。
+ */
+export type UpdateCheckResponse = {
+  /** 最新发布版本（已去掉 v 前缀）；查不到为空串。 */
+  latest: string
+  /** Release 页面地址（供「去下载」跳转）；查不到时退回仓库的 releases 列表页。 */
+  url: string
+  /** 检查失败的原因（前端仅作诊断，不弹窗）。 */
+  error?: string
+}

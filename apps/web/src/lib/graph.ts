@@ -329,6 +329,48 @@ export type MentionCandidate = {
   url: string
 }
 
+/** 悬停预览用的资源快照（按身份直查，不含图遍历信息）。 */
+export type MentionResource = {
+  url: string
+  kind: MentionKind
+  /** 源节点标题。 */
+  label: string
+  /** 素材节点的原始文件名。 */
+  fileName?: string
+  /** 生成节点的结果序号。 */
+  resultIndex?: number
+}
+
+/**
+ * 按 @ 引用身份（nodeId + kind + resultIndex）直接查源节点拿资源，供 tag 悬停预览。
+ * 刻意**不复用 collectMentionCandidates**：那是「沿下游走一遍图 + 对每个下游节点重算三类上游
+ * 引用」的 O(E·N) 采集，挂在 mousemove 路径上太贵；这里一次 nodes.find 即可。
+ * 副作用：断线/被筛掉的悬空引用也能预览到资源本体——「我 @ 的是哪个资源」的答案不该受连线状态
+ * 影响，是否真的下发由 collectMentionedRefs 决定（职责分离）。源节点已删/结果已清空则返回 null。
+ */
+export function findMentionResource(
+  project: Project,
+  ref: PromptMentionRef,
+): MentionResource | null {
+  const node = project.nodes.find((n) => n.id === ref.nodeId)
+  if (!node) return null
+  if (node.type === 'asset') {
+    if (node.data.kind !== ref.kind || !node.data.url) return null
+    return {
+      url: node.data.url,
+      kind: ref.kind,
+      label: node.data.label,
+      fileName: node.data.fileName,
+    }
+  }
+  if ((node.type === 'image' && ref.kind === 'image') || (node.type === 'video' && ref.kind === 'video')) {
+    const url = (node.data.result ?? [])[ref.resultIndex ?? 0]
+    if (!url) return null
+    return { url, kind: ref.kind, label: node.data.label, resultIndex: ref.resultIndex }
+  }
+  return null
+}
+
 /** 候选显示名基础值：素材节点用文件名，生成节点结果用「label·结果N」。 */
 function mentionBaseName(ref: UpstreamRef): string {
   if (ref.resultIndex !== undefined) return `${ref.label}·结果${ref.resultIndex + 1}`

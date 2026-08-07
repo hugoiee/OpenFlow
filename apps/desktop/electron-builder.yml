@@ -12,6 +12,9 @@ asar: true
 asarUnpack:
   - '**/node_modules/better-sqlite3/**'
 npmRebuild: true
+# 显式命名：默认模板会把「默认架构」(x64) 的后缀省掉（产出 OpenFlow-0.4.0-mac.dmg，
+# Intel 用户看不出该下哪个）；显式写 ${arch} 后每个产物都带架构名。
+artifactName: ${productName}-${version}-${os}-${arch}.${ext}
 # electron-builder 默认的 win 工具链是 x86_64 二进制（makensis / osslsigncode），
 # 在 Apple Silicon 上没装 Rosetta 2 就会 "bad CPU type in executable"。
 # 改用 26.x 的新工具链包（含 arm64 原生二进制）在 mac 上交叉打包 win。
@@ -37,3 +40,5 @@ win:
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
+  # 默认名是 `OpenFlow Setup 0.4.0.exe`（带空格，glob/下载链接都难处理）
+  artifactName: ${productName}-${version}-win-${arch}-setup.${ext}

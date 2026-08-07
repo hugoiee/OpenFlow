@@ -16,9 +16,10 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { useCompositionFieldControls } from '@/hooks/useCompositionField'
+import { useMentionHover } from '@/hooks/useMentionHover'
 import { useMentionMenu } from '@/hooks/useMentionMenu'
 import { mentionTokenEndingAt, pruneMentions } from '@/lib/mentions'
-import { MentionHighlights, MentionMenu } from './MentionMenu'
+import { MentionHighlights, MentionMenu, MentionPreview } from './MentionMenu'
 import { NodeHeader } from './NodeHeader'
 import { NodeHandle } from './NodeHandle'
 import { useFlowStore } from '@/store/useFlowStore'
@@ -48,6 +49,8 @@ export function PromptNode({ id, data, selected, width, height }: NodeProps<Prom
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   // @ tag 高亮层（渲染在 Textarea 正后方，与其字体/内边距逐像素对齐，滚动时同步）
   const overlayRef = useRef<HTMLDivElement | null>(null)
+  // 高亮层里包住 `@` 的测量锚点：菜单据此跟随光标定位（Textarea 无原生 caret 坐标 API）
+  const caretAnchorRef = useRef<HTMLSpanElement | null>(null)
   const {
     field: textField,
     setValue: setText,
@@ -85,7 +88,15 @@ export function PromptNode({ id, data, selected, width, height }: NodeProps<Prom
     },
   })
 
+  // tag 悬停预览：菜单打开时不启用，避免两层浮层打架
+  const mentionHover = useMentionHover({
+    overlayRef,
+    mentions: data.mentions,
+    enabled: !mention.open,
+  })
+
   const handleTextChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
+    mentionHover.clear() // 开始打字就收起预览
     textField.onChange(e)
     mention.handleChange(e.target.value, e.target.selectionStart ?? e.target.value.length)
   }
@@ -96,6 +107,7 @@ export function PromptNode({ id, data, selected, width, height }: NodeProps<Prom
    * 带修饰键的删词/删行、IME 组词、选中一段文本时一律放行给原生行为。
    */
   const handleTextKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    mentionHover.clear()
     mention.onKeyDown(e)
     if (e.defaultPrevented) return
     if (e.key !== 'Backspace' || e.ctrlKey || e.metaKey || e.altKey || isComposing()) return
@@ -109,6 +121,7 @@ export function PromptNode({ id, data, selected, width, height }: NodeProps<Prom
   }
 
   const handleTextBlur = () => {
+    mentionHover.clear()
     mention.close()
     textField.onBlur()
   }
@@ -188,7 +201,12 @@ export function PromptNode({ id, data, selected, width, height }: NodeProps<Prom
             aria-hidden
             className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words rounded-lg border border-transparent px-2.5 py-2 text-sm text-transparent dark:bg-input/30"
           >
-            <MentionHighlights text={textField.value} mentions={data.mentions} />
+            <MentionHighlights
+              text={textField.value}
+              mentions={data.mentions}
+              anchorIndex={mention.open ? mention.anchorIndex : null}
+              anchorRef={caretAnchorRef}
+            />
           </div>
           <Textarea
             {...textField}
@@ -197,19 +215,35 @@ export function PromptNode({ id, data, selected, width, height }: NodeProps<Prom
             onBlur={handleTextBlur}
             onKeyDown={handleTextKeyDown}
             onClick={mention.close}
+            onMouseMove={mentionHover.onMouseMove}
+            onMouseLeave={mentionHover.onMouseLeave}
             onScroll={(e) => {
               // 高亮层滚动跟随（内容一致故 scrollHeight 相同）
               if (overlayRef.current) overlayRef.current.scrollTop = e.currentTarget.scrollTop
+              mentionHover.clear() // 滚动后位置语义变了，先收起预览
             }}
             placeholder="在这里写 prompt…（输入 @ 可引用下游节点的连线资源）"
             className="nodrag field-sizing-fixed relative min-h-0 w-full flex-1 resize-none bg-transparent text-sm dark:bg-transparent"
           />
+          {/* 菜单与预览都 portal 到 body（写在这里只为 props 传递直观，DOM 已搬出节点） */}
           {mention.open && (
             <MentionMenu
+              anchorRef={caretAnchorRef}
+              clipRef={textareaRef}
               items={mention.items}
               activeIndex={mention.activeIndex}
               onHover={mention.setActiveIndex}
               onSelect={mention.select}
+            />
+          )}
+          {mentionHover.hit && (
+            <MentionPreview
+              getRect={() =>
+                mentionHover.hit!.el.getClientRects()[mentionHover.hit!.rectIndex] ?? null
+              }
+              clipRef={textareaRef}
+              mention={mentionHover.hit.mention}
+              resource={mentionHover.hit.resource}
             />
           )}
         </div>

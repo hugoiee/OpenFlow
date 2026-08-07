@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import {
   Cable,
   CheckCircle2,
+  Download,
+  Info,
   Loader2,
   Network,
   PlugZap,
@@ -32,6 +34,7 @@ import { ModelCapabilityBadges } from '@/components/model/ModelCapabilityBadges'
 import { testAgentConnectionApi } from '@/lib/api'
 import { mergeModelOptions } from '@/lib/nodeCatalog'
 import { cn } from '@/lib/utils'
+import { useUpdateCheck } from '@/hooks/useUpdateCheck'
 import { useSettingsStore } from '@/store/useSettingsStore'
 
 type SectionId = 'general' | 'api' | 'network'
@@ -93,6 +96,8 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
   // 手动模型列表草稿（每行一个）：进入下拉候选并在保存时持久化
   const [modelListText, setModelListText] = useState('')
   const [saving, setSaving] = useState(false)
+  // 检查更新（仅桌面端；Web 版 supported=false，整块不渲染）
+  const update = useUpdateCheck()
   const [error, setError] = useState('')
   // 连接测试：testing 进行中；testResult 为最近一次结果（改动配置输入即清空以免误导）
   const [testing, setTesting] = useState(false)
@@ -434,6 +439,48 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
             </div>
           </div>
         </div>
+
+        {/* 关于 / 检查更新：仅桌面端显示（Web 版没有安装包的概念） */}
+        {update.supported && (
+          <div className="border-t px-6 py-4">
+            <div className="flex items-center gap-2 pb-2 text-sm font-medium">
+              <Info className="size-4 text-muted-foreground" />
+              关于
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-muted-foreground">当前版本 v{update.current}</span>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 gap-1.5 px-2 text-xs"
+                onClick={update.check}
+                disabled={update.checking}
+              >
+                <RefreshCw className={`size-3.5 ${update.checking ? 'animate-spin' : ''}`} />
+                {update.checking ? '检查中…' : '检查更新'}
+              </Button>
+              {update.hasUpdate ? (
+                <a
+                  href={update.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-md bg-primary px-2 py-1 text-xs font-medium text-primary-foreground hover:opacity-90"
+                >
+                  <Download className="size-3.5" />
+                  有新版本 v{update.latest}，去下载
+                </a>
+              ) : update.checked && !update.error ? (
+                <span className="text-xs text-muted-foreground">已是最新版本</span>
+              ) : null}
+            </div>
+            {/* 检查失败只在手动检查后小字提示，不弹窗、不阻塞 */}
+            {update.checked && update.error && (
+              <p className="pt-1.5 text-[11px] text-muted-foreground">
+                检查更新失败：{update.error}
+              </p>
+            )}
+          </div>
+        )}
 
         {error && <p className="px-6 text-xs text-destructive">{error}</p>}
 

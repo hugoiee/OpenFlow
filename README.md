@@ -135,14 +135,14 @@ pnpm --filter @openflow/desktop dev
 
 **推荐做法**：安装后在应用内「设置」面板填写各接口地址与 Key（存后端 SQLite，随应用走，便于分发给不同网络的人）。
 
-后端端点的取值优先级为 **设置面板 > 环境变量 > 内置默认**。可用环境变量在启动后端时覆盖：
+后端端点的取值优先级为 **设置面板 > 环境变量**（不内置任何默认地址——打包分发时不该带上任一方的内网地址；两者都为空时会给出「请先在设置中填写」的报错）。可用环境变量在启动后端时覆盖：
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
 | `PORT` | `8787` | 后端端口 |
-| `AIGC_ENDPOINT` | `http://10.75.202.161:8204/aigc` | 图像/视频生成接口 |
-| `UPLOAD_ENDPOINT` | `http://10.75.202.161:8511/api/upload` | 图片上传接口 |
-| `UPLOAD_MEDIA_ENDPOINT` | `http://10.75.202.161:8511/api/upload-media` | 音频上传接口 |
+| `AIGC_ENDPOINT` | （无内置默认） | 图像/视频生成接口，如 `http://<your-host>:8204/aigc` |
+| `UPLOAD_ENDPOINT` | （无内置默认） | 图片上传接口，如 `http://<your-host>:8511/api/upload` |
+| `UPLOAD_MEDIA_ENDPOINT` | （无内置默认） | 音频/视频上传接口，如 `http://<your-host>:8511/api/upload-media` |
 | `AGENT_ENDPOINT` | （无内置默认） | 画布 Agent / Any LLM 的 OpenAI 兼容接口地址 |
 | `AGENT_API_KEY` | （无内置默认） | 画布 Agent / Any LLM 的 API Key |
 | `AGENT_MODEL` | （无内置默认） | 画布 Agent / Any LLM 的模型名 |
@@ -151,7 +151,7 @@ pnpm --filter @openflow/desktop dev
 PORT=8787 AIGC_ENDPOINT=http://your-host/aigc pnpm server
 ```
 
-> - `AIGC_ENDPOINT` / `UPLOAD_ENDPOINT` / `UPLOAD_MEDIA_ENDPOINT` 内置了内网默认值（`10.75.202.161`），在该内网中装好依赖即可直接跑通生成/上传；不在该内网时改用设置面板或环境变量指向自己的接口即可，画布编辑、Prompt 节点等核心功能不受影响。
+> - `AIGC_ENDPOINT` / `UPLOAD_ENDPOINT` / `UPLOAD_MEDIA_ENDPOINT` 不含内置默认值：首次使用需在设置面板（或环境变量）里填上自己的接口地址，之后即可跑通生成/上传；未填写时画布编辑、Prompt 节点等核心功能不受影响，只有生成/上传会提示先去设置里填地址。
 > - **Agent / Any LLM 三项无内置默认**，未在设置面板或环境变量中配置时，相关功能会提示「请在设置中填写」。
 > - **`req_from`（调用方署名）不走环境变量**，由首次启动的阻断弹窗强制填写并存后端；为空时后端拒绝一切上游生成/上传请求。
 
