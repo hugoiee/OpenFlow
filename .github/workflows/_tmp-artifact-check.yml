@@ -1,0 +1,21 @@
+name: tmp artifact roundtrip
+on: workflow_dispatch
+jobs:
+  up:
+    runs-on: ubuntu-latest
+    steps:
+      - run: mkdir -p out && head -c 1048576 /dev/urandom > out/blob.bin && sha256sum out/blob.bin | tee out/sum.txt
+      - uses: actions/upload-artifact@v7
+        with: { name: rt-a, path: out/*, if-no-files-found: error, compression-level: 0 }
+      - run: mkdir -p out2 && cp out/sum.txt out2/sum2.txt
+      - uses: actions/upload-artifact@v7
+        with: { name: rt-b, path: out2/*, if-no-files-found: error }
+  down:
+    needs: up
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with: { path: dist, merge-multiple: true }
+      - run: |
+          ls -lR dist
+          cd dist && sha256sum -c sum.txt && test -f sum2.txt && echo "roundtrip OK ✓"
