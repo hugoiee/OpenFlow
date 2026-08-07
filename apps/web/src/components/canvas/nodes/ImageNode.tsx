@@ -7,6 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { DownloadDialog, type DownloadTarget } from '@/components/canvas/DownloadDialog'
 import { NodeHeader } from './NodeHeader'
 import { NodeHandle } from './NodeHandle'
+import { TaskFailurePanel } from './TaskFailurePanel'
 import { createImageTaskApi } from '@/lib/api'
 import { pollTask } from '@/lib/taskPolling'
 import { RES_INPUT_HANDLE } from '@/lib/graph'
@@ -35,20 +36,39 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
 
   // 生成失败：节点底部内联显示；silent=false 时再弹窗提示。
   // 重连路径（刷新重开 / Agent 触发）走 silent——非点击场景连环 alert 会阻塞整个应用。
-  const fail = (message: string, opts?: { silent?: boolean }) => {
-    updateNodeData(id, { running: false, error: message, taskId: undefined })
+  // keepTaskId=true 用于「任务跑到失败终态」：taskId 留着，底部面板才能凭它去历史重拉结果。
+  const fail = (
+    message: string,
+    opts?: { silent?: boolean; keepTaskId?: boolean; recoverable?: boolean },
+  ) => {
+    updateNodeData(id, {
+      running: false,
+      error: message,
+      errorRecoverable: opts?.recoverable ?? false,
+      ...(opts?.keepTaskId ? {} : { taskId: undefined }),
+    })
     if (!opts?.silent) window.alert(`图像生成失败：${message}`)
   }
 
-  // 应用任务终态：成功填结果、失败报错，一并清 taskId（重连锚点用毕）。
+  // 应用任务终态：成功填结果清 taskId；失败留下 taskId 与「可否重拉」供底部面板自救。
   const applyTaskResult = (
-    task: { status: string; result: string[]; error?: string },
+    task: { status: string; result: string[]; error?: string; recoverable?: boolean },
     opts?: { silent?: boolean },
   ) => {
     if (task.status === 'succeeded') {
-      updateNodeData(id, { running: false, result: task.result, taskId: undefined })
+      updateNodeData(id, {
+        running: false,
+        result: task.result,
+        error: undefined,
+        taskId: undefined,
+      })
     } else {
-      fail(task.error || '任务失败', opts)
+      // 可恢复的失败（上游没带回 URL / 请求被掐断）不弹窗打断：面板里就能重拉
+      fail(task.error || '任务失败', {
+        silent: opts?.silent || task.recoverable,
+        keepTaskId: true,
+        recoverable: task.recoverable,
+      })
     }
   }
 
@@ -89,7 +109,13 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
       fail('请先连接一个有内容的 Prompt 节点')
       return
     }
-    updateNodeData(id, { running: true, error: undefined, result: [], taskId: undefined })
+    updateNodeData(id, {
+      running: true,
+      error: undefined,
+      errorRecoverable: false,
+      result: [],
+      taskId: undefined,
+    })
     try {
       const taskId = await createImageTaskApi(body)
       // 立刻存下 taskId：点击后 1s 刷新也已存下，可重连（关页面不丢结果）
@@ -175,11 +201,21 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
           </Button>
         </div>
 
-        {/* 生成失败信息：固定在节点最下方 */}
+        {/* 生成失败信息：固定在节点最下方，带重拉 / 手填 URL / 看上游响应三条自救路径 */}
         {data.error && (
-          <p className="nodrag rounded-md bg-destructive/10 p-2 text-[11px] text-destructive">
-            {data.error}
-          </p>
+          <TaskFailurePanel
+            message={data.error}
+            taskId={data.taskId}
+            recoverable={data.errorRecoverable}
+            onResult={(urls) =>
+              updateNodeData(id, {
+                result: urls,
+                error: undefined,
+                errorRecoverable: false,
+                taskId: undefined,
+              })
+            }
+          />
         )}
       </CardContent>
       <DownloadDialog open={dialogOpen} onOpenChange={setDialogOpen} target={downloadTarget} />

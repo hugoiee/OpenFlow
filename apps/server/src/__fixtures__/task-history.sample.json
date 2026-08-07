@@ -1,0 +1,104 @@
+{
+  "items": [
+    {
+      "created_at": 1785913950408,
+      "id": "rec_success_new",
+      "ip": "",
+      "request": {
+        "config": {
+          "duration": 15,
+          "generate_audio": true,
+          "ratio": "16:9",
+          "resolution": "1080p",
+          "watermark": false
+        },
+        "custom_json": false,
+        "image_list": ["https://example.invalid/assets/input-a.png"],
+        "mode": "reference_image",
+        "model_name": "seedance",
+        "prompt": "占位提示词 A",
+        "req_from": "user@example.com",
+        "version": "seedance-2.0",
+        "video_list": ["https://example.invalid/assets/input-a.mp4"]
+      },
+      "response": {
+        "model_name": "seedance",
+        "request_id": "req_success_new",
+        "result": {
+          "content": ["https://example.invalid/results/output-a.mp4"],
+          "error": {},
+          "status": "success"
+        },
+        "version": "seedance-2.0"
+      }
+    },
+    {
+      "created_at": 1785903131273,
+      "id": "rec_failed",
+      "ip": "",
+      "request": {
+        "config": {
+          "duration": 14,
+          "generate_audio": true,
+          "ratio": "9:16",
+          "resolution": "1080p",
+          "watermark": false
+        },
+        "custom_json": false,
+        "image_list": ["https://example.invalid/assets/input-b.png"],
+        "mode": "reference_image",
+        "model_name": "seedance",
+        "prompt": "占位提示词 B",
+        "req_from": "user@example.com",
+        "version": "seedance-2.0",
+        "video_list": []
+      },
+      "response": {
+        "model_name": "seedance",
+        "request_id": "req_failed",
+        "result": {
+          "content": [],
+          "error": {
+            "code": "OutputAudioSensitiveContentDetected.PolicyViolation",
+            "message": "The request failed because the output audio may be related to copyright restrictions."
+          },
+          "status": "failed"
+        },
+        "version": "seedance-2.0"
+      }
+    },
+    {
+      "created_at": 1785821278747,
+      "id": "rec_success_old",
+      "ip": "",
+      "request": {
+        "config": {
+          "duration": 15,
+          "generate_audio": true,
+          "ratio": "16:9",
+          "resolution": "1080p",
+          "watermark": false
+        },
+        "custom_json": false,
+        "image_list": ["https://example.invalid/assets/input-a.png"],
+        "mode": "reference_image",
+        "model_name": "seedance",
+        "prompt": "占位提示词 A",
+        "req_from": "user@example.com",
+        "version": "seedance-2.0",
+        "video_list": ["https://example.invalid/assets/input-a.mp4"]
+      },
+      "response": {
+        "model_name": "seedance",
+        "request_id": "req_success_old",
+        "result": {
+          "content": ["https://example.invalid/results/output-a-old.mp4"],
+          "error": {},
+          "status": "success"
+        },
+        "version": "seedance-2.0"
+      }
+    }
+  ],
+  "total": 3
+}

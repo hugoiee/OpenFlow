@@ -70,6 +70,7 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
   const aigcEndpoint = useSettingsStore((s) => s.aigcEndpoint)
   const uploadEndpoint = useSettingsStore((s) => s.uploadEndpoint)
   const uploadMediaEndpoint = useSettingsStore((s) => s.uploadMediaEndpoint)
+  const aigcHistoryEndpoint = useSettingsStore((s) => s.aigcHistoryEndpoint)
   const agentEndpoint = useSettingsStore((s) => s.agentEndpoint)
   const hasAgentApiKey = useSettingsStore((s) => s.hasAgentApiKey)
   const hasVolcTtsApiKey = useSettingsStore((s) => s.hasVolcTtsApiKey)
@@ -89,6 +90,7 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
   const [aigc, setAigc] = useState('')
   const [upload, setUpload] = useState('')
   const [uploadMedia, setUploadMedia] = useState('')
+  const [aigcHistory, setAigcHistory] = useState('')
   const [agentUrl, setAgentUrl] = useState('')
   const [agentKey, setAgentKey] = useState('')
   const [volcKey, setVolcKey] = useState('')
@@ -111,6 +113,7 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
       setAigc(aigcEndpoint)
       setUpload(uploadEndpoint)
       setUploadMedia(uploadMediaEndpoint)
+      setAigcHistory(aigcHistoryEndpoint)
       setAgentUrl(agentEndpoint)
       setAgentKey('') // 密钥不回显（后端不回明文）；留空=保持已存值
       setVolcKey('') // 同上：火山语音 Key 也是写入-only
@@ -167,6 +170,7 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
         aigcEndpoint: aigc.trim(),
         uploadEndpoint: upload.trim(),
         uploadMediaEndpoint: uploadMedia.trim(),
+        aigcHistoryEndpoint: aigcHistory.trim(),
         agentEndpoint: agentUrl.trim(),
         // 密钥字段为空 = 用户没改：省略以保持后端已存值（后端合并写只覆盖出现的字段）
         ...(agentKey.trim() ? { agentApiKey: agentKey.trim() } : {}),
@@ -433,6 +437,20 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
                       onChange={(e) => setUploadMedia(e.target.value)}
                       placeholder="留空用默认，如 http://host:port/api/upload-media"
                     />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="aigcHistoryEndpoint">AIGC 历史查询接口</Label>
+                    <Input
+                      id="aigcHistoryEndpoint"
+                      value={aigcHistory}
+                      onChange={(e) => setAigcHistory(e.target.value)}
+                      placeholder="留空则不启用，如 http://host:port/api/task-history"
+                    />
+                    <span className="text-xs text-muted-foreground">
+                      生成接口偶尔会返回不带结果 URL 的响应（长连接被掐断等），但内容其实已经生成。
+                      填上后，遇到这种情况会自动去历史记录里把结果找回来，服务重启也能续查。
+                    </span>
                   </div>
                 </>
               )}

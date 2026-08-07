@@ -11,6 +11,8 @@ type SettingsState = {
   uploadEndpoint: string
   /** 音频上传端点；为空=后端回退默认。 */
   uploadMediaEndpoint: string
+  /** AIGC 历史任务查询端点；为空=后端回退 env，两者皆空则没有「结果找回」能力。 */
+  aigcHistoryEndpoint: string
   /** 画布 Agent 的 LLM 端点（OpenAI 兼容）；为空=后端回退 env。 */
   agentEndpoint: string
   /** 服务端是否已配置 Agent API Key（明文不回传，只有这个标记）。 */
@@ -47,6 +49,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   aigcEndpoint: '',
   uploadEndpoint: '',
   uploadMediaEndpoint: '',
+  aigcHistoryEndpoint: '',
   agentEndpoint: '',
   hasAgentApiKey: false,
   hasVolcTtsApiKey: false,
@@ -65,6 +68,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
       aigcEndpoint: dto.aigcEndpoint,
       uploadEndpoint: dto.uploadEndpoint,
       uploadMediaEndpoint: dto.uploadMediaEndpoint,
+      aigcHistoryEndpoint: dto.aigcHistoryEndpoint,
       agentEndpoint: dto.agentEndpoint,
       hasAgentApiKey: dto.hasAgentApiKey ?? false,
       hasVolcTtsApiKey: dto.hasVolcTtsApiKey ?? false,

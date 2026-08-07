@@ -37,6 +37,7 @@ db.exec(`
     aigc_endpoint TEXT NOT NULL DEFAULT '',
     upload_endpoint TEXT NOT NULL DEFAULT '',
     upload_media_endpoint TEXT NOT NULL DEFAULT '',
+    aigc_history_endpoint TEXT NOT NULL DEFAULT '',
     agent_endpoint TEXT NOT NULL DEFAULT '',
     agent_api_key TEXT NOT NULL DEFAULT '',
     agent_model TEXT NOT NULL DEFAULT '',
@@ -46,6 +47,7 @@ db.exec(`
 
   -- 异步生成任务：点「生成」后后端建行并后台跑 AIGC，前端凭 taskId 轮询/刷新重连。
   -- params 存请求体 JSON（不含 req_from/端点，运行时从 settings 解析）；result 存结果 URL 列表 JSON。
+  -- upstream_id / raw_response 用于「同步响应没带回 URL」时去 AIGC 历史接口找回结果（见 aigc-history.ts）。
   CREATE TABLE IF NOT EXISTS tasks (
     id TEXT PRIMARY KEY,
     project_id TEXT NOT NULL,
@@ -55,6 +57,8 @@ db.exec(`
     params TEXT NOT NULL DEFAULT '{}',
     result TEXT NOT NULL DEFAULT '[]',
     error TEXT NOT NULL DEFAULT '',
+    upstream_id TEXT NOT NULL DEFAULT '',   -- 上游 request_id / 历史记录 id（认领结果的钥匙兼防抢占锁）
+    raw_response TEXT NOT NULL DEFAULT '',  -- 上游最近一次原始响应（截断），失败现场
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
   );
@@ -86,6 +90,7 @@ for (const col of [
   'aigc_endpoint',
   'upload_endpoint',
   'upload_media_endpoint',
+  'aigc_history_endpoint',
   'agent_endpoint',
   'agent_api_key',
   'agent_model',
@@ -98,6 +103,15 @@ for (const col of [
 // 手动模型候选列表列（JSON 数组字符串，默认 '[]'，单独补——默认值与上面的 '' 不同）
 if (!settingsColNames.has('agent_model_list')) {
   db.exec(`ALTER TABLE settings ADD COLUMN agent_model_list TEXT NOT NULL DEFAULT '[]'`)
+}
+
+// 旧库迁移：tasks 早期无 upstream_id / raw_response 列，补上（历史任务无从追溯，默认空串）
+const taskCols = db.prepare('PRAGMA table_info(tasks)').all() as { name: string }[]
+const taskColNames = new Set(taskCols.map((col) => col.name))
+for (const col of ['upstream_id', 'raw_response']) {
+  if (!taskColNames.has(col)) {
+    db.exec(`ALTER TABLE tasks ADD COLUMN ${col} TEXT NOT NULL DEFAULT ''`)
+  }
 }
 
 // 旧库迁移：prompt_presets 早期无 category 列，补上（已有预设默认归入常用 Prompt）
