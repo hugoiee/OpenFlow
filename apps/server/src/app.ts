@@ -16,6 +16,7 @@ import { download } from './routes/download'
 import { agent } from './routes/agent'
 import { podcast } from './routes/podcast'
 import { files } from './routes/files'
+import { update } from './routes/update'
 
 export interface CreateAppOptions {
   /** 前端静态产物目录（Electron 生产环境注入）；提供则在根路径托管 SPA。 */
@@ -90,6 +91,7 @@ export function createApp(opts: CreateAppOptions = {}): Hono {
   app.route('/api', agent)
   app.route('/api', podcast)
   app.route('/api', files)
+  app.route('/api', update)
 
   if (opts.staticDir) mountStatic(app, opts.staticDir)
 

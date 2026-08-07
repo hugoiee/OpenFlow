@@ -1,0 +1,316 @@
+name: Release
+
+# 触发：
+#   1) push 形如 v0.4.0 的 tag → 构建 + 自动发 GitHub Release
+#   2) 手动触发（workflow_dispatch）
+#      - 在分支上触发   → 只出制品，不发 Release（发版预演 / 临时捞个包）
+#      - 在已有 tag 上触发 → 自动进入发布模式（用于重跑失败的发版）
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      draft:
+        description: '以草稿形式创建 Release（仅在 tag 上手动触发时有意义）'
+        type: boolean
+        default: true
+
+# 同一个 ref 只跑一份。cancel-in-progress 故意为 false：
+# 发版构建被打断（留下半个 Release）比多跑一次更糟。
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+# 默认最小权限；只有 release job 单独提权到 contents: write
+permissions:
+  contents: read
+
+defaults:
+  run:
+    # ⭐ windows-latest 默认 shell 是 pwsh，统一成 bash 后所有平台共用同一份脚本写法。
+    # GitHub 会用 `bash --noprofile --norc -eo pipefail {0}`（自带 -e 与 pipefail）。
+    shell: bash
+
+env:
+  # 把下载缓存统一到 workspace 下的固定相对路径，mac / win 路径一致，
+  # actions/cache 只需写一份 path 列表。
+  npm_config_cache: ${{ github.workspace }}/.cache/npm # prebuild-install → <cache>/_prebuilds
+  ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.cache/electron-builder # electron zip + nsis/winCodeSign toolsets
+  # electron npm 包 postinstall 的那份本机二进制在 CI 上用不到：electron-builder 走
+  # @electron/get 按目标平台自己下 zip，只从 package.json 读版本号。省 100~200MB 下载。
+  # 若构建报找不到 electron 二进制，删掉本行即可（安全回退）。
+  ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+
+jobs:
+  # ────────────────────────────────────────────────────────────
+  # 1) 版本校验：~30 秒，挡住「版本号写错」导致的整轮返工
+  # ────────────────────────────────────────────────────────────
+  prepare:
+    name: 版本校验
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      tag: ${{ steps.v.outputs.tag }}
+      is_release: ${{ steps.v.outputs.is_release }}
+      prerelease: ${{ steps.v.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      # 刻意不装依赖：check-version.mjs 只用 node 内置模块，保持这一步够快
+
+      - name: 解析版本 & 校验三处一致
+        id: v
+        run: |
+          REF='${{ github.ref }}'
+          if [[ "$REF" == refs/tags/* ]]; then
+            TAG="${REF#refs/tags/}"
+            # tag ↔ apps/desktop/package.json ↔ appMeta.ts 三者必须一致
+            node scripts/check-version.mjs "$TAG"
+            {
+              echo "tag=$TAG"
+              echo "version=${TAG#v}"
+              echo "is_release=true"
+            } >> "$GITHUB_OUTPUT"
+            # 语义化版本带 - 的（v0.5.0-beta.1）自动标记为预发布
+            if [[ "$TAG" == *-* ]]; then
+              echo "prerelease=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            # 分支上手动触发：只校验双写一致，不发 Release
+            node scripts/check-version.mjs
+            {
+              echo "tag="
+              echo "version=$(node scripts/check-version.mjs --print)"
+              echo "is_release=false"
+              echo "prerelease=false"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 打印本次构建目标
+        run: |
+          echo "version    = ${{ steps.v.outputs.version }}"
+          echo "tag        = ${{ steps.v.outputs.tag }}"
+          echo "is_release = ${{ steps.v.outputs.is_release }}"
+          echo "prerelease = ${{ steps.v.outputs.prerelease }}"
+
+  # ────────────────────────────────────────────────────────────
+  # 2) 各平台在对应 runner 上原生构建
+  #    （这样就不需要本地那套 rebuild:win 交叉打包 / toolsets 的 Apple Silicon workaround）
+  # ────────────────────────────────────────────────────────────
+  build:
+    name: 构建 ${{ matrix.label }}
+    needs: prepare
+    runs-on: ${{ matrix.os }}
+    # 硬性时间上限：防某步卡死后默认跑满 6 小时
+    timeout-minutes: ${{ matrix.timeout }}
+    strategy:
+      # 一个平台失败时另一个继续，一轮拿到两边日志
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest # 当前是 arm64；x64 包由 electron-builder 自行拉 darwin-x64 预编译
+            label: macOS (arm64 + x64)
+            builder_args: '--mac'
+            artifact: openflow-mac
+            timeout: 45
+          - os: windows-latest
+            label: Windows (x64)
+            builder_args: '--win'
+            artifact: openflow-win
+            timeout: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      # 不传 version：action 会读根 package.json 的 packageManager 字段。
+      # 必须是 pnpm 10.x —— pnpm-workspace.yaml 的 allowBuilds 是 pnpm 10 字段，
+      # pnpm 9 会静默忽略，导致 electron / better-sqlite3 的 postinstall 不执行。
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # 22.x：better-sqlite3 11.x 有对应 ABI 的预编译产物，不必从源码编译
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: 恢复 electron / toolset / prebuild 下载缓存
+        uses: actions/cache@v4
+        with:
+          path: |
+            .cache/electron-builder
+            .cache/npm
+          key: ${{ runner.os }}-ebcache-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-ebcache-
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 构建前端 (apps/web → apps/web/dist)
+        run: pnpm --filter @openflow/web build
+
+      # 走 bundle 而不是 desktop 的 build：后者会再触发一次 web 构建
+      - name: 打包主进程 / 预加载 (esbuild) + 拷入前端产物
+        run: pnpm --filter @openflow/desktop bundle
+
+      - name: 校验 dist-electron 产物完整
+        run: |
+          for f in dist-electron/main.cjs dist-electron/preload.cjs dist-electron/web/index.html; do
+            if [[ ! -f "apps/desktop/$f" ]]; then
+              echo "::error::缺少 apps/desktop/$f —— 拒绝产出不完整的安装包"
+              exit 1
+            fi
+          done
+          echo "dist-electron 产物完整 ✓"
+
+      - name: electron-builder 出包
+        working-directory: apps/desktop
+        env:
+          # identity: null 已让 electron-builder 完全跳过签名；这里再设一道，
+          # 防配置漂移后 CI 去翻空 keychain
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          # ⚠️ --publish never 是必须的：electron-builder 26 检测到 CI 环境会隐式把发布
+          # 策略设成 onTagOrDraft 并读取 GH_TOKEN/GITHUB_TOKEN，导致两个 build job
+          # 各自去创建/抢同一个 GitHub Release（竞态 + 重复草稿）。
+          #
+          # 不传 --x64/--arm64：electron-builder.yml 已按 target 写死 arch，CLI flag 会覆盖它。
+          # 不传 -c.npmRebuild=false：原生 runner 上让 npmRebuild:true 自然生效 ——
+          #   electron-builder 在每个 (platform, arch) 的 pack 循环里各调一次 @electron/rebuild，
+          #   后者给 prebuild-install 传 --arch=<目标arch>，直接下载官方预编译 .node。
+          pnpm exec electron-builder ${{ matrix.builder_args }} --publish never
+
+      - name: 产物清单
+        run: ls -lh apps/desktop/release
+
+      # ── 冒烟自检：跑打好的包，验证 better-sqlite3 ABI + 内嵌服务 + DB 读写 ──
+      # 这正是历史上最容易翻车的地方（ABI 混错时 Windows 上进程在但没窗口）。
+      # 若 macOS runner 因 GUI 会话问题假失败，删掉这两步即可，不影响出包。
+      - name: 冒烟自检 (macOS arm64)
+        if: runner.os == 'macOS'
+        env:
+          OPENFLOW_SELFTEST: '1'
+          OPENFLOW_DATA_DIR: ${{ runner.temp }}/openflow-selftest
+        run: |
+          # unpacked 目录名随 arch 变（arm64 → mac-arm64，默认 arch 可能是 mac/mac-x64），
+          # 直接按 .app 查找，避免写死；runner 是 arm64，只自检 arm64 那份
+          APP_DIR=$(ls -d apps/desktop/release/mac-arm64/*.app 2>/dev/null | head -1)
+          if [[ -z "$APP_DIR" ]]; then
+            echo "::warning::未找到 mac-arm64 的 .app，跳过冒烟自检"; ls -R apps/desktop/release | head -40; exit 0
+          fi
+          APP="$APP_DIR/Contents/MacOS/OpenFlow"
+          test -x "$APP"
+          "$APP" 2>&1 | tee selftest.log
+          grep -q '\[selftest\] OK' selftest.log
+
+      - name: 冒烟自检 (Windows x64)
+        if: runner.os == 'Windows'
+        env:
+          OPENFLOW_SELFTEST: '1'
+          OPENFLOW_DATA_DIR: ${{ runner.temp }}\openflow-selftest
+        # Windows GUI 子系统进程的 console.log 不一定回显，这里只看退出码
+        run: |
+          EXE="apps/desktop/release/win-unpacked/OpenFlow.exe"
+          if [[ ! -f "$EXE" ]]; then
+            echo "::warning::未找到 win-unpacked/OpenFlow.exe，跳过冒烟自检"; ls -R apps/desktop/release | head -40; exit 0
+          fi
+          # runSelfTest 成功 exitCode=0、失败 =1（GUI 子系统进程的 console.log 不一定回显，只看退出码）
+          "./$EXE"
+          echo "selftest 退出码 0 ✓"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.zip
+            apps/desktop/release/*.exe
+          if-no-files-found: error
+          # artifact 只是 build → release 的中转（Release 附件本身不占这份配额）
+          retention-days: 7
+          compression-level: 0 # dmg/zip/exe 已压缩，再压纯浪费 CPU
+
+  # ────────────────────────────────────────────────────────────
+  # 3) 统一建 Release：只有这个 job 拿 contents: write，也避免并发抢建
+  # ────────────────────────────────────────────────────────────
+  release:
+    name: 发布 GitHub Release
+    needs: [prepare, build]
+    if: needs.prepare.outputs.is_release == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true # 把 openflow-mac / openflow-win 摊平到 dist/ 一层
+
+      - name: 产物清单
+        run: ls -lh dist
+
+      - name: 生成 Release 说明
+        env:
+          V: ${{ needs.prepare.outputs.version }}
+        run: |
+          cat > NOTES.md <<EOF
+          ## 下载
+
+          | 平台 | 文件 |
+          | --- | --- |
+          | macOS · Apple Silicon (M 系列) | \`OpenFlow-${V}-mac-arm64.dmg\` |
+          | macOS · Intel | \`OpenFlow-${V}-mac-x64.dmg\` |
+          | Windows 10/11 · x64 | \`OpenFlow-${V}-win-x64-setup.exe\` |
+
+          ## 安装说明（内部分发，**未做代码签名**）
+
+          **macOS**：首次打开会提示「无法打开，因为无法验证开发者」。
+          请在「应用程序」里 **右键点击 OpenFlow → 选择「打开」→ 再点「打开」**
+          （直接双击不行，必须走右键菜单）。只需操作一次，之后正常双击即可。
+
+          **Windows**：安装时 SmartScreen 会提示「Windows 已保护你的电脑」。
+          点 **「更多信息」→「仍要运行」** 继续安装。
+
+          > 上述提示是因为本版本未购买 Apple Developer ID / Windows 代码签名证书，
+          > 属预期行为，不代表安装包有问题。
+
+          ## 首次使用
+
+          启动后需先填写「署名（req_from）」才能进入；AIGC / 上传接口地址请在设置面板中
+          按所在网络自行填写（安装包内不含任何写死的地址）。
+
+          EOF
+          cat NOTES.md
+
+      - name: 创建 / 更新 Release 并上传产物
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          FLAGS=()
+          [[ '${{ needs.prepare.outputs.prerelease }}' == 'true' ]] && FLAGS+=(--prerelease)
+          # 手动在 tag 上触发时默认建草稿，人工确认后再发布；tag push 自动触发则直接正式发布
+          [[ '${{ github.event_name }}' == 'workflow_dispatch' && '${{ inputs.draft }}' == 'true' ]] && FLAGS+=(--draft)
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            # 幂等：重跑发版流水线时覆盖已有附件，而不是整个 job 报错
+            echo "Release $TAG 已存在，覆盖上传附件"
+            gh release upload "$TAG" dist/* --clobber
+          else
+            gh release create "$TAG" \
+              --title "OpenFlow $TAG" \
+              --notes-file NOTES.md \
+              --generate-notes \
+              "${FLAGS[@]}" \
+              dist/*
+          fi
+          gh release view "$TAG" --json url,isDraft,isPrerelease,assets

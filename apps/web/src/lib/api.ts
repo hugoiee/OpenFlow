@@ -16,6 +16,7 @@ import type {
   SaveSettingsBody,
   SettingsDTO,
   TaskDTO,
+  UpdateCheckResponse,
 } from '@openflow/shared'
 
 /** 统一的 /api 请求封装：非 2xx 时抛出含后端错误信息的 Error。 */
@@ -233,4 +234,15 @@ export async function uploadFilesApi(
   } | null
   if (!res.ok) throw new Error(data?.error ?? `HTTP ${res.status}`)
   return data?.urls ?? []
+}
+
+/**
+ * 检查更新：查最新发布版本与其 Release 地址（后端代理 GitHub API + 缓存 30 分钟）。
+ * force=true 跳过后端缓存（设置面板的「检查更新」按钮用）。
+ * 接口约定任何失败都返回 2xx + error 字段，故这里不会因网络问题抛错。
+ */
+export async function checkUpdateApi(force = false): Promise<UpdateCheckResponse> {
+  const res = await fetch(`/api/update-check${force ? '?force=1' : ''}`)
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return (await res.json()) as UpdateCheckResponse
 }
