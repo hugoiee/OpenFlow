@@ -4,7 +4,10 @@
 //   - 上游 image 节点 / 图像素材节点 → 结果图（作为下游的输入图）
 //   - 上游 音频素材节点 → 音频 URL（作为视频节点的 audio_list）
 
-import { type Project } from './types'
+import type { Edge } from '@xyflow/react'
+import { sanitizeMentionName, uniqueMentionName } from './mentions'
+import { VIDEO_VARIANT_DEFAULT } from './nodeCatalog'
+import { type FlowNode, type MentionKind, type Project, type PromptMentionRef } from './types'
 
 /**
  * Any LLM 节点的「System Prompt 输入端点」的 handle id。
@@ -30,6 +33,14 @@ export const VIDEO_INPUT_HANDLE_PREFIX = 'video-'
 export function videoInputHandleId(index: number): string {
   return `${VIDEO_INPUT_HANDLE_PREFIX}${index}`
 }
+
+/**
+ * 图像/视频生成节点的**统一资源输入端点** handle id：图/音/视素材与上游生成结果都连这一个口，
+ * 具体用哪个资源由上游 Prompt 里的 @ 引用指定（无 @ 时全发）。旧编号端点（image-N/audio-N/video-N）
+ * 连线在载入时经 normalizeResourceEdges 归并到此端点；LLM 节点仍用编号端点，视频首尾帧变体仍用
+ * image-0/image-1 作 First/Last 专用端点。
+ */
+export const RES_INPUT_HANDLE = 'res'
 
 /** 节点图像输入端点数量（含旧数据兜底）：至少 1。 */
 export function imageInputCount(imageInputs: number | undefined): number {
@@ -81,7 +92,7 @@ function edgeMatchesHandle(
 export function collectUpstreamPrompt(
   project: Project,
   nodeId: string,
-  opts: { handle?: PromptHandle; visited?: Set<string> } = {},
+  opts: { handle?: PromptHandle; visited?: Set<string>; mentionsOut?: PromptMentionRef[] } = {},
 ): string {
   const visited = opts.visited ?? new Set<string>()
   if (visited.has(nodeId)) return ''
@@ -96,8 +107,10 @@ export function collectUpstreamPrompt(
     .map((n) => {
       if (n.type === 'llm') return n.data.result ?? ''
       if (n.type === 'prompt') {
+        // 沿途收集各 prompt 节点的 @ 引用映射（供下游 build 时替换占位符）
+        opts.mentionsOut?.push(...(n.data.mentions ?? []))
         // 本 prompt 节点的上游文本（递归、不再区分端点）在前，自身文本在后
-        const upstream = collectUpstreamPrompt(project, n.id, { visited })
+        const upstream = collectUpstreamPrompt(project, n.id, { visited, mentionsOut: opts.mentionsOut })
         return [upstream, n.data.text].filter(Boolean).join('\n\n')
       }
       return ''
@@ -107,67 +120,262 @@ export function collectUpstreamPrompt(
 }
 
 /**
- * 收集所有指向 nodeId 的上游图像 URL（作为下游输入图）。
+ * 带来源身份的上游资源引用：url 之外保留源节点 id/label/文件名与生成结果序号，
+ * 供 Prompt 节点的 @ 引用（候选展示 + 构建期占位符替换）使用。
+ * resultIndex 是生成节点 result[] 的原始下标（含空串占位，保证「第 N 张」语义稳定）。
+ */
+export type UpstreamRef = {
+  url: string
+  nodeId: string
+  kind: MentionKind
+  resultIndex?: number
+  label: string
+  fileName?: string
+  /** 连线的原始 targetHandle（视频首尾帧变体据此区分 First/Last 专用端点与统一资源端点）。 */
+  handle?: string | null
+}
+
+/**
+ * 收集所有指向 nodeId 的上游图像引用（作为下游输入图）。
  * 来源：上游 image 生成节点的结果图 + 上游图像素材节点的 URL。
  * 按「图像输入端点编号」排序（image-0、image-1…），旧的空 handle 连线排最前（兼容）；
  * 同一端点内按连线顺序展平；为空的来源不贡献。video 输出不作为图像输入。
  */
-export function collectUpstreamImages(project: Project, nodeId: string): string[] {
-  const entries: { slot: number; order: number; url: string }[] = []
+export function collectUpstreamImageRefs(project: Project, nodeId: string): UpstreamRef[] {
+  const entries: { slot: number; order: number; ref: UpstreamRef }[] = []
   project.edges.forEach((e, order) => {
     if (e.target !== nodeId) return
     const src = project.nodes.find((n) => n.id === e.source)
     const slot = handleSlot(e.targetHandle, IMAGE_INPUT_HANDLE_PREFIX)
     if (src?.type === 'image') {
-      for (const url of (src.data.result ?? []).filter(Boolean)) {
-        entries.push({ slot, order, url })
-      }
+      ;(src.data.result ?? []).forEach((url, i) => {
+        if (!url) return // 跳过空串但保留原始下标，"结果N" 序号不漂移
+        entries.push({
+          slot,
+          order,
+          ref: { url, nodeId: src.id, kind: 'image', resultIndex: i, label: src.data.label, handle: e.targetHandle },
+        })
+      })
     } else if (src?.type === 'asset' && src.data.kind === 'image' && src.data.url) {
-      entries.push({ slot, order, url: src.data.url })
+      entries.push({
+        slot,
+        order,
+        ref: {
+          url: src.data.url,
+          nodeId: src.id,
+          kind: 'image',
+          label: src.data.label,
+          fileName: src.data.fileName,
+          handle: e.targetHandle,
+        },
+      })
     }
   })
   // 端点编号在前、同端点按连线顺序：稳定排序保证多图输入次序可控（图1、图2…）
   entries.sort((a, b) => a.slot - b.slot || a.order - b.order)
-  return entries.map((e) => e.url)
+  return entries.map((e) => e.ref)
+}
+
+/** 同 collectUpstreamImageRefs，仅取 URL（原有调用方用）。 */
+export function collectUpstreamImages(project: Project, nodeId: string): string[] {
+  return collectUpstreamImageRefs(project, nodeId).map((r) => r.url)
 }
 
 /**
- * 收集所有指向 nodeId 的上游音频素材节点的 URL（作为视频节点的 audio_list）。
+ * 收集所有指向 nodeId 的上游音频素材引用（作为视频节点的 audio_list）。
  * 按「音频输入端点编号」排序（audio-0、audio-1…），旧的空 handle 连线排最前（兼容）；
  * 同端点内按连线顺序展平；URL 为空的素材不贡献。
  */
-export function collectUpstreamAudio(project: Project, nodeId: string): string[] {
-  const entries: { slot: number; order: number; url: string }[] = []
+export function collectUpstreamAudioRefs(project: Project, nodeId: string): UpstreamRef[] {
+  const entries: { slot: number; order: number; ref: UpstreamRef }[] = []
   project.edges.forEach((e, order) => {
     if (e.target !== nodeId) return
     const src = project.nodes.find((n) => n.id === e.source)
     if (src?.type === 'asset' && src.data.kind === 'audio' && src.data.url) {
-      entries.push({ slot: handleSlot(e.targetHandle, AUDIO_INPUT_HANDLE_PREFIX), order, url: src.data.url })
+      entries.push({
+        slot: handleSlot(e.targetHandle, AUDIO_INPUT_HANDLE_PREFIX),
+        order,
+        ref: {
+          url: src.data.url,
+          nodeId: src.id,
+          kind: 'audio',
+          label: src.data.label,
+          fileName: src.data.fileName,
+          handle: e.targetHandle,
+        },
+      })
     }
   })
   entries.sort((a, b) => a.slot - b.slot || a.order - b.order)
-  return entries.map((e) => e.url)
+  return entries.map((e) => e.ref)
+}
+
+/** 同 collectUpstreamAudioRefs，仅取 URL（原有调用方用）。 */
+export function collectUpstreamAudio(project: Project, nodeId: string): string[] {
+  return collectUpstreamAudioRefs(project, nodeId).map((r) => r.url)
 }
 
 /**
- * 收集所有指向 nodeId 的上游视频 URL（作为 Any LLM 节点的视频理解输入）。
+ * 收集所有指向 nodeId 的上游视频引用（作为 Any LLM 节点的视频理解输入 / Seedance 参考视频）。
  * 来源：上游 video 生成节点(Seedance)的结果视频 + 上游视频素材节点的 URL。
  * 按「视频输入端点编号」排序（video-0、video-1…），同端点内按连线顺序展平；URL 为空的来源不贡献。
  */
-export function collectUpstreamVideo(project: Project, nodeId: string): string[] {
-  const entries: { slot: number; order: number; url: string }[] = []
+export function collectUpstreamVideoRefs(project: Project, nodeId: string): UpstreamRef[] {
+  const entries: { slot: number; order: number; ref: UpstreamRef }[] = []
   project.edges.forEach((e, order) => {
     if (e.target !== nodeId) return
     const src = project.nodes.find((n) => n.id === e.source)
     const slot = handleSlot(e.targetHandle, VIDEO_INPUT_HANDLE_PREFIX)
     if (src?.type === 'video') {
-      for (const url of (src.data.result ?? []).filter(Boolean)) {
-        entries.push({ slot, order, url })
-      }
+      ;(src.data.result ?? []).forEach((url, i) => {
+        if (!url) return
+        entries.push({
+          slot,
+          order,
+          ref: { url, nodeId: src.id, kind: 'video', resultIndex: i, label: src.data.label, handle: e.targetHandle },
+        })
+      })
     } else if (src?.type === 'asset' && src.data.kind === 'video' && src.data.url) {
-      entries.push({ slot, order, url: src.data.url })
+      entries.push({
+        slot,
+        order,
+        ref: {
+          url: src.data.url,
+          nodeId: src.id,
+          kind: 'video',
+          label: src.data.label,
+          fileName: src.data.fileName,
+          handle: e.targetHandle,
+        },
+      })
     }
   })
   entries.sort((a, b) => a.slot - b.slot || a.order - b.order)
-  return entries.map((e) => e.url)
+  return entries.map((e) => e.ref)
+}
+
+/** 同 collectUpstreamVideoRefs，仅取 URL（原有调用方用）。 */
+export function collectUpstreamVideo(project: Project, nodeId: string): string[] {
+  return collectUpstreamVideoRefs(project, nodeId).map((r) => r.url)
+}
+
+/**
+ * 把旧「编号端点」（image-N/audio-N/video-N 及更早的空 handle）连线归并到统一资源端点 res：
+ * 仅处理目标为图像/视频生成节点、源为资源节点（asset/image/video）的连线；
+ * 视频首尾帧变体的 image-0/image-1（First/Last 专用端点）保留不动；LLM 节点连线不动。
+ * 归并时按同目标同资源类型的旧排序键（端点编号在前、连线顺序在后）重排该子组，
+ * 保证归并后「按连线顺序采集」与旧「按端点编号采集」次序一致。无需归并时原样返回。
+ */
+export function normalizeResourceEdges(nodes: FlowNode[], edges: Edge[]): Edge[] {
+  const byId = new Map(nodes.map((n) => [n.id, n]))
+  const kindPrefix: Record<MentionKind, string> = {
+    image: IMAGE_INPUT_HANDLE_PREFIX,
+    audio: AUDIO_INPUT_HANDLE_PREFIX,
+    video: VIDEO_INPUT_HANDLE_PREFIX,
+  }
+  const next = edges.slice()
+  let changed = false
+  // 按「目标节点 × 资源类型」分组待归并连线的下标（保持出现顺序）
+  const groups = new Map<string, { kind: MentionKind; indices: number[] }>()
+  next.forEach((e, i) => {
+    const target = byId.get(e.target)
+    if (target?.type !== 'image' && target?.type !== 'video') return
+    const src = byId.get(e.source)
+    let kind: MentionKind
+    if (src?.type === 'asset') kind = src.data.kind
+    else if (src?.type === 'image') kind = 'image'
+    else if (src?.type === 'video') kind = 'video'
+    else return // prompt/llm 等文本源：不是资源连线
+    if (e.targetHandle === RES_INPUT_HANDLE) return // 已是统一端点
+    if (target.type === 'video' && kind === 'image') {
+      const variant =
+        target.data.videoVariant ?? (target.data.videoTask === 'reference' ? 'reference' : VIDEO_VARIANT_DEFAULT)
+      if (
+        variant !== 'reference' &&
+        (e.targetHandle === imageInputHandleId(0) || e.targetHandle === imageInputHandleId(1))
+      ) {
+        return // 首尾帧变体的 First/Last 专用端点保留
+      }
+    }
+    const key = `${e.target}#${kind}`
+    const group = groups.get(key)
+    if (group) group.indices.push(i)
+    else groups.set(key, { kind, indices: [i] })
+  })
+  for (const { kind, indices } of groups.values()) {
+    const prefix = kindPrefix[kind]
+    // 旧采集排序键（slot 在前、连线顺序在后）重排子组，写回原下标位（indices 本身升序）
+    const sorted = indices
+      .map((i) => next[i])
+      .sort((a, b) => handleSlot(a.targetHandle, prefix) - handleSlot(b.targetHandle, prefix))
+    sorted.forEach((e, j) => {
+      next[indices[j]] = { ...e, targetHandle: RES_INPUT_HANDLE }
+    })
+    changed = true
+  }
+  return changed ? next : edges
+}
+
+/** Prompt 节点 @ 菜单的一个候选项：身份 + 消歧后的显示名 + 预览 URL。 */
+export type MentionCandidate = {
+  /** 去重键：`${nodeId}#${kind}#${resultIndex ?? -1}`。 */
+  key: string
+  nodeId: string
+  kind: MentionKind
+  resultIndex?: number
+  /** 消歧后的显示名（即插入 token 的方括号内文字）。 */
+  name: string
+  /** 资源 URL（菜单缩略图/预览用）。 */
+  url: string
+}
+
+/** 候选显示名基础值：素材节点用文件名，生成节点结果用「label·结果N」。 */
+function mentionBaseName(ref: UpstreamRef): string {
+  if (ref.resultIndex !== undefined) return `${ref.label}·结果${ref.resultIndex + 1}`
+  return ref.fileName || ref.label
+}
+
+/**
+ * 从 promptNodeId 出发沿下游收集可 @ 的资源候选：
+ * 沿 source === 当前节点 的边找下游；下游是 prompt → 递归（prompt 链，visited 防环）；
+ * 下游是 image 生成节点 → 并入其上游图像引用；下游是 video 生成节点 → 并入其图/音/视三类引用；
+ * llm / podcast 等其他类型跳过（@ 仅对图像/视频生成请求生效）。
+ * 多下游取并集（按身份键去重）；不含手填 imagesText/audiosText（无节点身份可引用）。
+ */
+export function collectMentionCandidates(project: Project, promptNodeId: string): MentionCandidate[] {
+  const visited = new Set<string>()
+  const byKey = new Map<string, UpstreamRef>()
+  const addRefs = (refs: UpstreamRef[]) => {
+    for (const ref of refs) {
+      const key = `${ref.nodeId}#${ref.kind}#${ref.resultIndex ?? -1}`
+      if (!byKey.has(key)) byKey.set(key, ref)
+    }
+  }
+  const walk = (id: string) => {
+    if (visited.has(id)) return
+    visited.add(id)
+    for (const e of project.edges) {
+      if (e.source !== id) continue
+      const target = project.nodes.find((n) => n.id === e.target)
+      if (target?.type === 'prompt') {
+        walk(target.id)
+      } else if (target?.type === 'image') {
+        addRefs(collectUpstreamImageRefs(project, target.id))
+      } else if (target?.type === 'video') {
+        addRefs(collectUpstreamImageRefs(project, target.id))
+        addRefs(collectUpstreamAudioRefs(project, target.id))
+        addRefs(collectUpstreamVideoRefs(project, target.id))
+      }
+    }
+  }
+  walk(promptNodeId)
+  // 同名候选追加 " (2)"、" (3)" 消歧，保证一个候选列表内显示名唯一
+  const taken = new Set<string>()
+  const candidates: MentionCandidate[] = []
+  for (const [key, ref] of byKey) {
+    const name = uniqueMentionName(sanitizeMentionName(mentionBaseName(ref)), taken)
+    taken.add(name)
+    candidates.push({ key, nodeId: ref.nodeId, kind: ref.kind, resultIndex: ref.resultIndex, name, url: ref.url })
+  }
+  return candidates
 }

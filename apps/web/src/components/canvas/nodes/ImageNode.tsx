@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { type NodeProps, useUpdateNodeInternals } from '@xyflow/react'
+import { type NodeProps } from '@xyflow/react'
 import { Banana, Download, Image as ImageIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -7,10 +7,9 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { DownloadDialog, type DownloadTarget } from '@/components/canvas/DownloadDialog'
 import { NodeHeader } from './NodeHeader'
 import { NodeHandle } from './NodeHandle'
-import { AddInputControls, ImageInputHandles } from './ImageInputHandles'
 import { createImageTaskApi } from '@/lib/api'
 import { pollTask } from '@/lib/taskPolling'
-import { imageInputCount } from '@/lib/graph'
+import { RES_INPUT_HANDLE } from '@/lib/graph'
 import { buildImageRequest } from '@/lib/requestBody'
 import { type ImageNode as ImageNodeType } from '@/lib/types'
 import { useFlowStore } from '@/store/useFlowStore'
@@ -33,13 +32,6 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
 
   const result = data.result ?? []
   const running = data.running ?? false
-  const imageInputs = imageInputCount(data.imageInputs)
-  const updateNodeInternals = useUpdateNodeInternals()
-
-  // 「Add Input」动态增减图像端点后，通知 React Flow 重新测量本节点 handle，否则新增端点无法连线
-  useEffect(() => {
-    updateNodeInternals(id)
-  }, [id, imageInputs, updateNodeInternals])
 
   // 生成失败：节点底部内联显示；silent=false 时再弹窗提示。
   // 重连路径（刷新重开 / Agent 触发）走 silent——非点击场景连环 alert 会阻塞整个应用。
@@ -118,9 +110,17 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
         selected ? 'ring-2 ring-primary' : ''
       }`}
     >
-      {/* 左侧输入端点：Prompt（粉，index 0）+ 图像输入端点（绿，image-0..，Image 1..N） */}
+      {/* 左侧输入端点：Prompt（粉，index 0）+ 统一资源端点（绿，接任意数量输入图；
+          用哪张由上游 Prompt 里 @ 引用指定，没 @ 则全发） */}
       <NodeHandle type="target" index={0} tone="prompt" label="Prompt" required title="Prompt 输入" />
-      <ImageInputHandles count={imageInputs} baseIndex={1} />
+      <NodeHandle
+        type="target"
+        id={RES_INPUT_HANDLE}
+        index={1}
+        tone="image"
+        label="Assets"
+        title="输入图（可连多张，Prompt 里 @ 指定用哪张）"
+      />
       <NodeHeader
         id={id}
         icon={data.model === 'Nano Banana' ? Banana : ImageIcon}
@@ -169,9 +169,7 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
           )}
         </div>
 
-        {/* Add Input + 生成 并排 */}
         <div className="flex items-center gap-2">
-          <AddInputControls id={id} image={imageInputs} />
           <Button size="sm" onClick={handleRun} disabled={running} className="nodrag ml-auto h-8">
             {running ? '生成中…' : '生成'}
           </Button>

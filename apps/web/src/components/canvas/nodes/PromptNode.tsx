@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState, type ChangeEvent } from 'react'
 import { NodeResizer, type NodeProps } from '@xyflow/react'
 import { BookmarkPlus, Library, Type } from 'lucide-react'
 import type { PromptPresetCategory } from '@openflow/shared'
@@ -15,7 +15,10 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { useCompositionField } from '@/hooks/useCompositionField'
+import { useCompositionFieldControls } from '@/hooks/useCompositionField'
+import { useMentionMenu } from '@/hooks/useMentionMenu'
+import { pruneMentions } from '@/lib/mentions'
+import { MentionHighlights, MentionMenu } from './MentionMenu'
 import { NodeHeader } from './NodeHeader'
 import { NodeHandle } from './NodeHandle'
 import { useFlowStore } from '@/store/useFlowStore'
@@ -42,9 +45,49 @@ const DEFAULT_HEIGHT = 200
 
 export function PromptNode({ id, data, selected, width, height }: NodeProps<PromptNodeType>) {
   const updateNodeData = useFlowStore((s) => s.updateNodeData)
-  const textField = useCompositionField(data.text, (v) => updateNodeData(id, { text: v }))
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+  // @ tag 高亮层（渲染在 Textarea 正后方，与其字体/内边距逐像素对齐，滚动时同步）
+  const overlayRef = useRef<HTMLDivElement | null>(null)
+  const {
+    field: textField,
+    setValue: setText,
+    isComposing,
+  } = useCompositionFieldControls(data.text, (v) => {
+    // 提交文本时顺带清理 token 已从文本消失的 mention 映射（从 store 现取，防闭包过期）
+    const project = useFlowStore.getState().projects.find((p) => p.id === useFlowStore.getState().activeProjectId)
+    const node = project?.nodes.find((n) => n.id === id)
+    const mentions = node?.type === 'prompt' ? node.data.mentions : undefined
+    updateNodeData(id, { text: v, mentions: pruneMentions(v, mentions) })
+  })
   const presets = usePromptPresetStore((s) => s.presets)
   const addPreset = usePromptPresetStore((s) => s.addPreset)
+
+  // @ 引用菜单：输入 @ 弹出下游图像/视频节点的连线资源候选，插入 @[显示名] token
+  const mention = useMentionMenu({
+    nodeId: id,
+    textareaRef,
+    isComposing,
+    onInsert: (nextText, nextMentions, caretPos) => {
+      updateNodeData(id, { mentions: nextMentions })
+      setText(nextText) // 立即提交（绕开 300ms 防抖），mentions 已先落库
+      requestAnimationFrame(() => {
+        const ta = textareaRef.current
+        if (!ta) return
+        ta.focus()
+        ta.setSelectionRange(caretPos, caretPos)
+      })
+    },
+  })
+
+  const handleTextChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
+    textField.onChange(e)
+    mention.handleChange(e.target.value, e.target.selectionStart ?? e.target.value.length)
+  }
+
+  const handleTextBlur = () => {
+    mention.close()
+    textField.onBlur()
+  }
 
   // 选用预设弹窗（不用 DropdownMenu：其 pointerdown 会被 React Flow 节点拖拽逻辑吞掉，弹不出来）
   const [pickOpen, setPickOpen] = useState(false)
@@ -61,7 +104,8 @@ export function PromptNode({ id, data, selected, width, height }: NodeProps<Prom
   const hasText = currentText.trim().length > 0
 
   const applyPreset = (content: string) => {
-    updateNodeData(id, { text: content })
+    // 预设内容不含有效 @ 引用，替换全文时同步清空映射表
+    updateNodeData(id, { text: content, mentions: [] })
     setPickOpen(false)
   }
 
@@ -111,11 +155,40 @@ export function PromptNode({ id, data, selected, width, height }: NodeProps<Prom
       <NodeHeader id={id} icon={Type} title={data.label} selected={selected} />
       {/* flex-1 + min-h-0：内容区吃掉除页头/工具条外的剩余高度，输入框随之填满 */}
       <CardContent className="flex min-h-0 flex-1 flex-col gap-2 px-3">
-        <Textarea
-          {...textField}
-          placeholder="在这里写 prompt…"
-          className="nodrag field-sizing-fixed min-h-0 w-full flex-1 resize-none text-sm"
-        />
+        {/* relative 容器：@ 引用菜单锚在 Textarea 正下方；@ tag 高亮层垫在 Textarea 后面 */}
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          {/* 高亮层：与 Textarea 同字体/内边距/换行，整体文字透明、只给 token 画底色药丸；
+              暗色模式的输入框底色也移到这层（Textarea 本身转透明，露出药丸） */}
+          <div
+            ref={overlayRef}
+            aria-hidden
+            className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words rounded-lg border border-transparent px-2.5 py-2 text-sm text-transparent dark:bg-input/30"
+          >
+            <MentionHighlights text={textField.value} mentions={data.mentions} />
+          </div>
+          <Textarea
+            {...textField}
+            ref={textareaRef}
+            onChange={handleTextChange}
+            onBlur={handleTextBlur}
+            onKeyDown={mention.onKeyDown}
+            onClick={mention.close}
+            onScroll={(e) => {
+              // 高亮层滚动跟随（内容一致故 scrollHeight 相同）
+              if (overlayRef.current) overlayRef.current.scrollTop = e.currentTarget.scrollTop
+            }}
+            placeholder="在这里写 prompt…（输入 @ 可引用下游节点的连线资源）"
+            className="nodrag field-sizing-fixed relative min-h-0 w-full flex-1 resize-none bg-transparent text-sm dark:bg-transparent"
+          />
+          {mention.open && (
+            <MentionMenu
+              items={mention.items}
+              activeIndex={mention.activeIndex}
+              onHover={mention.setActiveIndex}
+              onSelect={mention.select}
+            />
+          )}
+        </div>
 
         {/* 预设工具条：选用预设 / 存为预设 */}
         <div className="flex shrink-0 items-center gap-1">
