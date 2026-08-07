@@ -20,4 +20,4 @@ jobs:
         with: { path: dist, merge-multiple: true }
       - run: |
           ls -lR dist
-          cd dist && sha256sum -c sum.txt && test -f sum2.txt && echo "roundtrip OK ✓"
+          cd dist && sed "s|out/||" sum.txt > c.txt && sha256sum -c c.txt && test -f sum2.txt && echo "roundtrip OK ✓"
