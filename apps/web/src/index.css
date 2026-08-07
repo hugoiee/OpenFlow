@@ -222,20 +222,40 @@
 }
 
 /*
- * 连线(edge)：整体加粗 + 悬停高亮 + 与「已选中节点」相连的边高亮。
+ * 连线(edge)：默认态一律画成安静的淡灰细线——连线一多也不抢注意力；
+ * 只有悬停 / 与「已选中节点」相连 / 边自身被选中时，才恢复类型色并加粗。
+ * 类型色由 FlowCanvas 以自定义属性 --edge-color 内联下发（同端点的 --handle-color 写法），
+ * 这里才取用；没有类型色的边（如分组容器）回退 --primary。纯颜色变化，无动画。
  * 用 `.react-flow` 前缀提高特异性，压过 @xyflow/react style.css 的默认描边（无需 !important）。
- * 高亮仅换描边颜色/粗细（纯颜色，无蚂蚁线动画）；active 边在 FlowCanvas 里打 edge-active 类。
  */
 .react-flow .react-flow__edge-path {
-  stroke-width: 2;
+  /* 边被点选/聚焦时 @xyflow 自己那条同特异性规则（.selectable:focus）会压过下面的高亮规则，
+     故把它取用的变量也指向类型色，无论哪条规则胜出颜色都一致 */
+  --xy-edge-stroke-selected: var(--edge-color, var(--primary));
+  stroke: var(--muted-foreground);
+  stroke-width: 1.5;
+  opacity: 0.35;
   transition:
     stroke 0.15s ease,
-    stroke-width 0.15s ease;
+    stroke-width 0.15s ease,
+    opacity 0.15s ease;
 }
 .react-flow .react-flow__edge:hover .react-flow__edge-path,
-.react-flow .react-flow__edge.edge-active .react-flow__edge-path {
-  stroke: var(--primary);
-  stroke-width: 3;
+.react-flow .react-flow__edge.edge-active .react-flow__edge-path,
+.react-flow .react-flow__edge.selected .react-flow__edge-path {
+  stroke: var(--edge-color, var(--primary));
+  stroke-width: 2.5;
+  opacity: 1;
+}
+
+/*
+ * 连线恒在节点之下：React Flow 会给「任一端在分组容器里」的边算出 zIndex ≥ 1
+ * （子节点有 parentId → internals.z ≥ 1），而未分组节点 z = 0，于是那些边会盖到节点上、
+ * 用隐形命中带吞掉点击。给边容器一个 z-index 让它自成层叠上下文，把每条边的 z 关在容器内部；
+ * 容器与节点同为 0 时按 DOM 顺序（EdgeRenderer 在 NodeRenderer 之前）判定，节点恒胜。
+ */
+.react-flow .react-flow__edges {
+  z-index: 0;
 }
 
 /*

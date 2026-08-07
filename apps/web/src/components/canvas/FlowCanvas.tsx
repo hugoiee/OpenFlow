@@ -13,7 +13,7 @@ import {
   type OnConnectEnd,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { nodeTypes } from './nodes'
 import { ZoomSlider } from './ZoomSlider'
 import { CanvasContextMenu } from './CanvasContextMenu'
@@ -307,7 +307,9 @@ export function FlowCanvas() {
 
   // 连线统一走贝塞尔曲线（default）：旧的 straight/smoothstep 一并归一成曲线。
   // 派生视图态（不入库）：与「已选中节点」相连的边高亮（edge-active，纯换色，无动画）。
-  // 连线着色：按源节点输出的数据类型（文本粉 / 图像绿 / 其余默认，与端点同色）。
+  // 连线着色：**默认态一律画成安静的淡灰细线**（见 index.css），类型色只经 CSS 变量
+  // --edge-color 下发（照 NodeHandle 的 --handle-color 写法），由 CSS 在 hover / edge-active /
+  // selected 时才取用——连线一多也不抢注意力，需要看关系时再上色。
   // ⚡ useMemo 稳定引用：依赖只取 edges + 选中签名——拖动节点（仅改 nodes）时
   // project.edges 引用不变、selectedSig 不变 → 复用同一 edges 数组，避免每帧都吐给 React Flow
   // 全新的 edge/style 对象、触发全量边重算重绘（颜色只随源节点类型变，故不入依赖）。
@@ -325,11 +327,16 @@ export function FlowCanvas() {
     return project.edges.map((e) => {
       const active = selectedSet.has(e.source) || selectedSet.has(e.target)
       const color = edgeColorForSource(nodeById.get(e.source))
+      // 清掉旧数据里可能存过的内联 stroke（会压过样式表的默认淡灰）；类型色改走 CSS 变量
+      const style: CSSProperties = { ...e.style, stroke: undefined }
+      if (color) (style as Record<string, string>)['--edge-color'] = color
       return {
         ...e,
         type: 'default',
         className: active ? 'edge-active' : undefined,
-        ...(color ? { style: { ...e.style, stroke: color } } : {}),
+        style,
+        // 隐形命中带（默认 20 流坐标，放大后更宽）收窄一点，少吞节点附近的点击
+        interactionWidth: 12,
       }
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
