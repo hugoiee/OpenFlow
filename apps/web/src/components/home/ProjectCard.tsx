@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Pin } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
@@ -20,6 +22,7 @@ type ProjectCardProps = {
 export function ProjectCard({ project, view }: ProjectCardProps) {
   const navigate = useNavigate()
   const renameProject = useFlowStore((s) => s.renameProject)
+  const setProjectPinned = useFlowStore((s) => s.setProjectPinned)
   const deleteProject = useFlowStore((s) => s.deleteProject)
 
   const [editing, setEditing] = useState(false)
@@ -67,7 +70,11 @@ export function ProjectCard({ project, view }: ProjectCardProps) {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+        <DropdownMenuItem onClick={() => setProjectPinned(project.id, !project.pinned)}>
+          {project.pinned ? '取消置顶' : '置顶'}
+        </DropdownMenuItem>
         <DropdownMenuItem onClick={startRename}>重命名</DropdownMenuItem>
+        <DropdownMenuSeparator />
         <DropdownMenuItem
           variant="destructive"
           onClick={() => deleteProject(project.id)}
@@ -84,6 +91,9 @@ export function ProjectCard({ project, view }: ProjectCardProps) {
         className="group flex cursor-pointer items-center gap-2 rounded-md border bg-card px-3 py-2.5 text-sm hover:bg-accent/50"
         onClick={open}
       >
+        {project.pinned && !editing && (
+          <Pin className="size-3.5 shrink-0 text-muted-foreground" aria-label="已置顶" />
+        )}
         {editing ? (
           <div className="flex-1">{nameField}</div>
         ) : (
@@ -107,6 +117,12 @@ export function ProjectCard({ project, view }: ProjectCardProps) {
       className="group relative flex h-28 cursor-pointer items-center justify-center p-4 text-center transition-colors hover:bg-accent/50"
       onClick={open}
     >
+      {project.pinned && (
+        <Pin
+          className="absolute left-2 top-2 size-3.5 text-muted-foreground"
+          aria-label="已置顶"
+        />
+      )}
       <div className="absolute right-2 top-2">{menu}</div>
       {editing ? (
         <div className="w-full px-2">{nameField}</div>
