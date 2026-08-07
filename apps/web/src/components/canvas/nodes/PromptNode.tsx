@@ -1,4 +1,4 @@
-import { useRef, useState, type ChangeEvent } from 'react'
+import { useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react'
 import { NodeResizer, type NodeProps } from '@xyflow/react'
 import { BookmarkPlus, Library, Type } from 'lucide-react'
 import type { PromptPresetCategory } from '@openflow/shared'
@@ -17,7 +17,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { useCompositionFieldControls } from '@/hooks/useCompositionField'
 import { useMentionMenu } from '@/hooks/useMentionMenu'
-import { pruneMentions } from '@/lib/mentions'
+import { mentionTokenEndingAt, pruneMentions } from '@/lib/mentions'
 import { MentionHighlights, MentionMenu } from './MentionMenu'
 import { NodeHeader } from './NodeHeader'
 import { NodeHandle } from './NodeHandle'
@@ -62,26 +62,50 @@ export function PromptNode({ id, data, selected, width, height }: NodeProps<Prom
   const presets = usePromptPresetStore((s) => s.presets)
   const addPreset = usePromptPresetStore((s) => s.addPreset)
 
+  // 程序化改写文本 + 复位光标（token 插入 / 整体删除共用）：
+  // 走 setValue 立即提交（绕开 300ms 防抖），commit 回调里的 pruneMentions 顺带清理失效映射
+  const applyTextWithCaret = (nextText: string, caretPos: number) => {
+    setText(nextText)
+    requestAnimationFrame(() => {
+      const ta = textareaRef.current
+      if (!ta) return
+      ta.focus()
+      ta.setSelectionRange(caretPos, caretPos)
+    })
+  }
+
   // @ 引用菜单：输入 @ 弹出下游图像/视频节点的连线资源候选，插入 @[显示名] token
   const mention = useMentionMenu({
     nodeId: id,
     textareaRef,
     isComposing,
     onInsert: (nextText, nextMentions, caretPos) => {
-      updateNodeData(id, { mentions: nextMentions })
-      setText(nextText) // 立即提交（绕开 300ms 防抖），mentions 已先落库
-      requestAnimationFrame(() => {
-        const ta = textareaRef.current
-        if (!ta) return
-        ta.focus()
-        ta.setSelectionRange(caretPos, caretPos)
-      })
+      updateNodeData(id, { mentions: nextMentions }) // mentions 先落库，再写文本
+      applyTextWithCaret(nextText, caretPos)
     },
   })
 
   const handleTextChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
     textField.onChange(e)
     mention.handleChange(e.target.value, e.target.selectionStart ?? e.target.value.length)
+  }
+
+  /**
+   * 键盘处理：菜单打开时的导航键优先交给 useMentionMenu；
+   * 其余情况下，光标紧随一个已登记 @ tag 时按退格 → 整体删除该 token（视觉上它就是一个整体）。
+   * 带修饰键的删词/删行、IME 组词、选中一段文本时一律放行给原生行为。
+   */
+  const handleTextKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    mention.onKeyDown(e)
+    if (e.defaultPrevented) return
+    if (e.key !== 'Backspace' || e.ctrlKey || e.metaKey || e.altKey || isComposing()) return
+    const ta = e.currentTarget
+    const caret = ta.selectionStart ?? 0
+    if (caret !== ta.selectionEnd) return // 有选区：原生删选中内容
+    const token = mentionTokenEndingAt(ta.value, caret, data.mentions)
+    if (!token) return
+    e.preventDefault()
+    applyTextWithCaret(`${ta.value.slice(0, token.start)}${ta.value.slice(token.end)}`, token.start)
   }
 
   const handleTextBlur = () => {
@@ -171,7 +195,7 @@ export function PromptNode({ id, data, selected, width, height }: NodeProps<Prom
             ref={textareaRef}
             onChange={handleTextChange}
             onBlur={handleTextBlur}
-            onKeyDown={mention.onKeyDown}
+            onKeyDown={handleTextKeyDown}
             onClick={mention.close}
             onScroll={(e) => {
               // 高亮层滚动跟随（内容一致故 scrollHeight 相同）
