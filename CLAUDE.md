@@ -106,7 +106,7 @@ apps/web/src/
   lib/layout.ts                节点布局纯计算（供分组/整理复用）：nodeSize(measured→width/height→按类型兜底) / computeBoundingBox(绝对包围盒) / computeGridLayout(按位置排序后 ceil(√n) 列的等间距网格) / detachChildren(子节点相对坐标转绝对、清 parentId/extent) + GROUP_PADDING/ARRANGE_GAP
   lib/nodeCatalog.ts           图像/视频预置模型 + 模型→AIGC model_name 映射(IMAGE_API_MODEL/imageApiModel、VIDEO_API_MODEL/videoApiModel) + 各模型可调项选项(图像尺寸/质量/张数、Nano version/宽高比/尺寸、Seedance version/mode/分辨率/时长) + Any LLM 预置模型 LLM_MODELS（现仅作**新建节点默认种子**：Model 选择已改为动态）+ mergeModelOptions(manual, fetched, current)（把手动列表 ∪ 动态获取合并成下拉候选：去空/去重/排序 + 当前已选值置顶；设置面板与节点共用保证一致）+ Temperature 范围 + 配色文案（节点与菜单共用，含素材节点 ASSET_NODE_META：图像=琥珀 / 音频=天蓝 / 视频=玫红；LLM_NODE_META：紫色）
   lib/modelCapabilities.ts     modelCapabilities(name)：按模型名正则**启发式推断**支持的能力（思考/图像/音频/视频理解，常见家族 gpt-4o/gemini/claude/o系列/deepseek/qwen-omni 等，未知模型全 false）+ hasAnyCapability + MODEL_CAPABILITY_LABELS/ORDER（供 Model 下拉展示能力图标；规则近似、易维护）
-  lib/nodeMenu.ts              NODE_GROUPS：画布右键菜单点选建节点的分组清单（工作区侧栏已移除，建节点入口只剩右键菜单）（按文本/图像/视频三类，含类型/模型/图标/videoVariant）
+  lib/nodeMenu.ts              NODE_GROUPS：画布右键菜单点选建节点的分组清单（**建节点入口只有两个**：画布空白右键新建、端点拉线松开在空白处建节点+连线，二者都走这份清单）（按文本/图像/视频三类，含类型/模型/图标/videoVariant）
   lib/id.ts                    newId(prefix)：生成简短唯一 id（项目/节点/连线用）
   lib/appMeta.ts               应用元信息常量：APP_NAME='Open Flow' / APP_VERSION（工作区顶栏 logo 展示；与 apps/desktop/package.json 的打包版本保持一致，发版时两处一起改）
   lib/utils.ts                 cn()：clsx + tailwind-merge 合并去重类名（shadcn 约定）
@@ -128,7 +128,7 @@ apps/web/src/
   components/workspace/WorkspaceHeader.tsx   工作区顶栏：左=**AppLogo（品牌 + 版本号，纯展示不可点）** + **新版本提醒**（useUpdateCheck，仅桌面端且查到更高版本时出现的小徽标，点击去 Release 下载）+ 首页按钮（回首页的唯一入口）+ **可点击改名的项目名**（单击编辑，Enter 提交 / Esc 取消）；右=req_from 邮箱前缀 badge(点开设置 + 退出) · **预设按钮**(开 PromptPresetsDialog) · 主题切换 · 设置按钮(开 SettingsDialog)
   components/workspace/AppLogo.tsx            品牌标记：流程图 favicon SVG + APP_NAME + APP_VERSION（工作区顶栏使用，纯展示不可点——回首页交给顶栏的「首页」按钮）
   components/canvas/
-    FlowCanvas.tsx             React Flow 封装；连线默认 bezier 曲线（default，旧 straight/smoothstep 在**渲染期**归一成曲线，不改库里的值）；**连线默认态一律是安静的淡灰细线**，类型色经内联 CSS 变量 --edge-color 下发（照 NodeHandle 的 --handle-color 写法），仅悬停 / 与「已选中节点」相连（edge-active）/ 边自身被选中时才由 CSS 取用并加粗——渲染期按 node.selected 派生 edge-active，不入库；纯颜色变化无动画；样式与「边恒在节点之下」的层叠规则都在 index.css；边另设 interactionWidth:12 收窄隐形命中带；colorMode 跟随主题（useThemeStore.resolved，画布底纹/控制按钮/缩略图随暗色）；onDragOver/onDrop 接桌面拖入文件（按 MIME 分图像/音频/视频，screenToFlowPosition 定位，**一律在落点建素材节点**并经 /api/upload 上传写回 URL（视频走媒体端点）——不再按落点区分「拖到节点上追加」；application/openflow-node 拖拽建节点分支保留但当前无拖源——侧栏移除后建节点走右键菜单）；onPaneContextMenu 出加节点菜单，onNodeContextMenu/onSelectionContextMenu 在选中多节点时出「选中操作」菜单（分组/整理/取消分组，两菜单互斥）；**鼠标/触控板双操作模式**（鼠标=滚轮缩放；触控板=panOnScroll 双指平移 + zoomOnPinch 捏合缩放，偏好存 localStorage openflow-trackpad，默认鼠标模式，由 ZoomSlider 按钮切换）
+    FlowCanvas.tsx             React Flow 封装；连线默认 bezier 曲线（default，旧 straight/smoothstep 在**渲染期**归一成曲线，不改库里的值）；**连线默认态一律是安静的淡灰细线**，类型色经内联 CSS 变量 --edge-color 下发（照 NodeHandle 的 --handle-color 写法），仅悬停 / 与「已选中节点」相连（edge-active）/ 边自身被选中时才由 CSS 取用并加粗——渲染期按 node.selected 派生 edge-active，不入库；纯颜色变化无动画；样式与「边恒在节点之下」的层叠规则都在 index.css；边另设 interactionWidth:12 收窄隐形命中带；colorMode 跟随主题（useThemeStore.resolved，画布底纹/控制按钮/缩略图随暗色）；onDragOver/onDrop 接桌面拖入文件（按 MIME 分图像/音频/视频，screenToFlowPosition 定位，**一律在落点建素材节点**并经 /api/upload 上传写回 URL（视频走媒体端点）——不再按落点区分「拖到节点上追加」；**不再接受节点类型的拖拽载荷**——建生成类节点只剩右键菜单与端点拉线两条路）；onPaneContextMenu 出加节点菜单，onNodeContextMenu/onSelectionContextMenu 在选中多节点时出「选中操作」菜单（分组/整理/取消分组，两菜单互斥）；**鼠标/触控板双操作模式**（鼠标=滚轮缩放；触控板=panOnScroll 双指平移 + zoomOnPinch 捏合缩放，偏好存 localStorage openflow-trackpad，默认鼠标模式，由 ZoomSlider 按钮切换）
     CanvasContextMenu.tsx      画布空白右键菜单：分组节点清单，点选即在落点加节点（含拉线松开在空白处的建节点+连线）
     SelectionContextMenu.tsx   选中节点右键菜单：分组 / 整理（网格排列）/ 取消分组（按选中情况显隐；≥2 非容器节点才可分组/整理，选中/点中容器才可取消分组）
     ZoomSlider.tsx             左下角缩放面板：−/滑块/+/百分比复位/适配视图 + 鼠标/触控板模式切换（图标随模式换 Mouse/Touchpad）与网格吸附、缩略图开关（偏好由 FlowCanvas 存 localStorage）
@@ -204,7 +204,7 @@ apps/desktop/
 ## 编码规范
 
 - 组件文件 PascalCase，函数组件具名导出。
-- 新增节点类型需同步更新 `apps/web/src/lib/types.ts`、`nodes/index.ts`、`createNode()`(store)、`lib/nodeMenu.ts` 的 `NODE_GROUPS`（画布右键菜单点选建节点）；图像/视频类的预置模型在 `lib/nodeCatalog.ts`。（例外：`asset` 素材节点不走 `NODE_GROUPS`/`createNode`，由 `FlowCanvas` 拖拽经 `addAssetNode()` 创建；`group` 分组容器也不走 `NODE_GROUPS`/`createNode`，由 `groupSelectedNodes()` action 按选中节点包围盒创建，故未加入 `FlowNodeType`/`NODE_GROUPS`。）
+- 新增节点类型需同步更新 `apps/web/src/lib/types.ts`、`nodes/index.ts`、`createNode()`(store)、`lib/nodeMenu.ts` 的 `NODE_GROUPS`（画布右键新建 + 端点拉线建节点共用）；图像/视频类的预置模型在 `lib/nodeCatalog.ts`。（例外：`asset` 素材节点不走 `NODE_GROUPS`/`createNode`，由 `FlowCanvas` 拖拽经 `addAssetNode()` 创建；`group` 分组容器也不走 `NODE_GROUPS`/`createNode`，由 `groupSelectedNodes()` action 按选中节点包围盒创建，故未加入 `FlowNodeType`/`NODE_GROUPS`。）
 - 节点内可交互元素加 `nodrag` class。
 - 不手改 `apps/web/src/components/ui/*`、`src/hooks/use-mobile.ts` 与 `index.css` 的 shadcn 主题块（生成内容，已在 eslint globalIgnores 排除）。
 - 改后端 SQLite 表结构时注意已有数据兼容。

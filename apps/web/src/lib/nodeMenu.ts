@@ -19,7 +19,7 @@ const IMAGE_ICONS: Record<string, LucideIcon> = {
 }
 
 // 节点清单按输出形态分三类：文本 / 图像 / 视频。
-// 侧栏（拖拽建节点）与画布右键菜单（点选建节点）共用同一份，避免两处漂移。
+// 建节点只有两个入口——画布空白右键新建、端点拉线松开在空白处建节点+连线——共用同一份清单。
 export const NODE_GROUPS: { label: string; items: NodeMenuItem[] }[] = [
   {
     label: '文本',

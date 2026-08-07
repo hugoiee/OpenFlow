@@ -21,7 +21,7 @@ import { SelectionContextMenu } from './SelectionContextMenu'
 import { useSpacePanGuard } from '@/hooks/useSpacePanGuard'
 import { uploadFilesApi } from '@/lib/api'
 import { edgeColorForSource, isValidTypedConnection } from '@/lib/handleTypes'
-import { type FlowNode, type FlowNodeType } from '@/lib/types'
+import { type FlowNode } from '@/lib/types'
 import { useActiveProject, useFlowStore } from '@/store/useFlowStore'
 import { useThemeStore } from '@/store/useThemeStore'
 
@@ -235,10 +235,10 @@ export function FlowCanvas() {
     [openMenuAt],
   )
 
-  // 允许把桌面文件 / 侧栏节点拖入画布（默认浏览器会拦截 drop，需 preventDefault）
+  // 允许把桌面文件拖入画布建素材节点（默认浏览器会拦截 drop，需 preventDefault）。
+  // 建「生成类」节点只有画布右键新建与端点拉线两条路，故这里不再接受节点类型的拖拽载荷。
   const onDragOver = (event: React.DragEvent) => {
-    const types = Array.from(event.dataTransfer.types)
-    if (types.includes('Files') || types.includes('application/openflow-node')) {
+    if (Array.from(event.dataTransfer.types).includes('Files')) {
       event.preventDefault()
       event.dataTransfer.dropEffect = 'copy'
     }
@@ -264,24 +264,6 @@ export function FlowCanvas() {
   }
 
   const onDrop = (event: React.DragEvent) => {
-    // 优先处理从侧栏拖入的节点（携带 application/openflow-node）
-    const nodePayload = event.dataTransfer.getData('application/openflow-node')
-    if (nodePayload) {
-      event.preventDefault()
-      try {
-        const { type, model, videoVariant } = JSON.parse(nodePayload) as {
-          type: FlowNodeType
-          model?: string
-          videoVariant?: 'frames' | 'reference'
-        }
-        const pos = screenToFlowPosition({ x: event.clientX, y: event.clientY })
-        addNode(type, model, pos, videoVariant)
-      } catch (e) {
-        console.error('[openflow] 拖入节点解析失败', e)
-      }
-      return
-    }
-
     const files = Array.from(event.dataTransfer.files ?? [])
     if (files.length === 0) return
     event.preventDefault()
