@@ -28,6 +28,8 @@ settings.put('/', async (c) => {
   if (typeof body.uploadEndpoint === 'string') patch.uploadEndpoint = body.uploadEndpoint.trim()
   if (typeof body.uploadMediaEndpoint === 'string')
     patch.uploadMediaEndpoint = body.uploadMediaEndpoint.trim()
+  if (typeof body.aigcHistoryEndpoint === 'string')
+    patch.aigcHistoryEndpoint = body.aigcHistoryEndpoint.trim()
   if (typeof body.agentEndpoint === 'string') patch.agentEndpoint = body.agentEndpoint.trim()
   if (typeof body.agentApiKey === 'string') patch.agentApiKey = body.agentApiKey.trim()
   if (typeof body.agentModel === 'string') patch.agentModel = body.agentModel.trim()

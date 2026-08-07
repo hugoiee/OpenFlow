@@ -18,10 +18,11 @@ import { nodeTypes } from './nodes'
 import { ZoomSlider } from './ZoomSlider'
 import { CanvasContextMenu } from './CanvasContextMenu'
 import { SelectionContextMenu } from './SelectionContextMenu'
+import { MultiConnectHandle } from './MultiConnectHandle'
 import { useSpacePanGuard } from '@/hooks/useSpacePanGuard'
 import { uploadFilesApi } from '@/lib/api'
 import { edgeColorForSource, isValidTypedConnection } from '@/lib/handleTypes'
-import { type FlowNode, type FlowNodeType } from '@/lib/types'
+import { type FlowNode } from '@/lib/types'
 import { useActiveProject, useFlowStore } from '@/store/useFlowStore'
 import { useThemeStore } from '@/store/useThemeStore'
 
@@ -49,6 +50,7 @@ export function FlowCanvas() {
   const addAssetNode = useFlowStore((s) => s.addAssetNode)
   const addNode = useFlowStore((s) => s.addNode)
   const addConnectedNode = useFlowStore((s) => s.addConnectedNode)
+  const addNodeWithSelectedResources = useFlowStore((s) => s.addNodeWithSelectedResources)
   const removeNode = useFlowStore((s) => s.removeNode)
   const updateNodeData = useFlowStore((s) => s.updateNodeData)
   const groupSelectedNodes = useFlowStore((s) => s.groupSelectedNodes)
@@ -96,6 +98,8 @@ export function FlowCanvas() {
     flow: { x: number; y: number }
     // 非空表示菜单由「拉线松开在空白处」触发，选中后按此方向与源节点连线
     connectFrom: ConnectFrom | null
+    // true 表示菜单由「批量连线按钮拖到空白处」触发，选中后新建节点并把选中资源全连上
+    connectSelected?: boolean
   } | null>(null)
 
   // 选中节点的右键菜单（分组 / 整理 / 取消分组）：右键点在节点或框选区上触发。
@@ -111,7 +115,12 @@ export function FlowCanvas() {
 
   // 在指定屏幕坐标浮出节点菜单；connectFrom 非空时选中项会与源节点连线
   const openMenuAt = useCallback(
-    (clientX: number, clientY: number, connectFrom: ConnectFrom | null) => {
+    (
+      clientX: number,
+      clientY: number,
+      connectFrom: ConnectFrom | null,
+      connectSelected = false,
+    ) => {
       const rect = wrapperRef.current?.getBoundingClientRect()
       if (!rect) return
       const flow = screenToFlowPosition({ x: clientX, y: clientY })
@@ -119,9 +128,15 @@ export function FlowCanvas() {
       const left = Math.max(0, Math.min(clientX - rect.left, rect.width - 180))
       const top = Math.max(0, Math.min(clientY - rect.top, rect.height - 230))
       setActionMenu(null) // 与选中操作菜单互斥
-      setMenu({ top, left, flow, connectFrom })
+      setMenu({ top, left, flow, connectFrom, connectSelected })
     },
     [screenToFlowPosition],
+  )
+
+  // 批量连线按钮拖到空白处：在落点弹建节点菜单，选中后建节点并把选中资源一并连上
+  const openMenuForSelectedResources = useCallback(
+    (clientX: number, clientY: number) => openMenuAt(clientX, clientY, null, true),
+    [openMenuAt],
   )
 
   const openContextMenu = useCallback(
@@ -235,10 +250,10 @@ export function FlowCanvas() {
     [openMenuAt],
   )
 
-  // 允许把桌面文件 / 侧栏节点拖入画布（默认浏览器会拦截 drop，需 preventDefault）
+  // 允许把桌面文件拖入画布建素材节点（默认浏览器会拦截 drop，需 preventDefault）。
+  // 建「生成类」节点只有画布右键新建与端点拉线两条路，故这里不再接受节点类型的拖拽载荷。
   const onDragOver = (event: React.DragEvent) => {
-    const types = Array.from(event.dataTransfer.types)
-    if (types.includes('Files') || types.includes('application/openflow-node')) {
+    if (Array.from(event.dataTransfer.types).includes('Files')) {
       event.preventDefault()
       event.dataTransfer.dropEffect = 'copy'
     }
@@ -264,24 +279,6 @@ export function FlowCanvas() {
   }
 
   const onDrop = (event: React.DragEvent) => {
-    // 优先处理从侧栏拖入的节点（携带 application/openflow-node）
-    const nodePayload = event.dataTransfer.getData('application/openflow-node')
-    if (nodePayload) {
-      event.preventDefault()
-      try {
-        const { type, model, videoVariant } = JSON.parse(nodePayload) as {
-          type: FlowNodeType
-          model?: string
-          videoVariant?: 'frames' | 'reference'
-        }
-        const pos = screenToFlowPosition({ x: event.clientX, y: event.clientY })
-        addNode(type, model, pos, videoVariant)
-      } catch (e) {
-        console.error('[openflow] 拖入节点解析失败', e)
-      }
-      return
-    }
-
     const files = Array.from(event.dataTransfer.files ?? [])
     if (files.length === 0) return
     event.preventDefault()
@@ -398,6 +395,8 @@ export function FlowCanvas() {
         zoomOnPinch
       >
         <Background />
+        {/* 框选 ≥2 个资源节点时，选区中心浮出批量连线按钮（拖到目标节点即可一并连线） */}
+        <MultiConnectHandle onDropOnPane={openMenuForSelectedResources} />
         {/* 左下角竖向堆叠：缩略图在上，缩放条紧贴其下方 */}
         {minimapOpen && (
           <MiniMap
@@ -424,7 +423,15 @@ export function FlowCanvas() {
           left={menu.left}
           onClose={() => setMenu(null)}
           onPick={(item) => {
-            if (menu.connectFrom) {
+            if (menu.connectSelected) {
+              // 由「批量连线按钮拖到空白处」触发：建节点并把选中的资源节点全连到它的 res 端点
+              addNodeWithSelectedResources({
+                type: item.type,
+                model: item.model,
+                position: menu.flow,
+                videoVariant: item.videoVariant,
+              })
+            } else if (menu.connectFrom) {
               // 由「拉线松开在空白处」触发：建节点并按方向与源节点连线
               addConnectedNode({
                 type: item.type,

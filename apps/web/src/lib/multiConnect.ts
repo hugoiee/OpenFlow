@@ -13,6 +13,14 @@ function isResourceNode(node: FlowNode): boolean {
   return kind === 'image' || kind === 'audio' || kind === 'video'
 }
 
+/**
+ * 当前选中的资源节点，按 nodes 数组序（= 创建序，也就是没写 @ 时的实发列表序）。
+ * 供「批量连线按钮」判断显隐 + 算包围盒中心，与实际连线用的是同一套筛选口径。
+ */
+export function selectedResourceNodes(nodes: FlowNode[]): FlowNode[] {
+  return nodes.filter((n) => n.selected && isResourceNode(n))
+}
+
 /** 同源同目标同端点的连线是否已存在（避免重复连）。 */
 function hasEdge(edges: Edge[], source: string, target: string, targetHandle: string | null): boolean {
   return edges.some(
@@ -58,4 +66,35 @@ export function collectMultiConnectEdges(
     })
   }
   return extra
+}
+
+/**
+ * 把「当前选中的全部资源节点」连到同一个目标端点，返回要新增的边（按 nodes 数组序）。
+ *
+ * 与 collectMultiConnectEdges 的区别：这里没有「拖拽起点」那根线——批量连线按钮从选区中心
+ * 拖出，选中项一视同仁全连；目标节点自身若也在选中集合里则跳过（不自连）。
+ * 不合法（类型不符）与已存在的连线一律**静默跳过**，与既有做法一致。
+ */
+export function collectSelectedResourceEdges(
+  nodes: FlowNode[],
+  edges: Edge[],
+  target: string,
+  targetHandle: string | null,
+): Edge[] {
+  const targetNode = nodes.find((n) => n.id === target)
+  if (!targetNode) return []
+  const added: Edge[] = []
+  for (const node of selectedResourceNodes(nodes)) {
+    if (node.id === target) continue
+    if (!isValidTypedConnection(node, targetNode, targetHandle)) continue
+    if (hasEdge(edges, node.id, target, targetHandle)) continue
+    added.push({
+      id: newId('e_'),
+      source: node.id,
+      target,
+      targetHandle: targetHandle ?? undefined,
+      type: 'default',
+    })
+  }
+  return added
 }

@@ -20,6 +20,11 @@ export type SettingsDTO = {
   uploadEndpoint: string
   /** 音频上传端点；为空时回退 env UPLOAD_MEDIA_ENDPOINT / 内置默认。 */
   uploadMediaEndpoint: string
+  /**
+   * AIGC 历史任务查询端点（如 http://your-host:8511/api/task-history）；为空时回退 env AIGC_HISTORY_ENDPOINT。
+   * 两者皆空不报错，只是失去「同步响应没带回 URL 时去历史里找回结果」的能力。
+   */
+  aigcHistoryEndpoint: string
   /** 画布 Agent 的 LLM 端点（OpenAI 兼容 /chat/completions）；为空时回退 env AGENT_ENDPOINT。 */
   agentEndpoint: string
   /** 画布 Agent 的 LLM API Key（可空：无鉴权网关不需要）；为空时回退 env AGENT_API_KEY。GET /api/settings 不回明文（恒为空串），以 hasAgentApiKey 表示已配置。 */
@@ -27,7 +32,7 @@ export type SettingsDTO = {
   /** 画布 Agent 的 LLM 模型名（如 gpt-4o / doubao-xxx）；为空时回退 env AGENT_MODEL。 */
   agentModel: string
   /**
-   * 手动维护的模型名列表：作 Agent 模型名 / Any LLM 节点下拉的持久候选项，
+   * 手动维护的模型名列表：作 Agent 模型名下拉的持久候选项，
    * 与端点 GET /models 动态获取的结果取并集。供不支持 /models 的网关手填多个模型。
    */
   agentModelList: string[]
@@ -49,6 +54,8 @@ export type SaveSettingsBody = {
   uploadEndpoint?: string
   /** 音频上传端点（空串=清空回退默认；省略=保持原值）。 */
   uploadMediaEndpoint?: string
+  /** AIGC 历史任务查询端点（空串=清空回退 env；省略=保持原值）。 */
+  aigcHistoryEndpoint?: string
   /** Agent LLM 端点（空串=清空回退 env；省略=保持原值）。 */
   agentEndpoint?: string
   /** Agent LLM API Key（空串=清空回退 env；省略=保持原值）。 */
@@ -117,30 +124,6 @@ export type GenVideoBody = {
   duration: number
 }
 
-/** POST /api/llm 请求体（Any LLM 文本生成，经后端复用画布 Agent 的 endpoint/key 调 /chat/completions）。 */
-export type GenLlmBody = {
-  /** 归属项目 id（用于建任务、按节点重连）。 */
-  projectId: string
-  /** 发起生成的节点 id（用于建任务、按节点重连）。 */
-  nodeId: string
-  /** 模型名（作 chat/completions 的 model；取自节点下拉）。 */
-  model: string
-  /** 生成指令（= 连到「Prompt 输入」端点的上游文本按连线拼接）。 */
-  prompt: string
-  /** 系统提示词（= 连到「System Prompt 输入」端点的上游文本；为空则不下发 system 消息）。 */
-  systemPrompt?: string
-  /** 多模态输入图 URL（= 连到各「图像输入」端点的上游图；有则作 image_url 内容发给视觉模型）。 */
-  images?: string[]
-  /** 多模态输入音频 URL（= 连到各「音频输入」端点的上游音频素材；有则作 audio_url 内容发给模型）。 */
-  audios?: string[]
-  /** 多模态输入视频 URL（= 连到各「视频输入」端点的上游视频素材；有则作 video_url 内容发给模型）。 */
-  videos?: string[]
-  /** 采样温度 0–2。 */
-  temperature: number
-  /** 是否开启思考：为 true 时请求体带 reasoning_effort 等原生推理参数。 */
-  thinking: boolean
-}
-
 /** 播客的一个说话角色：脚本里的角色名 + 火山音色库的音色 ID（voice_type/speaker）。 */
 export type PodcastRole = {
   /** 脚本行首的角色名（如 主持人 / 嘉宾），用于按「角色名: 台词」匹配行。 */
@@ -202,7 +185,7 @@ export type GenPodcastBody = {
 }
 
 /** 异步生成任务的种类 / 状态。 */
-export type TaskKind = 'image' | 'video' | 'llm' | 'podcast'
+export type TaskKind = 'image' | 'video' | 'podcast'
 export type TaskStatus = 'pending' | 'running' | 'succeeded' | 'failed'
 
 /** 任务 DTO：前端轮询用；不含请求体 params（内部持久化，不外泄）。 */
@@ -212,10 +195,23 @@ export type TaskDTO = {
   nodeId: string
   kind: TaskKind
   status: TaskStatus
-  /** 成功前为空。image/video 为结果 URL 列表；llm 为 [回答文本] 或 [回答文本, 思考文本]；podcast 为 [音频 URL, 计费字数(usage.text_words 合计)]。 */
+  /** 成功前为空。image/video 为结果 URL 列表；podcast 为 [音频 URL, 计费字数(usage.text_words 合计)]。 */
   result: string[]
   /** 失败时的可读错误信息。 */
   error?: string
+  /**
+   * 上游任务标识（AIGC 响应的 request_id，或历史记录的 id）。
+   * 有它就能去 AIGC 历史接口按 id 精确认领结果，也是「同一条历史记录不被两个任务抢」的锁。
+   */
+  upstreamId?: string
+  /** 上游最近一次原始响应（截断）。生成失败时的第一手现场，节点上可展开查看/复制。 */
+  rawResponse?: string
+  /**
+   * 失败是否「可能只是没拿到结果」（status='failed' 时才有意义）：
+   * 上游 2xx 却没带回 URL、或请求被中间掐断——内容其实可能已生成，值得去历史里重拉。
+   * 上游明确说失败（如内容安全拦截）则为 false，重拉也没用。
+   */
+  recoverable?: boolean
   createdAt: number
   updatedAt: number
 }

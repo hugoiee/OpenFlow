@@ -7,7 +7,6 @@ import type {
   AgentTestResponse,
   CreateTaskResponse,
   GenImageBody,
-  GenLlmBody,
   GenPodcastBody,
   GenVideoBody,
   ProjectDTO,
@@ -123,14 +122,6 @@ export async function createVideoTaskApi(body: GenVideoBody): Promise<string> {
   return taskId
 }
 
-export async function createLlmTaskApi(body: GenLlmBody): Promise<string> {
-  const { taskId } = await request<CreateTaskResponse>('/llm', {
-    method: 'POST',
-    body: JSON.stringify(body),
-  })
-  return taskId
-}
-
 export async function createPodcastTaskApi(body: GenPodcastBody): Promise<string> {
   const { taskId } = await request<CreateTaskResponse>('/podcast', {
     method: 'POST',
@@ -170,6 +161,14 @@ export async function listAgentModelsApi(body: AgentModelsBody = {}): Promise<st
 // ---- 任务查询（轮询 / 重连）----
 export function getTaskApi(id: string): Promise<TaskDTO> {
   return request<TaskDTO>(`/tasks/${id}`)
+}
+
+/**
+ * 手动重拉：让后端去 AIGC 历史接口再找一次结果。
+ * 上游偶尔 2xx 却不带结果 URL（长连接被掐断等），但视频其实已经生成并落进了网关历史。
+ */
+export function refetchTaskApi(id: string): Promise<TaskDTO> {
+  return request<TaskDTO>(`/tasks/${id}/refetch`, { method: 'POST' })
 }
 
 /** 按节点取最近一次任务；无任务（404）时返回 null（刷新后无 taskId 的重连兜底）。 */

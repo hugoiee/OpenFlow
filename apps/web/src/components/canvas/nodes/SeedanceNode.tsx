@@ -7,6 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { DownloadDialog, type DownloadTarget } from '@/components/canvas/DownloadDialog'
 import { NodeHeader } from './NodeHeader'
 import { NodeHandle } from './NodeHandle'
+import { TaskFailurePanel } from './TaskFailurePanel'
 import { createVideoTaskApi } from '@/lib/api'
 import { pollTask } from '@/lib/taskPolling'
 import { RES_INPUT_HANDLE, imageInputHandleId } from '@/lib/graph'
@@ -46,17 +47,45 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
     updateNodeInternals(id)
   }, [id, variant, updateNodeInternals])
 
-  const fail = (message: string) => {
-    updateNodeData(id, { running: false, error: message, taskId: undefined })
-    window.alert(`视频生成失败：${message}`)
+  /**
+   * 生成失败：节点底部内联展示。
+   * keepTaskId=true 用于「任务跑到失败终态」——taskId 要留着，底部面板才能凭它去历史重拉结果；
+   * 前置校验类失败（没连 Prompt 等）与任务无关，照旧清掉。
+   */
+  const fail = (
+    message: string,
+    opts?: { silent?: boolean; keepTaskId?: boolean; recoverable?: boolean },
+  ) => {
+    updateNodeData(id, {
+      running: false,
+      error: message,
+      errorRecoverable: opts?.recoverable ?? false,
+      ...(opts?.keepTaskId ? {} : { taskId: undefined }),
+    })
+    if (!opts?.silent) window.alert(`视频生成失败：${message}`)
   }
 
-  // 应用任务终态：成功填结果、失败报错，一并清 taskId。
-  const applyTaskResult = (task: { status: string; result: string[]; error?: string }) => {
+  // 应用任务终态：成功填结果清 taskId；失败留下 taskId 与「可否重拉」供底部面板自救。
+  const applyTaskResult = (task: {
+    status: string
+    result: string[]
+    error?: string
+    recoverable?: boolean
+  }) => {
     if (task.status === 'succeeded') {
-      updateNodeData(id, { running: false, result: task.result, taskId: undefined })
+      updateNodeData(id, {
+        running: false,
+        result: task.result,
+        error: undefined,
+        taskId: undefined,
+      })
     } else {
-      fail(task.error || '任务失败')
+      // 可恢复的失败（上游没带回 URL / 请求被掐断）不弹窗打断：面板里就能重拉
+      fail(task.error || '任务失败', {
+        keepTaskId: true,
+        recoverable: task.recoverable,
+        silent: task.recoverable,
+      })
     }
   }
 
@@ -72,7 +101,8 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
       .then(applyTaskResult)
       .catch((e) => {
         if (e instanceof DOMException && e.name === 'AbortError') return
-        fail(e instanceof Error ? e.message : String(e))
+        // 重连路径非用户点击触发，连环 alert 会阻塞整个应用
+        fail(e instanceof Error ? e.message : String(e), { silent: true })
       })
     return () => controller.abort()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -96,7 +126,13 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
       fail('请先连接一个有内容的 Prompt 节点')
       return
     }
-    updateNodeData(id, { running: true, error: undefined, result: [], taskId: undefined })
+    updateNodeData(id, {
+      running: true,
+      error: undefined,
+      errorRecoverable: false,
+      result: [],
+      taskId: undefined,
+    })
     try {
       const taskId = await createVideoTaskApi(body)
       attachedRef.current = taskId
@@ -183,9 +219,19 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
         </div>
 
         {data.error && (
-          <p className="nodrag rounded-md bg-destructive/10 p-2 text-[11px] text-destructive">
-            {data.error}
-          </p>
+          <TaskFailurePanel
+            message={data.error}
+            taskId={data.taskId}
+            recoverable={data.errorRecoverable}
+            onResult={(urls) =>
+              updateNodeData(id, {
+                result: urls,
+                error: undefined,
+                errorRecoverable: false,
+                taskId: undefined,
+              })
+            }
+          />
         )}
       </CardContent>
       <DownloadDialog open={dialogOpen} onOpenChange={setDialogOpen} target={downloadTarget} />

@@ -3,13 +3,11 @@ import { Textarea } from '@/components/ui/textarea'
 import { useResizableWidth } from '@/hooks/useResizableWidth'
 import {
   buildImageUpstream,
-  buildLlmUpstream,
   buildPodcastUpstream,
   buildVideoUpstream,
 } from '@/lib/requestBody'
 import {
   type ImageNode as ImageNodeT,
-  type LlmNode as LlmNodeT,
   type PodcastNode as PodcastNodeT,
   type Project,
   type VideoNode as VideoNodeT,
@@ -19,13 +17,13 @@ import { useActiveProject } from '@/store/useFlowStore'
 import { useSettingsStore } from '@/store/useSettingsStore'
 import { ImageInput } from './ImageInput'
 import { ImageParams } from './ImageParams'
-import { LlmParams } from './LlmParams'
 import { PodcastParams } from './PodcastParams'
+import { VideoInput } from './VideoInput'
 import { VideoParams } from './VideoParams'
 
 /**
  * 右侧节点参数面板（Inspector）。
- * 仅在「恰好选中一个 image/video/llm 节点」时出现；节点卡片只显示生成结果，参数都在此编辑。
+ * 仅在「恰好选中一个 image/video/podcast 节点」时出现；节点卡片只显示生成结果，参数都在此编辑。
  * 选中状态来自 React Flow 写在 node.selected 上的标记（store 已通过 applyNodeChanges 维护）。
  */
 export function NodeInspector() {
@@ -34,23 +32,9 @@ export function NodeInspector() {
   const selected = project.nodes.filter((n) => n.selected)
   if (selected.length !== 1) return null
   const node = selected[0]
-  if (
-    node.type !== 'image' &&
-    node.type !== 'video' &&
-    node.type !== 'llm' &&
-    node.type !== 'podcast'
-  )
-    return null
+  if (node.type !== 'image' && node.type !== 'video' && node.type !== 'podcast') return null
   // key={node.id}：切换选中节点时重置内部状态（上传态 / 文件输入），避免串台
   return <NodeInspectorPanel key={node.id} node={node} project={project} />
-}
-
-/** 把 Agent 端点显示成 /chat/completions 上游地址（已带该后缀则原样）；空则给占位。 */
-function chatCompletionsLabel(endpoint: string): string {
-  const ep = endpoint.trim()
-  if (!ep) return '…/chat/completions（后端默认端点）'
-  const base = ep.replace(/\/+$/, '')
-  return /\/chat\/completions$/i.test(base) ? base : `${base}/chat/completions`
 }
 
 /**
@@ -96,7 +80,7 @@ function NodeInspectorPanel({
   node,
   project,
 }: {
-  node: ImageNodeT | VideoNodeT | LlmNodeT | PodcastNodeT
+  node: ImageNodeT | VideoNodeT | PodcastNodeT
   project: Project
 }) {
   const id = node.id
@@ -105,9 +89,8 @@ function NodeInspectorPanel({
   // 上游端点 / 全局署名：预览「后端实际发往上游」的请求体需要它们（req_from 由全局署名注入）
   const reqFrom = useSettingsStore((s) => s.defaultReqFrom)
   const aigcEndpoint = useSettingsStore((s) => s.aigcEndpoint)
-  const agentEndpoint = useSettingsStore((s) => s.agentEndpoint)
   // 「后端实际打到上游的请求体」：图像 / 视频=内网 AIGC 网关（req_from / model_name / config…），
-  // LLM=OpenAI 兼容 /chat/completions（messages / 多模态内容块 / reasoning_effort）。与实发链路同源。
+  // 播客=火山单向流式 TTS。与实发链路同源。
   // ⚡ useMemo 稳定引用：拖面板宽度等本地重渲染时 project/node 未变 → 不重跑图遍历与序列化，
   // RequestPreview（memo）也因 props 不变整块跳过重建。
   const requestBody = useMemo(
@@ -116,19 +99,14 @@ function NodeInspectorPanel({
         ? buildImageUpstream(project, node, reqFrom)
         : node.type === 'video'
           ? buildVideoUpstream(project, node, reqFrom)
-          : node.type === 'podcast'
-            ? buildPodcastUpstream(project, node)
-            : buildLlmUpstream(project, node),
+          : buildPodcastUpstream(project, node),
     [project, node, reqFrom],
   )
-  // 预览标签上的上游地址：图像 / 视频走 AIGC 端点，LLM 走 Agent 端点的 /chat/completions，
-  // 播客走火山单向流式 TTS（脚本逐句各发一个请求）
+  // 预览标签上的上游地址：图像 / 视频走 AIGC 端点，播客走火山单向流式 TTS（脚本逐句各发一个请求）
   const upstreamEndpoint =
-    node.type === 'llm'
-      ? chatCompletionsLabel(agentEndpoint)
-      : node.type === 'podcast'
-        ? 'https://openspeech.bytedance.com/api/v3/tts/unidirectional（逐句一请求）'
-        : aigcEndpoint.trim() || '…/aigc（后端默认端点）'
+    node.type === 'podcast'
+      ? 'https://openspeech.bytedance.com/api/v3/tts/unidirectional（逐句一请求）'
+      : aigcEndpoint.trim() || '…/aigc（后端默认端点）'
   const requestJson = useMemo(() => JSON.stringify(requestBody, null, 2), [requestBody])
 
   return (
@@ -149,7 +127,7 @@ function NodeInspectorPanel({
         </h2>
       </div>
 
-      {/* 图像：输入图（画廊态）+ 模型参数；视频：整套参数；LLM：Model/Temperature/Thinking */}
+      {/* 图像 / 视频：输入资源预览（画廊态）+ 模型参数；播客：角色音色与音频参数 */}
       {node.type === 'image' ? (
         <>
           <div className="flex flex-col gap-2">
@@ -159,11 +137,13 @@ function NodeInspectorPanel({
           <ImageParams id={id} data={node.data} />
         </>
       ) : node.type === 'video' ? (
-        <VideoParams id={id} data={node.data} />
-      ) : node.type === 'podcast' ? (
-        <PodcastParams id={id} data={node.data} />
+        <>
+          {/* 视频吃图/音/视三类，分区标题由 VideoInput 按实际有的类型自己出 */}
+          <VideoInput node={node} />
+          <VideoParams id={id} data={node.data} />
+        </>
       ) : (
-        <LlmParams id={id} data={node.data} />
+        <PodcastParams id={id} data={node.data} />
       )}
 
       <RequestPreview
