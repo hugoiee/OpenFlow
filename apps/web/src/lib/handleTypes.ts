@@ -6,6 +6,7 @@ import {
   AUDIO_INPUT_HANDLE_PREFIX,
   IMAGE_INPUT_HANDLE_PREFIX,
   LLM_SYSTEM_HANDLE,
+  RES_INPUT_HANDLE,
   VIDEO_INPUT_HANDLE_PREFIX,
 } from './graph'
 
@@ -61,17 +62,21 @@ export function edgeColorForSource(node: FlowNode | undefined): string | undefin
 export function targetAccepts(
   targetNode: FlowNode | undefined,
   targetHandle: string | null | undefined,
-): SourceKind | null {
+): readonly SourceKind[] | null {
+  if (targetHandle === RES_INPUT_HANDLE) {
+    // 统一资源端点：图像节点只吃图（音/视频对生图无意义）；视频节点图/音/视都收
+    return targetNode?.type === 'video' ? (['image', 'audio', 'video'] as const) : (['image'] as const)
+  }
   if (typeof targetHandle === 'string' && targetHandle.startsWith(IMAGE_INPUT_HANDLE_PREFIX)) {
-    return 'image' // 图像输入端点只接图像
+    return ['image'] // 图像输入端点只接图像
   }
   if (typeof targetHandle === 'string' && targetHandle.startsWith(AUDIO_INPUT_HANDLE_PREFIX)) {
-    return 'audio' // 音频输入端点只接音频
+    return ['audio'] // 音频输入端点只接音频
   }
   if (typeof targetHandle === 'string' && targetHandle.startsWith(VIDEO_INPUT_HANDLE_PREFIX)) {
-    return 'video' // 视频输入端点只接视频
+    return ['video'] // 视频输入端点只接视频
   }
-  if (targetHandle === LLM_SYSTEM_HANDLE) return 'text' // System Prompt 只接文本
+  if (targetHandle === LLM_SYSTEM_HANDLE) return ['text'] // System Prompt 只接文本
   // 默认（空 handle）端点：Prompt/LLM/图像/视频 节点的默认口都是 Prompt（只接文本）
   if (
     targetNode &&
@@ -80,14 +85,14 @@ export function targetAccepts(
       targetNode.type === 'image' ||
       targetNode.type === 'video')
   ) {
-    return 'text'
+    return ['text']
   }
   return null
 }
 
 /**
- * 连接是否合法：图像端点只接图像源、文本端点(Prompt/System)只接文本源；
- * 视频等混合输入端点不限。找不到节点信息时放行（交由 React Flow 默认处理）。
+ * 连接是否合法：图像端点只接图像源、文本端点(Prompt/System)只接文本源、
+ * 统一资源端点按节点类型收图/音/视；未定义端点不限。找不到节点信息时放行（交由 React Flow 默认处理）。
  */
 export function isValidTypedConnection(
   sourceNode: FlowNode | undefined,
@@ -96,5 +101,5 @@ export function isValidTypedConnection(
 ): boolean {
   const accepts = targetAccepts(targetNode, targetHandle)
   if (accepts === null) return true
-  return sourceKind(sourceNode) === accepts
+  return accepts.includes(sourceKind(sourceNode))
 }

@@ -42,6 +42,7 @@ import {
   detachChildren,
   nodeSize,
 } from '@/lib/layout'
+import { RES_INPUT_HANDLE, normalizeResourceEdges } from '@/lib/graph'
 import { isValidTypedConnection } from '@/lib/handleTypes'
 import { type FlowNode, type FlowNodeType, type Project } from '@/lib/types'
 
@@ -269,12 +270,10 @@ export const useFlowStore = create<FlowState>()((set, get) => {
 
     loadProjects: async () => {
       const dtos = await listProjects()
-      const projects: Project[] = dtos.map((d) => ({
-        id: d.id,
-        name: d.name,
+      const projects: Project[] = dtos.map((d) => {
         // image/video 节点的 running/error 是瞬时态：载入时复位为非运行态，避免卡在「生成中…」。
         // 但保留 taskId（与 result）：若任务仍在飞，节点 mount 时凭 taskId 重连轮询（关页面不丢结果）。
-        nodes: (d.nodes as FlowNode[]).map((rawNode) => {
+        const nodes = (d.nodes as FlowNode[]).map((rawNode) => {
           // 清洗坏尺寸：React Flow 可能把 width/height 持久化成 0（测量竞态）。0 会被当作
           // 显式尺寸套到节点外层容器 → 节点塌成 0 宽、整体不可见（如 Prompt 节点重开看不到）。
           // 剔除 ≤0 的 width/height/measured，让 RF 重新测量自适应（渲染出来后尺寸自愈为正值）。
@@ -304,10 +303,16 @@ export const useFlowStore = create<FlowState>()((set, get) => {
             return { ...node, data: { ...node.data, uploading: false } }
           }
           return node
-        }),
-        edges: d.edges as Edge[],
-        pinned: d.pinned ?? false,
-      }))
+        })
+        return {
+          id: d.id,
+          name: d.name,
+          nodes,
+          // 旧编号端点连线归并到统一资源端点 res（首尾帧 First/Last 保留；保持旧采集次序）
+          edges: normalizeResourceEdges(nodes, d.edges as Edge[]),
+          pinned: d.pinned ?? false,
+        }
+      })
       set({ projects, loaded: true })
     },
 
@@ -518,13 +523,17 @@ export const useFlowStore = create<FlowState>()((set, get) => {
         const canBeSource = type !== 'podcast'
         let edge: Edge | null = null
         if (from.handleType === 'source') {
-          // 从输出端拉出：源=既有节点，目标=新节点默认输入口；类型不匹配（如图像→新 LLM 的 Prompt 口）则只建节点
-          if (canBeTarget && isValidTypedConnection(fromNode, node, undefined)) {
+          // 从输出端拉出：源=既有节点，目标=新节点。先试默认输入口（文本），不匹配再试
+          // 统一资源端点 res（从素材/生成结果拉出建图像/视频节点）；都不匹配则只建节点
+          const defaultOk = canBeTarget && isValidTypedConnection(fromNode, node, undefined)
+          const resOk = canBeTarget && !defaultOk && isValidTypedConnection(fromNode, node, RES_INPUT_HANDLE)
+          if (defaultOk || resOk) {
             edge = {
               id: newId('e_'),
               source: from.nodeId,
               sourceHandle: from.handleId ?? undefined,
               target: node.id,
+              targetHandle: resOk ? RES_INPUT_HANDLE : undefined,
               type: 'default',
             }
           }
