@@ -146,10 +146,12 @@ apps/web/src/
     nodes/handleLayout.ts      端点竖向布局常量/计算：HANDLE_TOP_START=48 + HANDLE_GAP=32 + handleTop(index)/handleStyle(index)
     nodes/index.ts             nodeTypes 注册表（prompt → PromptNode / image → ImageNode / video → SeedanceNode / asset → AssetNode / group → GroupNode）
   components/inspector/        右侧节点参数面板（Inspector）：节点卡片只显示结果，参数都在此编辑
-    NodeInspector.tsx          仅在「恰好选中一个 image/video/podcast 节点」时出现；按类型装配子面板 + 置底「请求」预览（buildXxxRequest 的实发请求体，JSON / 表格 两视图可切换、偏好存 localStorage）；宽度经 useResizableWidth 可调
+    NodeInspector.tsx          仅在「恰好选中一个 image/video/podcast 节点」时出现；按类型装配子面板（image → ImageInput + ImageParams；video → VideoInput + VideoParams；podcast → PodcastParams）+ 置底「请求」预览（buildXxxRequest 的实发请求体，JSON / 表格 两视图可切换、偏好存 localStorage）；宽度经 useResizableWidth 可调
     ImageInput.tsx             输入图**只读预览**（图像节点用）：直接展示 buildImageRequest 的实发 image_list（@ 筛选后 + 旧手填 URL 殿后），与请求预览同源；无输入图时提示拖图建素材节点连线 + @ 指定（不再上传/手填 URL）
+    VideoInput.tsx             输入资源**只读预览**（视频节点用，ImageInput 的视频版）：视频吃图/音/视三类且全靠连线喂，此前面板上完全看不见，故三类分区一并展示 buildVideoRequest 的实发 images/audios/videos（@ 筛选、连线序、frames 只取 First/Last 前 2 张等语义都已在其中算好，与请求预览同源）；frames 变体图序即端点语义，角标标「首帧/尾帧」而非序号；三类皆空时出空态提示（按变体分文案）
+    ResourcePreview.tsx        上两者共用的只读展示件：ImageThumbs(3 列方格 + 1 基序号角标，对应 prompt 里的 <<<image_N>>>；加载失败只隐藏图元不塌布局) / VideoThumbs(2 列，preload="metadata" 只拉首帧——面板里可能挂好几个参考视频，全量预加载白吃带宽，点开新标签页看完整内容) / AudioRows(整宽可试听) / PreviewSection(分区小标题) / PreviewEmpty(虚线空态框)
     ImageParams.tsx            图像节点参数控件：按模型分两套（Image 2 走 size/quality/n；Nano Banana 走 version/aspectRatio/imageSize）；旧尺寸回退到受支持默认
-    VideoParams.tsx            视频节点（Seedance）参数控件：version + 分辨率/宽高比并排 + 时长滑块；输入图/音频改由连线决定（无上传/手填 UI）
+    VideoParams.tsx            视频节点（Seedance）参数控件：version + 分辨率/宽高比并排 + 时长滑块；输入图/音频改由连线决定（无上传/手填 UI，实发内容看其上方的 VideoInput 预览）
     PodcastParams.tsx          播客节点参数：两个角色（角色名 + 火山音色 ID，从火山控制台音色库复制）+ 音频参数（采样率下拉 / 语速 / 音量 / 音调 / 句间停顿滑块）+ 文本处理开关（过滤括号内容——会连 [轻笑] 表演指令一起滤、过滤 Markdown、过滤 Emoji、朗读语种下拉）+ AIGC 水印（aigc_watermark 生成标识开关——逐句合成每句结尾都有；aigc_metadata meta 隐式水印开关 + 四个元信息小输入，开启时每句按 wav 请求）；语音指令（context_texts）UI 已隐藏、字段保留
     components/model/ModelCapabilityBadges.tsx  模型能力小图标：读 modelCapabilities(name) 只渲染推断支持的能力（思考=Brain/图像=Eye/音频=AudioLines/视频=Video，各带中文 tooltip），供设置面板 Agent 模型名下拉的选项使用（Radix SelectValue 会连带在 trigger 显示已选模型的图标）
 apps/desktop/
