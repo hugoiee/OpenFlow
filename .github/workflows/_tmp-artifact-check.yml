@@ -1,5 +1,7 @@
 name: tmp artifact roundtrip
-on: workflow_dispatch
+on:
+  push:
+    branches: [chore/actions-node24]
 jobs:
   up:
     runs-on: ubuntu-latest
