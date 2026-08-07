@@ -18,6 +18,7 @@ import { useSettingsStore } from '@/store/useSettingsStore'
 import { ImageInput } from './ImageInput'
 import { ImageParams } from './ImageParams'
 import { PodcastParams } from './PodcastParams'
+import { VideoInput } from './VideoInput'
 import { VideoParams } from './VideoParams'
 
 /**
@@ -126,7 +127,7 @@ function NodeInspectorPanel({
         </h2>
       </div>
 
-      {/* 图像：输入图（画廊态）+ 模型参数；视频：整套参数；播客：角色音色与音频参数 */}
+      {/* 图像 / 视频：输入资源预览（画廊态）+ 模型参数；播客：角色音色与音频参数 */}
       {node.type === 'image' ? (
         <>
           <div className="flex flex-col gap-2">
@@ -136,7 +137,11 @@ function NodeInspectorPanel({
           <ImageParams id={id} data={node.data} />
         </>
       ) : node.type === 'video' ? (
-        <VideoParams id={id} data={node.data} />
+        <>
+          {/* 视频吃图/音/视三类，分区标题由 VideoInput 按实际有的类型自己出 */}
+          <VideoInput node={node} />
+          <VideoParams id={id} data={node.data} />
+        </>
       ) : (
         <PodcastParams id={id} data={node.data} />
       )}

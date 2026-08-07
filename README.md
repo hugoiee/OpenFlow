@@ -143,6 +143,7 @@ pnpm --filter @openflow/desktop dev
 | `AIGC_ENDPOINT` | （无内置默认） | 图像/视频生成接口，如 `http://<your-host>:8204/aigc` |
 | `UPLOAD_ENDPOINT` | （无内置默认） | 图片上传接口，如 `http://<your-host>:8511/api/upload` |
 | `UPLOAD_MEDIA_ENDPOINT` | （无内置默认） | 音频/视频上传接口，如 `http://<your-host>:8511/api/upload-media` |
+| `AIGC_HISTORY_ENDPOINT` | （无内置默认） | AIGC 历史任务查询接口，如 `http://<your-host>:8511/api/task-history`；用于生成接口没带回结果 URL 时找回结果 |
 | `AGENT_ENDPOINT` | （无内置默认） | 画布 Agent / Any LLM 的 OpenAI 兼容接口地址 |
 | `AGENT_API_KEY` | （无内置默认） | 画布 Agent / Any LLM 的 API Key |
 | `AGENT_MODEL` | （无内置默认） | 画布 Agent / Any LLM 的模型名 |
@@ -153,6 +154,7 @@ PORT=8787 AIGC_ENDPOINT=http://your-host/aigc pnpm server
 
 > - `AIGC_ENDPOINT` / `UPLOAD_ENDPOINT` / `UPLOAD_MEDIA_ENDPOINT` 不含内置默认值：首次使用需在设置面板（或环境变量）里填上自己的接口地址，之后即可跑通生成/上传；未填写时画布编辑、Prompt 节点等核心功能不受影响，只有生成/上传会提示先去设置里填地址。
 > - **Agent / Any LLM 三项无内置默认**，未在设置面板或环境变量中配置时，相关功能会提示「请在设置中填写」。
+> - `AIGC_HISTORY_ENDPOINT` **可留空**：填了才启用「结果找回」——生成接口偶尔会返回不带结果 URL 的响应（长连接被中间设备掐断等），但内容其实已经生成并落进了网关历史记录；配置后遇到这种情况会自动去历史里按 `request_id` / 请求指纹认领结果，服务重启也能续查。不填则维持旧行为（当场报错，节点上可手动填入 URL）。
 > - **`req_from`（调用方署名）不走环境变量**，由首次启动的阻断弹窗强制填写并存后端；为空时后端拒绝一切上游生成/上传请求。
 
 

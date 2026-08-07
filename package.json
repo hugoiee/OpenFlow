@@ -13,6 +13,7 @@
     "dev:all": "concurrently -n server,web -c magenta,cyan \"pnpm --filter @openflow/server dev\" \"node scripts/wait-for-port.mjs 8787 && pnpm --filter @openflow/web dev\"",
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
     "check:version": "node scripts/check-version.mjs",
     "format": "prettier --write \"apps/*/src/**/*.{ts,tsx,css}\" \"packages/*/src/**/*.ts\""

@@ -94,6 +94,7 @@ type FlowState = {
    * 复制某个节点：在原节点正右侧（让开整宽 + 间距，不重叠）生成一个内容相同的副本。
    * 保留全部参数配置与结果快照（result / 素材 url），但清掉 taskId 与运行态
    * （副本不再重连轮询，避免与原节点共用 taskId 串写）。group 容器不支持（原样返回）。
+   * **输入连线一并复制**（同上游、同端点、同次序），输出连线不复制。
    */
   duplicateNode: (nodeId: string) => void
   updateNodeData: (nodeId: string, data: Partial<FlowNode['data']>) => void
@@ -471,7 +472,14 @@ export const useFlowStore = create<FlowState>()((set, get) => {
         } as FlowNode
         // 选中态转到副本：其余节点取消选中
         const nodes = p.nodes.map((n) => (n.selected ? { ...n, selected: false } : n))
-        return { ...p, nodes: [...nodes, copy] }
+        // 输入连线一并复制：副本接同样的上游、落同样的端点，复制出来即可直接跑，
+        // 不必手动把 Prompt / 资源重连一遍。**只复制输入不复制输出**——副本若也喂给
+        // 原来的下游，等于凭空给下游多塞一份输入，几乎从不是想要的。
+        // 保持原数组相对次序：没写 @ 时实发列表按连线序，乱序会改变副本的出图结果。
+        const copiedEdges: Edge[] = p.edges
+          .filter((e) => e.target === nodeId)
+          .map((e) => ({ ...e, id: newId('e_'), target: copy.id, selected: false }))
+        return { ...p, nodes: [...nodes, copy], edges: [...p.edges, ...copiedEdges] }
       }),
 
     updateNodeData: (nodeId, data) =>

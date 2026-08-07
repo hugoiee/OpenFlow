@@ -20,6 +20,11 @@ export type SettingsDTO = {
   uploadEndpoint: string
   /** 音频上传端点；为空时回退 env UPLOAD_MEDIA_ENDPOINT / 内置默认。 */
   uploadMediaEndpoint: string
+  /**
+   * AIGC 历史任务查询端点（如 http://your-host:8511/api/task-history）；为空时回退 env AIGC_HISTORY_ENDPOINT。
+   * 两者皆空不报错，只是失去「同步响应没带回 URL 时去历史里找回结果」的能力。
+   */
+  aigcHistoryEndpoint: string
   /** 画布 Agent 的 LLM 端点（OpenAI 兼容 /chat/completions）；为空时回退 env AGENT_ENDPOINT。 */
   agentEndpoint: string
   /** 画布 Agent 的 LLM API Key（可空：无鉴权网关不需要）；为空时回退 env AGENT_API_KEY。GET /api/settings 不回明文（恒为空串），以 hasAgentApiKey 表示已配置。 */
@@ -49,6 +54,8 @@ export type SaveSettingsBody = {
   uploadEndpoint?: string
   /** 音频上传端点（空串=清空回退默认；省略=保持原值）。 */
   uploadMediaEndpoint?: string
+  /** AIGC 历史任务查询端点（空串=清空回退 env；省略=保持原值）。 */
+  aigcHistoryEndpoint?: string
   /** Agent LLM 端点（空串=清空回退 env；省略=保持原值）。 */
   agentEndpoint?: string
   /** Agent LLM API Key（空串=清空回退 env；省略=保持原值）。 */
@@ -192,6 +199,19 @@ export type TaskDTO = {
   result: string[]
   /** 失败时的可读错误信息。 */
   error?: string
+  /**
+   * 上游任务标识（AIGC 响应的 request_id，或历史记录的 id）。
+   * 有它就能去 AIGC 历史接口按 id 精确认领结果，也是「同一条历史记录不被两个任务抢」的锁。
+   */
+  upstreamId?: string
+  /** 上游最近一次原始响应（截断）。生成失败时的第一手现场，节点上可展开查看/复制。 */
+  rawResponse?: string
+  /**
+   * 失败是否「可能只是没拿到结果」（status='failed' 时才有意义）：
+   * 上游 2xx 却没带回 URL、或请求被中间掐断——内容其实可能已生成，值得去历史里重拉。
+   * 上游明确说失败（如内容安全拦截）则为 false，重拉也没用。
+   */
+  recoverable?: boolean
   createdAt: number
   updatedAt: number
 }

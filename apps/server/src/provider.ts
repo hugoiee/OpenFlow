@@ -45,12 +45,15 @@ function resolveEndpoint(value: string | undefined, fallback: string, label: str
 const UPLOAD_ENDPOINT = process.env.UPLOAD_ENDPOINT ?? ''
 const UPLOAD_MEDIA_ENDPOINT = process.env.UPLOAD_MEDIA_ENDPOINT ?? ''
 
-/** 从任意响应结构里稳健地收集 http(s) URL（去重）。 */
-function collectUrls(v: unknown): string[] {
+/** 原始响应留存的截断长度：够看清现场，又不至于把大响应整个塞进 SQLite。 */
+const RAW_KEEP = 8000
+
+/** 从任意响应结构里稳健地收集 http(s) URL（去重）；exclude 里的（本次请求发出的输入 URL）剔除。 */
+function collectUrls(v: unknown, exclude?: ReadonlySet<string>): string[] {
   const out: string[] = []
   const visit = (x: unknown) => {
     if (typeof x === 'string') {
-      if (/^https?:\/\//i.test(x)) out.push(x)
+      if (/^https?:\/\//i.test(x) && !exclude?.has(x)) out.push(x)
     } else if (Array.isArray(x)) {
       x.forEach(visit)
     } else if (x && typeof x === 'object') {
@@ -62,46 +65,191 @@ function collectUrls(v: unknown): string[] {
 }
 
 /**
- * 优先从常见「输出」字段取图片 URL，取不到再全量深挖（应对未知响应字段名）。
- * 注意：image_list 同时是请求里的「输入图」字段，放最后，避免响应回显输入时把输入图当成结果。
+ * 优先从常见「输出」字段取 URL，取不到再全量深挖（应对未知响应字段名）。
+ * 注意：image_list / video_list 同时是请求里的「输入」字段，放最后，避免响应回显输入时把输入当成结果
+ * （exclude 已经兜了一层，这里的次序是第二道保险）。
  */
-function extractImageUrls(data: unknown): string[] {
+function extractLegacyUrls(data: unknown, exclude?: ReadonlySet<string>): string[] {
   if (data && typeof data === 'object') {
     const o = data as Record<string, unknown>
     for (const key of [
       'data',
+      'video_url',
+      'videos',
       'images',
       'image_urls',
       'output',
       'result',
       'urls',
       'files', // 上传接口的输出键（files[].url）
+      'video_list',
       'image_list',
     ]) {
-      const urls = collectUrls(o[key])
+      const urls = collectUrls(o[key], exclude)
       if (urls.length) return urls
     }
   }
-  return collectUrls(data)
+  return collectUrls(data, exclude)
 }
 
-/** 从响应里尽量取出可读错误信息。 */
+/**
+ * 从响应里尽量取出可读错误信息。
+ * 本网关把错误放在第三层 `result.error.{code,message}`，只扫顶层会把真实原因（如
+ * 「输出音频可能涉及版权限制」）整个吞掉、退化成「未解析到 URL」，故这里连嵌套一并扫。
+ */
 function extractError(data: unknown): string | undefined {
   if (!data || typeof data !== 'object') return undefined
   const o = data as Record<string, unknown>
+  const fromResult = errorText((o.result as Record<string, unknown> | undefined)?.error)
+  if (fromResult) return fromResult
+  const fromData = errorText((o.data as Record<string, unknown> | undefined)?.error)
+  if (fromData) return fromData
   for (const key of ['error', 'message', 'msg', 'errmsg']) {
-    const v = o[key]
-    if (typeof v === 'string' && v) return v
-    if (v && typeof v === 'object') {
-      const m = (v as Record<string, unknown>).message
-      if (typeof m === 'string' && m) return m
-    }
+    const text = errorText(o[key])
+    if (text) return text
   }
   return undefined
 }
 
-/** POST AIGC 接口生成图像 → 图片 URL 列表。出错抛带可读信息的 Error。 */
-export async function runImageGen(input: ImageGenInput): Promise<string[]> {
+/** 把一个「错误位」解析成可读文案：字符串直接用；对象取 message/msg 并带上 code。 */
+function errorText(v: unknown): string | undefined {
+  if (typeof v === 'string') return v || undefined
+  if (!v || typeof v !== 'object') return undefined
+  const o = v as Record<string, unknown>
+  const message = [o.message, o.msg, o.errmsg].find((m) => typeof m === 'string' && m) as
+    | string
+    | undefined
+  if (!message) return undefined
+  return typeof o.code === 'string' && o.code ? `${message}（${o.code}）` : message
+}
+
+/**
+ * 上游 AIGC 响应的解析结果。已知契约：
+ * `{ model_name, version, request_id, result: { content: string[], status: 'success'|'failed', error: {code,message} } }`
+ * 契约对不上时回退到 extractLegacyUrls 的深挖（保住旧行为）。
+ */
+export type AigcParsed = {
+  /** 结果 URL 列表（已剔除本次请求发出的输入 URL）。 */
+  urls: string[]
+  /** 上游终态：'success' | 'failed'；契约不匹配时为 undefined。 */
+  status?: string
+  /** 上游给出的可读错误（含 code）。 */
+  errorMessage?: string
+  /** 上游任务标识，用于去历史接口按 id 认领结果。 */
+  requestId?: string
+}
+
+/** 按已知契约解析上游响应；exclude 为本次请求发出的输入 URL（防回显被当成结果）。 */
+export function readAigcResult(data: unknown, exclude?: ReadonlySet<string>): AigcParsed {
+  const parsed: AigcParsed = { urls: [] }
+  if (!data || typeof data !== 'object') return parsed
+  const o = data as Record<string, unknown>
+
+  for (const key of ['request_id', 'requestId', 'task_id', 'taskId', 'id']) {
+    const v = o[key]
+    if (typeof v === 'string' && v.trim()) {
+      parsed.requestId = v.trim()
+      break
+    }
+  }
+
+  const result = o.result
+  if (result && typeof result === 'object' && !Array.isArray(result)) {
+    const r = result as Record<string, unknown>
+    if (typeof r.status === 'string' && r.status) parsed.status = r.status
+    if (Array.isArray(r.content)) {
+      parsed.urls = collectUrls(r.content, exclude)
+      parsed.errorMessage = errorText(r.error)
+      return parsed
+    }
+  }
+
+  // 契约不匹配（未知网关/降级响应）：退回全量深挖
+  parsed.urls = extractLegacyUrls(data, exclude)
+  parsed.errorMessage = extractError(data)
+  return parsed
+}
+
+/**
+ * 「上游 2xx 但没带回结果 URL，且没说自己失败」——这是**可能还在生成**的信号，
+ * 不等于生成失败。task-store 收到它会转去 AIGC 历史接口找回结果，而不是当场判死。
+ */
+export class EmptyResultError extends Error {
+  readonly rawText: string
+  readonly requestId?: string
+  readonly httpStatus: number
+  constructor(opts: { message: string; rawText: string; requestId?: string; httpStatus: number }) {
+    super(opts.message)
+    this.name = 'EmptyResultError'
+    this.rawText = opts.rawText
+    this.requestId = opts.requestId
+    this.httpStatus = opts.httpStatus
+  }
+}
+
+/** 生成调用的统一返回：结果 URL + 认领键 + 原始响应（供落库存证）。 */
+export type GenOutcome = { urls: string[]; requestId?: string; rawText: string }
+
+/** 发给 AIGC 接口的请求体（同时是历史接口 items[].request 的形状）。 */
+export type AigcPayload = Record<string, unknown>
+
+/**
+ * POST AIGC 接口的公共发送逻辑。
+ * 刻意用 text() 而非 json()：非 JSON 响应（HTML 错误页 / 空体 / 被中间设备截断的流）
+ * 用 `res.json().catch(() => null)` 会把原文连同状态码一起丢掉，错误退化成字面量 `null`。
+ */
+async function postAigc(
+  endpoint: string,
+  payload: unknown,
+): Promise<{ ok: boolean; httpStatus: number; data: unknown; rawText: string }> {
+  const res = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    dispatcher: AIGC_DISPATCHER,
+  } as unknown as RequestInit)
+  const rawText = (await res.text().catch(() => '')).slice(0, RAW_KEEP)
+  let data: unknown = null
+  try {
+    data = JSON.parse(rawText)
+  } catch {
+    data = null
+  }
+  return { ok: res.ok, httpStatus: res.status, data, rawText }
+}
+
+/** 把上游响应收敛成结果 URL；没有 URL 时按「明确失败 / 可能还在生成」分别抛错。 */
+function toOutcome(
+  sent: { ok: boolean; httpStatus: number; data: unknown; rawText: string },
+  exclude: ReadonlySet<string>,
+  label: '图片' | '视频',
+): GenOutcome {
+  const parsed = readAigcResult(sent.data, exclude)
+  if (!sent.ok) {
+    throw new Error(
+      `HTTP ${sent.httpStatus}：${parsed.errorMessage ?? (sent.rawText.slice(0, 300) || '(空响应)')}`,
+    )
+  }
+  if (parsed.urls.length > 0) {
+    return { urls: parsed.urls, requestId: parsed.requestId, rawText: sent.rawText }
+  }
+  // 上游明确说失败：直接把真实原因报出去，不必再去历史里找
+  if (parsed.status === 'failed' || parsed.errorMessage) {
+    throw new Error(parsed.errorMessage ?? `上游返回失败：${sent.rawText.slice(0, 300)}`)
+  }
+  throw new EmptyResultError({
+    message: `未从响应解析到${label} URL：${sent.rawText.slice(0, 300) || '(空响应)'}`,
+    rawText: sent.rawText,
+    requestId: parsed.requestId,
+    httpStatus: sent.httpStatus,
+  })
+}
+
+/**
+ * 构造图像生成的请求体。**独立于发送**导出：任务失败后要靠同一份请求体去 AIGC 历史接口
+ * 按指纹认领结果，两处若各写一遍必然漂移。
+ */
+export function buildImagePayload(input: ImageGenInput): AigcPayload {
   // 公共字段两套模型一致；version 与 config 按 model_name 分支构造，互不污染
   const isNano = input.model === 'nano-banana'
   const version = isNano
@@ -111,31 +259,24 @@ export async function runImageGen(input: ImageGenInput): Promise<string[]> {
     ? { aspect_ratio: input.aspectRatio, image_size: input.imageSize }
     : { size: input.size, n: input.n, quality: input.quality }
 
-  const res = await fetch(resolveEndpoint(input.endpoint, AIGC_ENDPOINT, 'AIGC 生成接口'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      req_from: resolveReqFrom(input.reqFrom),
-      model_name: input.model,
-      version,
-      prompt: input.prompt,
-      image_list: input.images,
-      config,
-    }),
-    dispatcher: AIGC_DISPATCHER,
-  } as unknown as RequestInit)
-  const data = (await res.json().catch(() => null)) as unknown
-  if (!res.ok) {
-    // 优先回可读错误；否则只回截断的原始体，避免把上游大响应整体透传给前端
-    throw new Error(`HTTP ${res.status}：${extractError(data) ?? JSON.stringify(data).slice(0, 300)}`)
+  return {
+    req_from: resolveReqFrom(input.reqFrom),
+    model_name: input.model,
+    version,
+    prompt: input.prompt,
+    image_list: input.images ?? [],
+    config,
   }
-  const urls = extractImageUrls(data)
-  if (urls.length === 0) {
-    throw new Error(
-      extractError(data) ?? `未从响应解析到图片 URL：${JSON.stringify(data).slice(0, 300)}`,
-    )
-  }
-  return urls
+}
+
+/** POST AIGC 接口生成图像 → 图片 URL + 认领键 + 原始响应。出错抛带可读信息的 Error。 */
+export async function runImageGen(input: ImageGenInput): Promise<GenOutcome> {
+  const payload = buildImagePayload(input)
+  const sent = await postAigc(
+    resolveEndpoint(input.endpoint, AIGC_ENDPOINT, 'AIGC 生成接口'),
+    payload,
+  )
+  return toOutcome(sent, new Set(input.images ?? []), '图片')
 }
 
 /**
@@ -159,7 +300,7 @@ export async function uploadFiles(
     )
   }
   // 优先取已知结构 files[].url，取不到再全量深挖兜底
-  const urls = extractImageUrls(data)
+  const urls = extractLegacyUrls(data)
   if (urls.length === 0) {
     throw new Error(
       extractError(data) ?? `未从响应解析到上传 URL：${JSON.stringify(data).slice(0, 300)}`,
@@ -168,41 +309,38 @@ export async function uploadFiles(
   return urls
 }
 
-/** POST AIGC 接口生成视频（seedance）→ 视频 URL 列表。出错抛带可读信息的 Error。 */
-export async function runVideoGen(input: VideoGenInput): Promise<string[]> {
-  const res = await fetch(resolveEndpoint(input.endpoint, AIGC_ENDPOINT, 'AIGC 生成接口'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      req_from: resolveReqFrom(input.reqFrom),
-      model_name: input.model,
-      version: input.version,
-      mode: input.mode,
-      prompt: input.prompt,
-      image_list: input.images,
-      video_list: input.videos ?? [],
-      audio_list: input.audios ?? [],
-      // ratio 省略时不塞进 config，保持旧行为（由接口自行决定宽高比）
-      config: {
-        resolution: input.resolution,
-        duration: input.duration,
-        ...(input.ratio?.trim() ? { ratio: input.ratio } : {}),
-      },
-    }),
-    dispatcher: AIGC_DISPATCHER,
-  } as unknown as RequestInit)
-  const data = (await res.json().catch(() => null)) as unknown
-  if (!res.ok) {
-    throw new Error(
-      `HTTP ${res.status}：${extractError(data) ?? JSON.stringify(data).slice(0, 300)}`,
-    )
+/** 构造视频生成的请求体（同 buildImagePayload，独立于发送导出供历史指纹复用）。 */
+export function buildVideoPayload(input: VideoGenInput): AigcPayload {
+  return {
+    req_from: resolveReqFrom(input.reqFrom),
+    model_name: input.model,
+    version: input.version,
+    mode: input.mode,
+    prompt: input.prompt,
+    image_list: input.images ?? [],
+    video_list: input.videos ?? [],
+    audio_list: input.audios ?? [],
+    // ratio 省略时不塞进 config，保持旧行为（由接口自行决定宽高比）
+    config: {
+      resolution: input.resolution,
+      duration: input.duration,
+      ...(input.ratio?.trim() ? { ratio: input.ratio } : {}),
+    },
   }
-  // collectUrls 抓任意 http(s) URL，对视频 mp4 同样适用
-  const urls = extractImageUrls(data)
-  if (urls.length === 0) {
-    throw new Error(
-      extractError(data) ?? `未从响应解析到视频 URL：${JSON.stringify(data).slice(0, 300)}`,
-    )
-  }
-  return urls
+}
+
+/** POST AIGC 接口生成视频（seedance）→ 视频 URL + 认领键 + 原始响应。出错抛带可读信息的 Error。 */
+export async function runVideoGen(input: VideoGenInput): Promise<GenOutcome> {
+  const payload = buildVideoPayload(input)
+  const sent = await postAigc(
+    resolveEndpoint(input.endpoint, AIGC_ENDPOINT, 'AIGC 生成接口'),
+    payload,
+  )
+  // 输入图/视频/音频一并作 exclude：上游一旦回显输入，别把输入图当成生成结果
+  const exclude = new Set([
+    ...(input.images ?? []),
+    ...(input.videos ?? []),
+    ...(input.audios ?? []),
+  ])
+  return toOutcome(sent, exclude, '视频')
 }

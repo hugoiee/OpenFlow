@@ -80,6 +80,8 @@ export type GenerationNodeData = {
   result?: string[]
   /** 上次运行的错误信息（成功则清空）。 */
   error?: string
+  /** 上次失败是否值得去 AIGC 历史里重拉（上游 2xx 没带 URL / 请求被掐断时为 true）。 */
+  errorRecoverable?: boolean
   /** 进行中的异步任务 id：随节点存库，刷新后凭它重连轮询（关页面不丢结果）。 */
   taskId?: string
 }
@@ -172,6 +174,8 @@ export type ImageNodeData = {
   result: string[]
   /** 上次运行的错误信息（成功则清空）。 */
   error?: string
+  /** 上次失败是否值得去 AIGC 历史里重拉（上游 2xx 没带 URL / 请求被掐断时为 true）。 */
+  errorRecoverable?: boolean
   /** 进行中的异步任务 id：随节点存库，刷新后凭它重连轮询（关页面不丢结果）。 */
   taskId?: string
 }

@@ -12,6 +12,8 @@ dist
 dist-ssr
 *.local
 
+/docs
+
 # 后端 SQLite 数据
 apps/server/data
 

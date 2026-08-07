@@ -7,6 +7,7 @@ type SettingsRow = {
   aigc_endpoint: string
   upload_endpoint: string
   upload_media_endpoint: string
+  aigc_history_endpoint: string
   agent_endpoint: string
   agent_api_key: string
   agent_model: string
@@ -35,7 +36,7 @@ function parseModelList(raw: string | null | undefined): string[] {
 function ensureRow(): SettingsRow {
   let row = db
     .prepare(
-      'SELECT id, default_req_from, aigc_endpoint, upload_endpoint, upload_media_endpoint, agent_endpoint, agent_api_key, agent_model, agent_model_list, volc_tts_api_key FROM settings WHERE id = ?',
+      'SELECT id, default_req_from, aigc_endpoint, upload_endpoint, upload_media_endpoint, aigc_history_endpoint, agent_endpoint, agent_api_key, agent_model, agent_model_list, volc_tts_api_key FROM settings WHERE id = ?',
     )
     .get(SINGLETON) as SettingsRow | undefined
   if (!row) {
@@ -46,6 +47,7 @@ function ensureRow(): SettingsRow {
       aigc_endpoint: '',
       upload_endpoint: '',
       upload_media_endpoint: '',
+      aigc_history_endpoint: '',
       agent_endpoint: '',
       agent_api_key: '',
       agent_model: '',
@@ -63,6 +65,7 @@ export function readSettings(): SettingsDTO {
     aigcEndpoint: row.aigc_endpoint ?? '',
     uploadEndpoint: row.upload_endpoint ?? '',
     uploadMediaEndpoint: row.upload_media_endpoint ?? '',
+    aigcHistoryEndpoint: row.aigc_history_endpoint ?? '',
     agentEndpoint: row.agent_endpoint ?? '',
     agentApiKey: row.agent_api_key ?? '',
     agentModel: row.agent_model ?? '',
@@ -76,12 +79,13 @@ export function writeSettings(patch: Partial<SettingsDTO>): void {
   const cur = readSettings()
   const next = { ...cur, ...patch }
   db.prepare(
-    'UPDATE settings SET default_req_from = ?, aigc_endpoint = ?, upload_endpoint = ?, upload_media_endpoint = ?, agent_endpoint = ?, agent_api_key = ?, agent_model = ?, agent_model_list = ?, volc_tts_api_key = ? WHERE id = ?',
+    'UPDATE settings SET default_req_from = ?, aigc_endpoint = ?, upload_endpoint = ?, upload_media_endpoint = ?, aigc_history_endpoint = ?, agent_endpoint = ?, agent_api_key = ?, agent_model = ?, agent_model_list = ?, volc_tts_api_key = ? WHERE id = ?',
   ).run(
     next.defaultReqFrom,
     next.aigcEndpoint,
     next.uploadEndpoint,
     next.uploadMediaEndpoint,
+    next.aigcHistoryEndpoint,
     next.agentEndpoint,
     next.agentApiKey,
     next.agentModel,
