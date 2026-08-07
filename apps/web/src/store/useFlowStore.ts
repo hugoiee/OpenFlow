@@ -44,7 +44,7 @@ import {
 } from '@/lib/layout'
 import { RES_INPUT_HANDLE, normalizeResourceEdges } from '@/lib/graph'
 import { isValidTypedConnection } from '@/lib/handleTypes'
-import { collectMultiConnectEdges } from '@/lib/multiConnect'
+import { collectMultiConnectEdges, collectSelectedResourceEdges } from '@/lib/multiConnect'
 import { type FlowNode, type FlowNodeType, type Project } from '@/lib/types'
 
 type HomeView = 'grid' | 'list'
@@ -121,6 +121,21 @@ type FlowState = {
     model?: string
     position: { x: number; y: number }
     from: { nodeId: string; handleType: 'source' | 'target'; handleId?: string | null }
+    videoVariant?: VideoVariant
+  }) => void
+  /**
+   * 批量连线按钮：把当前选中的**全部资源节点**连到某个已存在节点的指定端点。
+   * 顺序按节点创建序（= 没写 @ 时的实发列表序）；类型不符 / 已存在的连线静默跳过。
+   */
+  connectSelectedResourcesTo: (targetNodeId: string, targetHandle: string | null) => void
+  /**
+   * 批量连线按钮松手在空白处 → 在落点新建节点，并把当前选中的全部资源节点连到它的统一资源端点 res。
+   * 新节点若不收资源（如 Prompt/Any LLM 用编号端点）则只建节点不连线，同 addConnectedNode 的既有做法。
+   */
+  addNodeWithSelectedResources: (input: {
+    type: FlowNodeType
+    model?: string
+    position: { x: number; y: number }
     videoVariant?: VideoVariant
   }) => void
   /** 把当前选中的（未分组的非容器）节点包进一个新建的 group 容器节点，选中容器；<2 个则不动。 */
@@ -566,6 +581,22 @@ export const useFlowStore = create<FlowState>()((set, get) => {
           nodes: [...p.nodes, node],
           edges: edge ? [...p.edges, edge] : p.edges,
         }
+      }),
+
+    connectSelectedResourcesTo: (targetNodeId, targetHandle) =>
+      patchActive((p) => {
+        const added = collectSelectedResourceEdges(p.nodes, p.edges, targetNodeId, targetHandle)
+        if (added.length === 0) return p
+        return { ...p, edges: [...p.edges, ...added] }
+      }),
+
+    addNodeWithSelectedResources: ({ type, model, position, videoVariant }) =>
+      patchActive((p) => {
+        const node = createNode(type, p.nodes.length, model, position, videoVariant)
+        const nodes = [...p.nodes, node]
+        // 只有图像/视频节点有统一资源端点 res；其余类型 collectSelectedResourceEdges 会全判不合法 → 只建节点
+        const added = collectSelectedResourceEdges(nodes, p.edges, node.id, RES_INPUT_HANDLE)
+        return { ...p, nodes, edges: added.length ? [...p.edges, ...added] : p.edges }
       }),
 
     groupSelectedNodes: () =>

@@ -64,8 +64,10 @@ export function targetAccepts(
   targetHandle: string | null | undefined,
 ): readonly SourceKind[] | null {
   if (targetHandle === RES_INPUT_HANDLE) {
-    // 统一资源端点：图像节点只吃图（音/视频对生图无意义）；视频节点图/音/视都收
-    return targetNode?.type === 'video' ? (['image', 'audio', 'video'] as const) : (['image'] as const)
+    // 统一资源端点：视频节点图/音/视都收；图像节点只吃图（音/视频对生图无意义）；
+    // 其余节点类型压根没有 res 端点 → 一律不收（批量连线按钮会拿 res 试连任意落点节点）
+    if (targetNode?.type === 'video') return ['image', 'audio', 'video'] as const
+    return targetNode?.type === 'image' ? (['image'] as const) : ([] as const)
   }
   if (typeof targetHandle === 'string' && targetHandle.startsWith(IMAGE_INPUT_HANDLE_PREFIX)) {
     return ['image'] // 图像输入端点只接图像
