@@ -8,28 +8,9 @@ export const IMAGE_MODELS = ['Image 2', 'Nano Banana'] as const
 export const VIDEO_MODELS = ['Seedance'] as const
 
 /**
- * Any LLM 节点可选的具名模型（预置常见 OpenAI 兼容模型 ID）。
- * 直接作 chat/completions 的 model 字段，需与所配置网关（复用画布 Agent 端点）支持的模型 ID 对应；
- * 换网关只需改这份列表。
- */
-export const LLM_MODELS = [
-  'gpt-4o',
-  'gpt-4o-mini',
-  'gpt-4.1',
-  'o3',
-  'o3-mini',
-  'claude-sonnet-4',
-  'claude-3-5-sonnet',
-  'deepseek-chat',
-  'deepseek-reasoner',
-  'gemini-2.0-flash',
-] as const
-export const LLM_MODEL_DEFAULT = LLM_MODELS[0]
-
-/**
  * 合并「手动维护列表 + 端点动态获取列表」为 Model 下拉候选：去空 / 去重 / 排序，
  * 并保证当前已选模型可选（不在并集里则置顶保留，不静默丢弃）。
- * 设置面板的 Agent 模型名与 Any LLM 节点的 Model 下拉共用，保证两处候选一致。
+ * 供设置面板的 Agent 模型名下拉使用。
  */
 export function mergeModelOptions(
   manual: readonly string[],
@@ -45,12 +26,6 @@ export function mergeModelOptions(
   const cur = current?.trim()
   return cur && !merged.includes(cur) ? [cur, ...merged] : merged
 }
-
-/** Any LLM 节点 Temperature 滑块范围（0–2，步长 0.1）。 */
-export const LLM_TEMPERATURE_MIN = 0
-export const LLM_TEMPERATURE_MAX = 2
-export const LLM_TEMPERATURE_STEP = 0.1
-export const LLM_TEMPERATURE_DEFAULT = 0.7
 
 /** 视频具名模型（展示名）→ AIGC 接口的 model_name。 */
 export const VIDEO_API_MODEL: Record<string, string> = {
@@ -336,12 +311,6 @@ export const GEN_NODE_META: Record<'image' | 'video', { label: string; handle: s
     handle: '!bg-rose-500 dark:!bg-rose-400',
   },
 }
-
-/** Any LLM 节点的展示元信息（连接点配色：紫色，与图像/视频/素材区分）。 */
-export const LLM_NODE_META = {
-  label: 'Any LLM',
-  handle: '!bg-violet-500 dark:!bg-violet-400',
-} as const
 
 /** 素材节点（image/audio/video）的展示元信息（标题回退文案 + 连接点配色，按种类区分）。 */
 export const ASSET_NODE_META: Record<'image' | 'audio' | 'video', { label: string; handle: string }> =

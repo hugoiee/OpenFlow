@@ -12,7 +12,6 @@ export const ARRANGE_GAP = 48
 // React Flow 尚未测量到尺寸时，按类型给的兜底宽高（与各节点卡片实际尺寸大致对齐）。
 const FALLBACK_SIZE: Record<string, { w: number; h: number }> = {
   prompt: { w: 264, h: 200 },
-  llm: { w: 288, h: 280 },
   image: { w: 288, h: 380 },
   video: { w: 288, h: 400 },
   asset: { w: 220, h: 220 },

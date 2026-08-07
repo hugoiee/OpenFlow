@@ -1,6 +1,5 @@
 import type {
   GenImageBody,
-  GenLlmBody,
   GenPodcastBody,
   GenVideoBody,
   TaskDTO,
@@ -8,7 +7,6 @@ import type {
   TaskStatus,
 } from '@openflow/shared'
 import { db } from './db'
-import { runLlmCompletion } from './llm'
 import { runImageGen, runVideoGen } from './provider'
 import { readSettings } from './settings-store'
 import { runPodcastGen } from './volc-tts'
@@ -33,7 +31,6 @@ type TaskRow = {
 // params 存请求体（含 projectId/nodeId 等，运行时只取生成相关字段），不含 req_from/端点。
 type ImageParams = GenImageBody
 type VideoParams = GenVideoBody
-type LlmParams = GenLlmBody
 type PodcastParams = GenPodcastBody
 
 function rowToDTO(row: TaskRow): TaskDTO {
@@ -59,7 +56,7 @@ export function createTask(input: {
   projectId: string
   nodeId: string
   kind: TaskKind
-  params: ImageParams | VideoParams | LlmParams | PodcastParams
+  params: ImageParams | VideoParams | PodcastParams
 }): TaskDTO {
   const id = newId()
   const now = Date.now()
@@ -156,7 +153,7 @@ export function startTask(task: TaskDTO): void {
         ratio: typeof p.ratio === 'string' ? p.ratio : undefined,
         duration: typeof p.duration === 'number' ? p.duration : 6,
       })
-    } else if (task.kind === 'podcast') {
+    } else {
       // podcast：逐行调火山 TTS 拼接成整期播客 WAV 落盘，result = [同源音频 URL]。
       // result = [音频 URL, 计费字数合计]（前端展示 usage）
       const p = JSON.parse(row.params) as PodcastParams
@@ -180,21 +177,6 @@ export function startTask(task: TaskDTO): void {
         settings: s,
       })
       urls = [url, String(textWords)]
-    } else {
-      // llm：文本补全。result 打包成 [回答] 或 [回答, 思考]（思考文本供折叠展示）。
-      const p = JSON.parse(row.params) as LlmParams
-      const { text, reasoning } = await runLlmCompletion({
-        model: p.model,
-        prompt: p.prompt,
-        systemPrompt: typeof p.systemPrompt === 'string' ? p.systemPrompt : undefined,
-        images: Array.isArray(p.images) ? p.images : [],
-        audios: Array.isArray(p.audios) ? p.audios : [],
-        videos: Array.isArray(p.videos) ? p.videos : [],
-        temperature: typeof p.temperature === 'number' ? p.temperature : 0.7,
-        thinking: p.thinking === true,
-        settings: s,
-      })
-      urls = reasoning ? [text, reasoning] : [text]
     }
     updateStatus(task.id, { status: 'succeeded', result: urls })
   }

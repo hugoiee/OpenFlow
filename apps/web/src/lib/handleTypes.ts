@@ -5,7 +5,6 @@ import type { FlowNode } from './types'
 import {
   AUDIO_INPUT_HANDLE_PREFIX,
   IMAGE_INPUT_HANDLE_PREFIX,
-  LLM_SYSTEM_HANDLE,
   RES_INPUT_HANDLE,
   VIDEO_INPUT_HANDLE_PREFIX,
 } from './graph'
@@ -39,7 +38,7 @@ export type SourceKind = 'text' | 'image' | 'audio' | 'video' | 'other'
 
 export function sourceKind(node: FlowNode | undefined): SourceKind {
   if (!node) return 'other'
-  if (node.type === 'prompt' || node.type === 'llm') return 'text'
+  if (node.type === 'prompt') return 'text'
   if (node.type === 'image') return 'image'
   if (node.type === 'video') return 'video' // Seedance 视频生成节点的输出作视频源
   if (node.type === 'asset') {
@@ -78,14 +77,10 @@ export function targetAccepts(
   if (typeof targetHandle === 'string' && targetHandle.startsWith(VIDEO_INPUT_HANDLE_PREFIX)) {
     return ['video'] // 视频输入端点只接视频
   }
-  if (targetHandle === LLM_SYSTEM_HANDLE) return ['text'] // System Prompt 只接文本
-  // 默认（空 handle）端点：Prompt/LLM/图像/视频 节点的默认口都是 Prompt（只接文本）
+  // 默认（空 handle）端点：Prompt/图像/视频 节点的默认口都是 Prompt（只接文本）
   if (
     targetNode &&
-    (targetNode.type === 'prompt' ||
-      targetNode.type === 'llm' ||
-      targetNode.type === 'image' ||
-      targetNode.type === 'video')
+    (targetNode.type === 'prompt' || targetNode.type === 'image' || targetNode.type === 'video')
   ) {
     return ['text']
   }

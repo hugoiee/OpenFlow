@@ -1,15 +1,12 @@
-// 生成请求体的单一来源：LLM / 图像 / 视频节点「点击生成时发送的请求 JSON」都由这里构造。
+// 生成请求体的单一来源：图像 / 视频 / 播客节点「点击生成时发送的请求 JSON」都由这里构造。
 // 节点组件的 handleRun 与右侧 Inspector 的「请求 JSON 预览」共用，保证预览与实发一致、不漂移。
 
-import type { GenImageBody, GenLlmBody, GenPodcastBody, GenVideoBody } from '@openflow/shared'
+import type { GenImageBody, GenPodcastBody, GenVideoBody } from '@openflow/shared'
 import {
   IMAGE_INPUT_HANDLE_PREFIX,
-  collectUpstreamAudio,
   collectUpstreamAudioRefs,
-  collectUpstreamImages,
   collectUpstreamImageRefs,
   collectUpstreamPrompt,
-  collectUpstreamVideo,
   collectUpstreamVideoRefs,
   type UpstreamRef,
 } from './graph'
@@ -17,8 +14,6 @@ import { applyMentions, collectMentionedRefs } from './mentions'
 import {
   IMAGE_SIZE_DEFAULT,
   IMAGE_SIZE_OPTIONS,
-  LLM_MODEL_DEFAULT,
-  LLM_TEMPERATURE_DEFAULT,
   NANO_ASPECT_DEFAULT,
   NANO_IMAGE_SIZE_DEFAULT,
   NANO_VERSION_DEFAULT,
@@ -37,7 +32,7 @@ import {
   imageApiModel,
   videoApiModel,
 } from './nodeCatalog'
-import type { ImageNode, LlmNode, PodcastNode, Project, PromptMentionRef, VideoNode } from './types'
+import type { ImageNode, PodcastNode, Project, PromptMentionRef, VideoNode } from './types'
 
 /** 每行一个 URL 的文本框 → 去空的 URL 列表。 */
 function linesToUrls(text: string | undefined): string[] {
@@ -45,28 +40,6 @@ function linesToUrls(text: string | undefined): string[] {
     .split('\n')
     .map((s) => s.trim())
     .filter(Boolean)
-}
-
-/** Any LLM 节点：POST /api/llm 的请求体（多模态图取自各图像输入端点）。 */
-export function buildLlmRequest(project: Project, node: LlmNode): GenLlmBody {
-  const id = node.id
-  const d = node.data
-  const systemPrompt = collectUpstreamPrompt(project, id, { handle: 'system' }).trim()
-  const images = collectUpstreamImages(project, id)
-  const audios = collectUpstreamAudio(project, id)
-  const videos = collectUpstreamVideo(project, id)
-  return {
-    projectId: project.id,
-    nodeId: id,
-    model: d.model || LLM_MODEL_DEFAULT,
-    prompt: collectUpstreamPrompt(project, id, { handle: 'user' }),
-    systemPrompt: systemPrompt || undefined,
-    images: images.length ? images : undefined,
-    audios: audios.length ? audios : undefined,
-    videos: videos.length ? videos : undefined,
-    temperature: d.temperature ?? LLM_TEMPERATURE_DEFAULT,
-    thinking: d.thinking ?? false,
-  }
 }
 
 /** 图像生成节点：POST /api/aigc 的请求体（按模型 Image 2 / Nano Banana 取舍参数）。 */
@@ -202,10 +175,9 @@ export function buildPodcastRequest(project: Project, node: PodcastNode): GenPod
 }
 
 // ---- 上游实发请求体（右侧 Inspector「请求预览」用）----
-// 下面三个把「点击生成时发给后端 /api/* 的 GenXxxBody」再转成「后端实际打到上游网关的请求体」：
+// 下面几个把「点击生成时发给后端 /api/* 的 GenXxxBody」再转成「后端实际打到上游网关的请求体」：
 //   图像 / 视频镜像 apps/server/src/provider.ts 的 runImageGen / runVideoGen（内网 AIGC 网关，
 //     字段为 req_from / model_name / version / config…，req_from 由全局署名注入）；
-//   LLM 镜像 apps/server/src/llm.ts 的 runLlmCompletion（OpenAI 兼容 /chat/completions）。
 // 复用上面的 build*Request 收集上游输入，故预览与实发链路同源、不漂移；改后端构造逻辑时同步这里。
 
 /** 图像：内网 AIGC 网关的 POST body（镜像 provider.ts runImageGen）。 */
@@ -289,34 +261,5 @@ export function buildPodcastUpstream(project: Project, node: PodcastNode) {
     },
     line_gap_ms: body.lineGapMs,
     script: body.script,
-  }
-}
-
-/** Any LLM：OpenAI 兼容 /chat/completions 的 POST body（镜像 llm.ts runLlmCompletion）。 */
-export function buildLlmUpstream(project: Project, node: LlmNode) {
-  const body = buildLlmRequest(project, node)
-  const imageUrls = (body.images ?? []).map((u) => u.trim()).filter(Boolean)
-  const audioUrls = (body.audios ?? []).map((u) => u.trim()).filter(Boolean)
-  const videoUrls = (body.videos ?? []).map((u) => u.trim()).filter(Boolean)
-  // 有图 / 音 / 视输入时把 user 内容改成多模态内容块数组，否则纯文本
-  const userContent =
-    imageUrls.length + audioUrls.length + videoUrls.length > 0
-      ? [
-          { type: 'text', text: body.prompt },
-          ...imageUrls.map((url) => ({ type: 'image_url', image_url: { url } })),
-          ...audioUrls.map((url) => ({ type: 'audio_url', audio_url: { url } })),
-          ...videoUrls.map((url) => ({ type: 'video_url', video_url: { url } })),
-        ]
-      : body.prompt
-  return {
-    model: body.model,
-    messages: [
-      // 有系统提示词则置于消息首位
-      ...(body.systemPrompt?.trim() ? [{ role: 'system', content: body.systemPrompt.trim() }] : []),
-      { role: 'user', content: userContent },
-    ],
-    temperature: body.temperature,
-    // 开启思考才下发原生推理参数
-    ...(body.thinking ? { reasoning_effort: 'medium' } : {}),
   }
 }
