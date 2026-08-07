@@ -94,6 +94,27 @@ export function applyMentions(
 }
 
 /**
+ * 找出「结束位置恰为 caret」且已登记在 mentions 中的 token（退格整体删除用）；无则 null。
+ * 只认已登记的 token——画布上有高亮药丸的才当作一个整体，手打的 @[xxx] 普通文本仍逐字删。
+ */
+export function mentionTokenEndingAt(
+  text: string,
+  caret: number,
+  mentions: PromptMentionRef[] | undefined,
+): { start: number; end: number; name: string } | null {
+  const list = mentions ?? []
+  if (!list.length) return null
+  for (const match of text.matchAll(MENTION_TOKEN_RE)) {
+    const start = match.index ?? 0
+    const end = start + match[0].length
+    if (end !== caret) continue
+    if (!list.some((m) => m.name === match[1])) return null
+    return { start, end, name: match[1] }
+  }
+  return null
+}
+
+/**
  * 提交文本时的映射表清理：只清「token 已从文本中消失」的 mention（防垃圾堆积）；
  * 悬空（身份解析不到）但 token 仍在文本里的保留——重新连线即恢复可替换。
  */
