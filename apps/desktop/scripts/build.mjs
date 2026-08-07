@@ -41,6 +41,10 @@ await build({
 if (existsSync(webDist)) {
   cpSync(webDist, join(outdir, 'web'), { recursive: true })
   console.log('[desktop] copied web dist → dist-electron/web')
+} else if (process.env.CI) {
+  // CI 里静默产出「一个没有前端的安装包」比构建失败危险得多（装上才发现白屏），直接中止。
+  // 本地不这么做：pnpm dev 走 Vite dev server，本来就不需要 apps/web/dist。
+  throw new Error('[desktop] apps/web/dist 不存在：CI 中拒绝产出缺前端的包，请先跑 build:web')
 } else {
   console.warn('[desktop] WARN: apps/web/dist 不存在，请先跑 pnpm run build:web')
 }

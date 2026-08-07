@@ -3,6 +3,10 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22 <24"
+  },
   "scripts": {
     "dev": "pnpm --filter @openflow/web dev",
     "server": "pnpm --filter @openflow/server dev",
@@ -10,6 +14,7 @@
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
+    "check:version": "node scripts/check-version.mjs",
     "format": "prettier --write \"apps/*/src/**/*.{ts,tsx,css}\" \"packages/*/src/**/*.ts\""
   },
   "devDependencies": {

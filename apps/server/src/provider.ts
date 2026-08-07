@@ -1,8 +1,10 @@
 import { Agent } from 'undici'
 import type { GenImageBody, GenVideoBody } from '@openflow/shared'
 
-// AIGC 图像生成接口（当前无鉴权）；地址可用环境变量覆盖
-const AIGC_ENDPOINT = process.env.AIGC_ENDPOINT ?? 'http://10.75.202.161:8204/aigc'
+// AIGC 图像/视频生成接口（当前无鉴权）。**不内置任何默认地址**：
+// 打包分发给不同网络的人时不该带上任一方的内网地址，一律由「设置面板」填写
+// （或用环境变量覆盖）。为空时 resolveEndpoint 会抛出可读错误。
+const AIGC_ENDPOINT = process.env.AIGC_ENDPOINT ?? ''
 
 // Node 内置 fetch（undici）默认 headersTimeout/bodyTimeout 均为 300s：
 // seedance 视频生成（尤其 1080p、时长拉满）耗时常超 5 分钟，会被这个默认值提前掐断报 fetch failed。
@@ -30,15 +32,18 @@ export function resolveReqFrom(value: string | undefined): string {
   return trimmed
 }
 
-/** 端点解析：设置里非空则用它，否则回退传入的 env/内置默认。 */
-function resolveEndpoint(value: string | undefined, fallback: string): string {
-  return value?.trim() || fallback
+/**
+ * 端点解析：设置里非空则用它，否则回退 env。两者都为空即抛错——
+ * 同 resolveReqFrom 的做法，宁可给出可读提示，也不要拿空地址去发请求。
+ */
+function resolveEndpoint(value: string | undefined, fallback: string, label: string): string {
+  const resolved = value?.trim() || fallback.trim()
+  if (!resolved) throw new Error(`缺少${label}地址，请先在设置中填写`)
+  return resolved
 }
-// 文件上传接口（当前无鉴权）；图片与音频走不同端点，地址可用环境变量覆盖
-const UPLOAD_ENDPOINT =
-  process.env.UPLOAD_ENDPOINT ?? 'http://10.75.202.161:8511/api/upload'
-const UPLOAD_MEDIA_ENDPOINT =
-  process.env.UPLOAD_MEDIA_ENDPOINT ?? 'http://10.75.202.161:8511/api/upload-media'
+// 文件上传接口（当前无鉴权）；图片与音频/视频走不同端点。同样不内置默认地址。
+const UPLOAD_ENDPOINT = process.env.UPLOAD_ENDPOINT ?? ''
+const UPLOAD_MEDIA_ENDPOINT = process.env.UPLOAD_MEDIA_ENDPOINT ?? ''
 
 /** 从任意响应结构里稳健地收集 http(s) URL（去重）。 */
 function collectUrls(v: unknown): string[] {
@@ -106,7 +111,7 @@ export async function runImageGen(input: ImageGenInput): Promise<string[]> {
     ? { aspect_ratio: input.aspectRatio, image_size: input.imageSize }
     : { size: input.size, n: input.n, quality: input.quality }
 
-  const res = await fetch(resolveEndpoint(input.endpoint, AIGC_ENDPOINT), {
+  const res = await fetch(resolveEndpoint(input.endpoint, AIGC_ENDPOINT, 'AIGC 生成接口'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -144,7 +149,7 @@ export async function uploadFiles(
 ): Promise<string[]> {
   // 图片 → 图片端点；音频 / 视频都是媒体，走媒体端点
   const fallback = kind === 'image' ? UPLOAD_ENDPOINT : UPLOAD_MEDIA_ENDPOINT
-  const endpoint = resolveEndpoint(endpointOverride, fallback)
+  const endpoint = resolveEndpoint(endpointOverride, fallback, kind === 'image' ? '图片上传接口' : '音视频上传接口')
   // 不手动设 Content-Type，让 fetch 自带 multipart boundary
   const res = await fetch(endpoint, { method: 'POST', body: form })
   const data = (await res.json().catch(() => null)) as unknown
@@ -165,7 +170,7 @@ export async function uploadFiles(
 
 /** POST AIGC 接口生成视频（seedance）→ 视频 URL 列表。出错抛带可读信息的 Error。 */
 export async function runVideoGen(input: VideoGenInput): Promise<string[]> {
-  const res = await fetch(resolveEndpoint(input.endpoint, AIGC_ENDPOINT), {
+  const res = await fetch(resolveEndpoint(input.endpoint, AIGC_ENDPOINT, 'AIGC 生成接口'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
