@@ -23,12 +23,19 @@ export function useMentionMenu(opts: {
   const [activeIndex, setActiveIndex] = useState(0)
   // @ 字符在文本中的下标（token 替换起点）；用 ref 存避免 handleChange 闭包过期
   const anchorRef = useRef(0)
+  // 同一个下标的 state 版：菜单打开时暴露给 overlay 高亮层，用来渲染一个零宽测量锚点
+  // （浮层要跟随光标定位，而 Textarea 没有原生 caret 坐标 API —— 复用 overlay 这个现成镜像层）
+  const [anchorIndex, setAnchorIndex] = useState<number | null>(null)
 
   const close = useCallback(() => {
     setOpen(false)
     setQuery('')
     setActiveIndex(0)
+    setAnchorIndex(null)
   }, [])
+
+  // 注：菜单位置不靠事件监听维护——浮层用 useTrackedRect 每帧重测锚点矩形，
+  // 画布平移缩放 / 节点拖动 / Textarea 滚动 / 窗口 resize 全都自动跟随，无需在此关闭菜单。
 
   const items = candidates.filter((c) => c.name.toLowerCase().includes(query.toLowerCase()))
 
@@ -60,6 +67,7 @@ export function useMentionMenu(opts: {
       const project = state.projects.find((p) => p.id === state.activeProjectId)
       if (!project) return
       anchorRef.current = caret - 1
+      setAnchorIndex(caret - 1)
       setCandidates(collectMentionCandidates(project, nodeId))
       setQuery('')
       setActiveIndex(0)
@@ -134,5 +142,16 @@ export function useMentionMenu(opts: {
     [open, items, activeIndex, select, close],
   )
 
-  return { open, items, activeIndex, setActiveIndex, close, select, handleChange, onKeyDown }
+  return {
+    open,
+    items,
+    activeIndex,
+    setActiveIndex,
+    /** 菜单打开时 `@` 字符在文本中的下标（overlay 据此渲染测量锚点），关闭时为 null。 */
+    anchorIndex,
+    close,
+    select,
+    handleChange,
+    onKeyDown,
+  }
 }
