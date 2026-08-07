@@ -98,6 +98,7 @@ apps/web/src/
   lib/id.ts                    newId(prefix)：生成简短唯一 id（项目/节点/连线用）
   lib/appMeta.ts               应用元信息常量：APP_NAME='Open Flow' / APP_VERSION（顶栏/侧栏 logo 展示；与 apps/desktop/package.json 的打包版本保持一致，发版时两处一起改）
   lib/utils.ts                 cn()：clsx + tailwind-merge 合并去重类名（shadcn 约定）
+  hooks/useSpacePanGuard.ts    空格平移守卫（FlowCanvas 调用）：焦点残留在节点输入框时，指针停在画布空白处按住空格会被输入框吃成一串空格、且 React Flow 因 isInputDOMNode 判定不激活平移。命中「焦点在节点内输入框 + 指针在空白处 + 已停手 700ms 或长按重复」三条时吞掉该空格 + 输入框失焦 + 补发一次 keydown 让平移立刻生效；组词中/带修饰键/指针停在节点上一律放行（正常打空格）
   hooks/useResizableWidth.ts   右侧停靠面板宽度可调 hook：宽度存 localStorage 跨会话保留 + onPointerDownResize 拖左缘手柄改宽（供 NodeInspector）
   components/ui/               shadcn/ui vendored（不参与 lint/format，勿手改）
   components/gate/ReqFromGate.tsx 启动强制填写 req_from：设置已加载且全局署名为空时全屏阻断弹窗，填写保存后放行（已填则不出现）

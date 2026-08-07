@@ -18,6 +18,7 @@ import { nodeTypes } from './nodes'
 import { ZoomSlider } from './ZoomSlider'
 import { CanvasContextMenu } from './CanvasContextMenu'
 import { SelectionContextMenu } from './SelectionContextMenu'
+import { useSpacePanGuard } from '@/hooks/useSpacePanGuard'
 import { uploadFilesApi } from '@/lib/api'
 import { edgeColorForSource, isValidTypedConnection } from '@/lib/handleTypes'
 import { type FlowNode, type FlowNodeType } from '@/lib/types'
@@ -83,6 +84,9 @@ export function FlowCanvas() {
     localStorage.setItem(TRACKPAD_STORAGE_KEY, trackpadMode ? '1' : '0')
   }, [trackpadMode])
   const toggleTrackpad = useCallback(() => setTrackpadMode((v) => !v), [])
+
+  // 空格平移守卫：焦点残留在节点输入框时，指针在空白处按住空格不再被输入框吃成一串空格
+  useSpacePanGuard()
 
   // 画布右键菜单：记录光标处（相对画布容器的 top/left）+ 落点（flow 坐标），点选即在该处建节点
   const wrapperRef = useRef<HTMLDivElement>(null)
