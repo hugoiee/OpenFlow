@@ -44,6 +44,7 @@ import {
 } from '@/lib/layout'
 import { RES_INPUT_HANDLE, normalizeResourceEdges } from '@/lib/graph'
 import { isValidTypedConnection } from '@/lib/handleTypes'
+import { collectMultiConnectEdges } from '@/lib/multiConnect'
 import { type FlowNode, type FlowNodeType, type Project } from '@/lib/types'
 
 type HomeView = 'grid' | 'list'
@@ -392,7 +393,20 @@ export const useFlowStore = create<FlowState>()((set, get) => {
       patchActive((p) => ({ ...p, edges: applyEdgeChanges(changes, p.edges) })),
 
     onConnect: (connection) =>
-      patchActive((p) => ({ ...p, edges: addEdge(connection, p.edges) })),
+      patchActive((p) => {
+        const withSource = addEdge(connection, p.edges) // 起点这根线（含 RF 自带的重复检测）
+        // 框选多个资源后从其中一个拖线 → 其余选中的合法资源节点一并连到同一端点
+        const extra = collectMultiConnectEdges(p.nodes, p.edges, connection)
+        if (extra.length === 0) return { ...p, edges: withSource }
+        // 本次新增的边按节点创建序排列（addEdge 把起点边追加在末尾，不排的话
+        // 「从哪个节点起拖」会决定它排第一，进而影响没写 @ 时的实发 image_list 顺序）
+        const added = withSource.slice(p.edges.length)
+        const order = new Map(p.nodes.map((n, i) => [n.id, i]))
+        const sorted = [...added, ...extra].sort(
+          (a, b) => (order.get(a.source) ?? 0) - (order.get(b.source) ?? 0),
+        )
+        return { ...p, edges: [...p.edges, ...sorted] }
+      }),
 
     onReconnect: (oldEdge, newConnection) =>
       patchActive((p) => ({ ...p, edges: reconnectEdge(oldEdge, newConnection, p.edges) })),
