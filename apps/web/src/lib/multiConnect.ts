@@ -21,6 +21,20 @@ export function selectedResourceNodes(nodes: FlowNode[]): FlowNode[] {
   return nodes.filter((n) => n.selected && isResourceNode(n))
 }
 
+/**
+ * 上面那份选中集合的**字符串签名**（同一套筛选口径，同样按 nodes 数组序）。
+ * 专供批量连线按钮的 zustand selector：selector 在每次 store 写入时都会跑（拖动=每帧一次），
+ * 返回数组会因每次都是新引用而 Object.is 必不相等 → 白白重渲染；返回字符串则值不变就不重渲染。
+ * 故这里一趟循环直接拼串，连中间数组都不分配。
+ */
+export function selectedResourceSignature(nodes: FlowNode[]): string {
+  let sig = ''
+  for (const n of nodes) {
+    if (n.selected && isResourceNode(n)) sig = sig ? `${sig}|${n.id}` : n.id
+  }
+  return sig
+}
+
 /** 同源同目标同端点的连线是否已存在（避免重复连）。 */
 function hasEdge(edges: Edge[], source: string, target: string, targetHandle: string | null): boolean {
   return edges.some(

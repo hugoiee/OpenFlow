@@ -155,8 +155,8 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
         selected={selected}
       />
       <CardContent className="flex flex-col gap-2 px-3">
-        {/* 结果展示区 */}
-        <div className="nodrag overflow-hidden rounded-md border">
+        {/* 结果展示区（node-media：滑出视口时跳过渲染，见 index.css） */}
+        <div className="node-media nodrag overflow-hidden rounded-md border">
           {running ? (
             <Skeleton className="aspect-square w-full" />
           ) : result.length > 0 ? (
@@ -167,6 +167,9 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
                     <img
                       src={url}
                       alt="生成结果"
+                      // 生成结果是原始尺寸（常 1024² 起），这里只显示到 ~270px 宽。
+                      // decoding=async 把解码挪出主线程关键路径，画布上结果图一多时平移不被解码卡住。
+                      decoding="async"
                       className="max-h-64 w-full bg-muted object-contain"
                     />
                   </a>

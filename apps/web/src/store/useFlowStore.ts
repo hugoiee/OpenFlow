@@ -59,6 +59,20 @@ type FlowState = {
   activeProjectId: string | null
   homeView: HomeView
   loaded: boolean
+  /**
+   * 「图结构版本号」：连线拓扑或任一节点的 data 可能变动时 +1；**纯视图态变更不动它**
+   * （拖动=position、框选=select、RF 测量=dimensions）。
+   *
+   * 存在的理由：patchActive 每次写入都新建 project 对象，于是拖一下节点就让所有以 project
+   * 作 useMemo 依赖的地方每帧失效——Inspector 的请求体构建要跑 O(E×N) 的上游采集（视频三遍）
+   * 再 JSON.stringify 一次，而这些计算**根本不读 position**，算了也是同一个结果。
+   * 以本版本号作依赖即可把这些每帧重算彻底消除。
+   *
+   * ⚠️ 前提约定（改 lib/requestBody.ts 与 lib/graph.ts 时务必守住）：
+   * 请求体的构建只能依赖 edges 与各节点的 id/type/data，**不得读取 position/dimensions/selected**。
+   * 一旦有人读了，拖动后的预览就会停留在旧值（刷新又对），极难排查。
+   */
+  graphRev: number
 
   // 数据加载
   loadProjects: () => Promise<void>
@@ -252,8 +266,13 @@ function scheduleSave(project: Project) {
 }
 
 export const useFlowStore = create<FlowState>()((set, get) => {
-  // 更新当前项目并安排防抖保存
-  const patchActive = (updater: (project: Project) => Project) =>
+  /**
+   * 更新当前项目并安排防抖保存。
+   * `viewOnly=true` 表示本次只改了纯视图态（位置/尺寸/选中），不必推进 graphRev——见 graphRev 的注释。
+   * 默认 bump：patchActive 有十几个调用点，默认推进保证「漏标」只会让下游多算一次（退化成原来的行为），
+   * 绝不会算漏而显示过期数据。目前只有 onNodesChange 的纯拖动/框选分支会声明 viewOnly。
+   */
+  const patchActive = (updater: (project: Project) => Project, viewOnly = false) =>
     set((state) => {
       if (!state.activeProjectId) return state
       const projects = state.projects.map((p) =>
@@ -261,7 +280,7 @@ export const useFlowStore = create<FlowState>()((set, get) => {
       )
       const active = projects.find((p) => p.id === state.activeProjectId)
       if (active) scheduleSave(active)
-      return { projects }
+      return viewOnly ? { projects } : { projects, graphRev: state.graphRev + 1 }
     })
 
   return {
@@ -269,6 +288,7 @@ export const useFlowStore = create<FlowState>()((set, get) => {
     activeProjectId: null,
     homeView: loadHomeView(),
     loaded: false,
+    graphRev: 0,
 
     loadProjects: async () => {
       const dtos = await listProjects()
@@ -380,7 +400,13 @@ export const useFlowStore = create<FlowState>()((set, get) => {
       set({ homeView: view })
     },
 
-    onNodesChange: (changes) =>
+    onNodesChange: (changes) => {
+      // 拖动 / 框选 / RF 测量只产出 position·select·dimensions 三种纯视图态变更，
+      // 且这三条恰恰是每帧都在发的最热路径——标成 viewOnly 让 graphRev 不动，
+      // 下游那些「只认图结构」的重计算（Inspector 的请求体构建）整段跳过。
+      const viewOnly = changes.every(
+        (c) => c.type === 'position' || c.type === 'select' || c.type === 'dimensions',
+      )
       patchActive((p) => {
         // 删除 group 容器前，先把它的子节点释放出来（相对坐标转绝对、清 parentId），
         // 否则子节点会残留一个指向已删容器的 parentId，渲染错位。
@@ -395,7 +421,8 @@ export const useFlowStore = create<FlowState>()((set, get) => {
         )
         const base = removedGroupIds.size ? detachChildren(p.nodes, removedGroupIds) : p.nodes
         return { ...p, nodes: applyNodeChanges(changes, base) }
-      }),
+      }, viewOnly)
+    },
 
     onEdgesChange: (changes) =>
       patchActive((p) => ({ ...p, edges: applyEdgeChanges(changes, p.edges) })),
@@ -666,4 +693,13 @@ export const useFlowStore = create<FlowState>()((set, get) => {
 /** 选择当前激活的项目（没有则为 undefined）。 */
 export function useActiveProject(): Project | undefined {
   return useFlowStore((s) => s.projects.find((p) => p.id === s.activeProjectId))
+}
+
+/**
+ * 图结构版本号：只在连线拓扑或节点 data 可能变动时递增，拖动 / 框选 / 测量不动它。
+ * 拿它（而不是 project 引用）作 useMemo 依赖，可让「只认图结构」的重计算在拖动期间一次都不跑。
+ * 使用前请先读 FlowState.graphRev 上的那段约定。
+ */
+export function useGraphRev(): number {
+  return useFlowStore((s) => s.graphRev)
 }

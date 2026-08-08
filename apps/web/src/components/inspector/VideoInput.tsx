@@ -1,7 +1,8 @@
+import { useMemo } from 'react'
 import { buildVideoRequest } from '@/lib/requestBody'
 import { VIDEO_VARIANT_DEFAULT } from '@/lib/nodeCatalog'
 import type { VideoNode } from '@/lib/types'
-import { useActiveProject } from '@/store/useFlowStore'
+import { useActiveProject, useGraphRev } from '@/store/useFlowStore'
 import {
   AudioRows,
   ImageThumbs,
@@ -18,7 +19,14 @@ import {
  */
 export function VideoInput({ node }: { node: VideoNode }) {
   const project = useActiveProject()
-  const body = project ? buildVideoRequest(project, node) : null
+  // ⚡ 依赖取 graphRev 而非 project 引用——原来这行裸写在渲染体里，拖任意节点都会每帧重跑
+  // 三次 O(E×N) 的上游采集（图/音/视各一次）。理由与用法见 useFlowStore 里 graphRev 的注释。
+  const graphRev = useGraphRev()
+  const body = useMemo(
+    () => (project ? buildVideoRequest(project, node) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [graphRev, node.id, node.data],
+  )
   const images = body?.images ?? []
   const audios = body?.audios ?? []
   const videos = body?.videos ?? []

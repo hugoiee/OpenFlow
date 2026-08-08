@@ -249,6 +249,54 @@
 }
 
 /*
+ * 节点里的媒体展示区（结果图 / 结果视频 / 素材缩略图）：滑出视口时让浏览器跳过它的渲染。
+ * 画布上常有几十个节点各挂着一张原始尺寸的生成图（1024² 起）或一段视频，这些位图的
+ * 下采样光栅化是平移时最贵的一块，而视口外那些**根本看不见**。
+ *
+ * contain-intrinsic-size 的 auto 关键字会记住该元素上次真实渲染的尺寸，所以跳过渲染期间
+ * 占位高度保持不变 —— 节点高度不跳、React Flow 的测量不受影响、<video> 不卸载、播放态不丢。
+ * 这正是它比 React Flow 的 onlyRenderVisibleElements 更合适的地方：后者会把整个节点卸载重挂。
+ *
+ * 注意：content-visibility 只跳过**渲染**，不阻止媒体加载 —— 少拉数据靠各 <video>/<audio>
+ * 上的 preload，两者互补，缺一不可。
+ * 权衡：快速平移时节点滑入视口需要一次完整的样式+布局+绘制，可能带来新的轻微抖动。
+ * 若实测下来这个抖动比原先的持续卡顿更烦，删掉本规则即可（节点上的 class 留着无害）。
+ */
+.node-media {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 220px;
+}
+
+/*
+ * 交互期降载（.canvas-interacting 由 FlowCanvas 在平移 / 缩放 / 拖节点 / 框选期间打在画布容器上）。
+ * 画布内容在静止指针下滑动时，:hover 会在几十个节点、上百个端点、几十条连线之间反复切换，
+ * 持续触发下面这些 transition 的动画与样式重算 + 重绘——低配机器上这是平移卡顿的大头。
+ * 交互期间一律停掉动画，并把 hover 派生的视觉还原成静默态（纯视觉，不动布局）。
+ * 连线额外关掉命中测试：交互期不可能去 hover 或重连一条边，省掉每帧的边 hit-test。
+ * ⚠️ 刻意**不**给 .react-flow__node 关 pointer-events——节点拖拽的落点判定走它，风险不对等。
+ */
+.canvas-interacting .react-flow__handle,
+.canvas-interacting .node-handle-label,
+.canvas-interacting .react-flow__edge-path,
+.canvas-interacting .react-flow__node [data-slot='card'] {
+  transition: none !important;
+}
+.canvas-interacting .react-flow__edge {
+  pointer-events: none;
+}
+/* hover 派生态还原：标签不淡入（选中态仍显示），端点不发光环 */
+.canvas-interacting .react-flow__node:hover .node-handle-label {
+  opacity: 0;
+}
+.canvas-interacting .react-flow__node.selected .node-handle-label {
+  opacity: 1;
+}
+.canvas-interacting .react-flow .react-flow__handle.connectionindicator:hover,
+.canvas-interacting .react-flow__handle.connectionindicator:hover {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--foreground) 6%, transparent);
+}
+
+/*
  * 连线恒在节点之下：React Flow 会给「任一端在分组容器里」的边算出 zIndex ≥ 1
  * （子节点有 parentId → internals.z ≥ 1），而未分组节点 z = 0，于是那些边会盖到节点上、
  * 用隐形命中带吞掉点击。给边容器一个 z-index 让它自成层叠上下文，把每条边的 z 关在容器内部；

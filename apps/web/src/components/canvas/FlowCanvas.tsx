@@ -9,6 +9,7 @@ import {
   type Connection,
   type Edge,
   type IsValidConnection,
+  type Node,
   type OnConnectStart,
   type OnConnectEnd,
 } from '@xyflow/react'
@@ -31,6 +32,20 @@ const SNAP_STORAGE_KEY = 'openflow-snap-grid'
 const MINIMAP_STORAGE_KEY = 'openflow-minimap'
 const TRACKPAD_STORAGE_KEY = 'openflow-trackpad'
 const SNAP_GRID: [number, number] = [20, 20]
+
+/*
+ * ⚡ 下面三个 props 必须是模块级常量——每次渲染新建对象/数组会各自惹出一摊每帧开销：
+ * - defaultEdgeOptions 在 React Flow 的 fieldsToTrack 里：新引用 → 每次渲染一次 store.setState
+ *   → 唤醒全部订阅者跑 selector（N 个 NodeWrapper + 每个 Handle 两个）。
+ *   ⚠️ 别图省事删掉这个 prop：Handle 的 onConnectExtended 会把它合进新连边的 params，
+ *   删了新建的 edge 会缺 type 字段落库（渲染期虽会归一成曲线，但库里数据不一致）。
+ * - panOnDrag 不在 fieldsToTrack，但新数组会击穿 GraphView / FlowRenderer 的 memo →
+ *   ZoomPane 的 effect 依赖含它 → 每帧重绑一次 d3-zoom。
+ * - proOptions 只被 Attribution 读且 hideAttribution 时直接 return null（收益≈0，一并提上来齐整）。
+ */
+const DEFAULT_EDGE_OPTIONS = { type: 'default' } as const
+const PRO_OPTIONS = { hideAttribution: true } as const
+const PAN_ON_DRAG = [1]
 
 // 拉线松开在空白处时，记录连线从哪个节点的哪一端（source=输出端 / target=输入端）发起，
 // 及该端点的 id（多端点节点如 Any LLM 的 'system' 用来连回精确端点；默认端点为 null）。
@@ -170,9 +185,64 @@ export function FlowCanvas() {
     setActionMenu({ top, left, canGroup, canArrange, canUngroup, groupIds: [...groupIds] })
   }, [])
 
+  // ⚡ 必须是稳定引用：NodeRenderer 会把 onNodeContextMenu 原样传给每一个 memo 化的 NodeWrapper，
+  // 传内联箭头 → 逐层击穿 GraphView / NodeRenderer / 全部 NodeWrapper 的 memo → 拖一个节点时
+  // 画布上**所有**节点组件每帧重渲染（30+ 节点卡顿的主因）。onSelectionContextMenu 走同一条链。
+  const handleNodeContextMenu = useCallback(
+    (event: React.MouseEvent, node: Node) => openSelectionMenu(event, node as FlowNode),
+    [openSelectionMenu],
+  )
+  const handleSelectionContextMenu = useCallback(
+    (event: React.MouseEvent) => openSelectionMenu(event),
+    [openSelectionMenu],
+  )
+
   const closeMenus = useCallback(() => {
     setMenu(null)
     setActionMenu(null)
+  }, [])
+
+  /*
+   * 交互期（平移 / 缩放 / 拖节点 / 框选）给容器打 .canvas-interacting，让 CSS 关掉画布内的
+   * hover 效果与 transition：画布内容在静止指针下滑动时，:hover 会在几十个节点/端点/连线之间
+   * 反复切换，持续触发端点光环、端点标签淡入、连线变色变粗的动画与样式重算——低配机器上这是
+   * 平移卡顿的大头。直接操作 classList 而非走 React state，免得为这事多两次渲染。
+   * React Flow 自己只在 mousedown 平移时给 pane 加 .dragging（触控板双指平移、缩放、拖节点、
+   * 框选都没有），所以四条路径统一由这里手动开关。
+   * 用计数器而非布尔：拖节点碰到画布边缘会触发自动平移，onMoveStart/onMoveEnd 会与
+   * onNodeDragStart/Stop 交叠，用布尔会被先结束的那条提前摘掉类。
+   */
+  const interactDepth = useRef(0)
+  const beginInteract = useCallback(() => {
+    if (interactDepth.current++ === 0) {
+      wrapperRef.current?.classList.add('canvas-interacting')
+    }
+  }, [])
+  const endInteract = useCallback(() => {
+    if (--interactDepth.current <= 0) {
+      interactDepth.current = 0
+      wrapperRef.current?.classList.remove('canvas-interacting')
+    }
+  }, [])
+  // 平移开始时顺带收起右键菜单（原 onMoveStart 的职责）
+  const onInteractStart = useCallback(() => {
+    closeMenus()
+    beginInteract()
+  }, [closeMenus, beginInteract])
+
+  // 兜底：交互事件万一没成对触发（onMoveEnd 在 panOnScroll 下有延迟、指针移出窗口等），
+  // 画布会永久卡在 interacting 态（hover 全失效）。指针抬起/窗口失焦时无条件复位。
+  useEffect(() => {
+    const reset = () => {
+      interactDepth.current = 0
+      wrapperRef.current?.classList.remove('canvas-interacting')
+    }
+    window.addEventListener('pointerup', reset)
+    window.addEventListener('blur', reset)
+    return () => {
+      window.removeEventListener('pointerup', reset)
+      window.removeEventListener('blur', reset)
+    }
   }, [])
 
   // Delete Edge on Drop：拖动连线端点若松手在空白处（未落到合法 handle）则删除该连线。
@@ -368,11 +438,10 @@ export function FlowCanvas() {
         onReconnect={handleReconnect}
         onReconnectEnd={onReconnectEnd}
         onPaneContextMenu={openContextMenu}
-        onNodeContextMenu={(e, node) => openSelectionMenu(e, node as FlowNode)}
-        onSelectionContextMenu={(e) => openSelectionMenu(e)}
+        onNodeContextMenu={handleNodeContextMenu}
+        onSelectionContextMenu={handleSelectionContextMenu}
         onPaneClick={closeMenus}
-        onMoveStart={closeMenus}
-        defaultEdgeOptions={{ type: 'default' }}
+        defaultEdgeOptions={DEFAULT_EDGE_OPTIONS}
         connectionLineType={ConnectionLineType.Bezier}
         colorMode={colorMode}
         snapToGrid={snapToGrid}
@@ -382,10 +451,16 @@ export function FlowCanvas() {
         // 松开连线时的吸附半径（默认 20）；调大让「落在附近」也能连上，配合放大的命中区更好连
         connectionRadius={28}
         fitView
-        proOptions={{ hideAttribution: true }}
+        proOptions={PRO_OPTIONS}
+        onMoveStart={onInteractStart}
+        onMoveEnd={endInteract}
+        onNodeDragStart={beginInteract}
+        onNodeDragStop={endInteract}
+        onSelectionStart={beginInteract}
+        onSelectionEnd={endInteract}
         // 交互：左键拖拽默认框选；平移画布用中键拖拽或按住空格键拖拽
         selectionOnDrag
-        panOnDrag={[1]}
+        panOnDrag={PAN_ON_DRAG}
         selectionMode={SelectionMode.Partial}
         panActivationKeyCode="Space"
         // 鼠标/触控板模式：鼠标=滚轮缩放；触控板=双指滑动平移（捏合缩放两模式都由 zoomOnPinch 处理，

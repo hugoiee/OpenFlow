@@ -32,7 +32,8 @@ export function AssetNode({ id, data, selected }: NodeProps<AssetNodeType>) {
         selected={selected}
       />
       <CardContent className="flex flex-col gap-2 px-3">
-        <div className="nodrag overflow-hidden rounded-md border">
+        {/* node-media：滑出视口时跳过渲染，见 index.css */}
+        <div className="node-media nodrag overflow-hidden rounded-md border">
           {uploading ? (
             <Skeleton className={kind === 'audio' ? 'h-12 w-full' : 'aspect-square w-full'} />
           ) : kind === 'image' && url ? (
@@ -40,13 +41,24 @@ export function AssetNode({ id, data, selected }: NodeProps<AssetNodeType>) {
               <img
                 src={url}
                 alt={data.fileName ?? '图像素材'}
+                // 素材是用户拖入的原图（常有几 MB / 数千像素），这里只显示到 ~240px 宽。
+                // decoding=async 把解码挪出主线程关键路径，画布上素材一多时平移不被解码卡住。
+                decoding="async"
                 className="max-h-64 w-full bg-muted object-contain"
               />
             </a>
           ) : kind === 'video' && url ? (
-            <video src={url} controls className="max-h-64 w-full bg-black object-contain" />
+            // preload=metadata：只拉首帧与时长，不预取整片（Chrome 默认可能拉更多）。
+            // 画布上可能同时挂着十几个视频素材，全量预取会把带宽和解码器实例吃光。
+            <video
+              src={url}
+              controls
+              preload="metadata"
+              className="max-h-64 w-full bg-black object-contain"
+            />
           ) : kind === 'audio' && url ? (
-            <audio src={url} controls className="w-full" />
+            // 音频没有画面可展示，preload=none 到点播放才拉流（代价仅是播放前不显示时长）
+            <audio src={url} controls preload="none" className="w-full" />
           ) : (
             <div className="flex h-12 w-full items-center justify-center bg-muted text-[11px] text-muted-foreground">
               {data.error ? '上传失败' : '暂无素材'}

@@ -141,7 +141,13 @@ export function PodcastNode({ id, data, selected, width, height }: NodeProps<Pod
         ) : audioUrl ? (
           <div className="flex shrink-0 flex-col gap-1">
             <div className="flex items-center gap-1.5">
-              <audio controls src={audioUrl} className="nodrag h-9 min-w-0 flex-1" />
+              {/* 音频没有画面可展示，preload=none 到点播放才拉流（整期播客 WAV 往往几十 MB） */}
+              <audio
+                controls
+                preload="none"
+                src={audioUrl}
+                className="nodrag h-9 min-w-0 flex-1"
+              />
               <Button
                 asChild
                 size="icon"
