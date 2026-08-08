@@ -1,6 +1,7 @@
+import { useMemo } from 'react'
 import { buildImageRequest } from '@/lib/requestBody'
 import type { ImageNode } from '@/lib/types'
-import { useActiveProject } from '@/store/useFlowStore'
+import { useActiveProject, useGraphRev } from '@/store/useFlowStore'
 import { ImageThumbs, PreviewEmpty } from './ResourcePreview'
 
 /**
@@ -11,7 +12,14 @@ import { ImageThumbs, PreviewEmpty } from './ResourcePreview'
  */
 export function ImageInput({ node }: { node: ImageNode }) {
   const project = useActiveProject()
-  const urls = project ? buildImageRequest(project, node).images : []
+  // ⚡ 依赖取 graphRev 而非 project 引用——原来这行裸写在渲染体里，拖任意节点都会每帧
+  // 重跑一次 O(E×N) 的上游采集。理由与用法见 useFlowStore 里 graphRev 的注释。
+  const graphRev = useGraphRev()
+  const urls = useMemo(
+    () => (project ? buildImageRequest(project, node).images : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [graphRev, node.id, node.data],
+  )
 
   if (urls.length === 0) {
     return (

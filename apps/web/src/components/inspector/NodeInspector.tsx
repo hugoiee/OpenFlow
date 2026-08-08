@@ -13,7 +13,7 @@ import {
   type VideoNode as VideoNodeT,
 } from '@/lib/types'
 import { PODCAST_NODE_META } from '@/lib/nodeCatalog'
-import { useActiveProject } from '@/store/useFlowStore'
+import { useActiveProject, useGraphRev } from '@/store/useFlowStore'
 import { useSettingsStore } from '@/store/useSettingsStore'
 import { ImageInput } from './ImageInput'
 import { ImageParams } from './ImageParams'
@@ -91,8 +91,12 @@ function NodeInspectorPanel({
   const aigcEndpoint = useSettingsStore((s) => s.aigcEndpoint)
   // 「后端实际打到上游的请求体」：图像 / 视频=内网 AIGC 网关（req_from / model_name / config…），
   // 播客=火山单向流式 TTS。与实发链路同源。
-  // ⚡ useMemo 稳定引用：拖面板宽度等本地重渲染时 project/node 未变 → 不重跑图遍历与序列化，
-  // RequestPreview（memo）也因 props 不变整块跳过重建。
+  // ⚡ 依赖取 graphRev 而非 project 引用：patchActive 每次写入都新建 project 对象，拖一个节点
+  // 就会让本 memo 每帧失效，重跑 O(E×N) 的上游采集（视频三遍）再序列化一次——而这些计算
+  // 根本不读 position，算出来还是同一个结果。graphRev 只在图结构真变了时才动，拖动/框选期间
+  // 这里一次都不跑，RequestPreview（memo）也因 props 不变整块跳过重建。
+  // memo 体里读的 project 一定是本次渲染的最新引用，故无过期风险；依赖是有意收窄的。
+  const graphRev = useGraphRev()
   const requestBody = useMemo(
     () =>
       node.type === 'image'
@@ -100,7 +104,8 @@ function NodeInspectorPanel({
         : node.type === 'video'
           ? buildVideoUpstream(project, node, reqFrom)
           : buildPodcastUpstream(project, node),
-    [project, node, reqFrom],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [graphRev, node.id, node.data, reqFrom],
   )
   // 预览标签上的上游地址：图像 / 视频走 AIGC 端点，播客走火山单向流式 TTS（脚本逐句各发一个请求）
   const upstreamEndpoint =

@@ -1,5 +1,13 @@
 // 生成请求体的单一来源：图像 / 视频 / 播客节点「点击生成时发送的请求 JSON」都由这里构造。
 // 节点组件的 handleRun 与右侧 Inspector 的「请求 JSON 预览」共用，保证预览与实发一致、不漂移。
+//
+// ⚠️ 不变式（Inspector 的性能优化依赖它，改这里前务必读一遍）：
+// 本文件与 graph.ts 的采集函数**只能**依赖 edges 与各节点的 id / type / data，
+// **绝不可读取 position / dimensions / measured / selected 这些纯视图态**。
+// 因为 Inspector 侧以 useFlowStore 的 graphRev 作 useMemo 依赖来跳过拖动期间的重算，
+// 而拖动/框选不会推进 graphRev。一旦这里读了位置类字段，拖完节点后预览就会停在旧值
+// （刷新一下又是对的），是那种极难排查的 bug。真要按位置排序，请同时改 onNodesChange 的
+// viewOnly 判定（见 useFlowStore.ts）。
 
 import type { GenImageBody, GenPodcastBody, GenVideoBody, VideoShot } from '@openflow/shared'
 import {

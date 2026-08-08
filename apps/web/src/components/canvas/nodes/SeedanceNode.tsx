@@ -184,15 +184,17 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
         selected={selected}
       />
       <CardContent className="flex flex-col gap-2 px-3">
-        {/* 结果展示区 */}
-        <div className="nodrag overflow-hidden rounded-md border">
+        {/* 结果展示区（node-media：滑出视口时跳过渲染，见 index.css） */}
+        <div className="node-media nodrag overflow-hidden rounded-md border">
           {running ? (
             <Skeleton className="aspect-square w-full" />
           ) : result.length > 0 ? (
             <div className="flex flex-col gap-1">
               {result.map((url, i) => (
                 <div key={url} className="group/dl relative">
-                  <video src={url} controls className="w-full bg-muted" />
+                  {/* preload=metadata：只拉首帧与时长，不预取整片。画布上出片的视频节点一多，
+                      全量预取会把带宽与解码器实例吃光，平移时尤其明显 */}
+                  <video src={url} controls preload="metadata" className="w-full bg-muted" />
                   <button
                     type="button"
                     title="下载"

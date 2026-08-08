@@ -14,15 +14,18 @@ export function AgentChatToggle() {
   const setPanelOpen = useAgentStore((s) => s.setPanelOpen)
   // 与 NodeInspector 相同的出现条件：恰好选中一个 image/video/podcast 节点。
   // 窄订阅（selector 返回布尔）：画布高频编辑（打字/拖拽/resize）时该值不变则不重渲染。
+  // selector 本身在**每次** store 写入时都会执行（拖动=每帧），所以一趟循环、见到第二个选中项
+  // 就提前返回，既不分配中间数组也不白扫完整份 nodes。
   const inspectorOpen = useFlowStore((s) => {
-    const project = s.projects.find((p) => p.id === s.activeProjectId)
-    const selected = project?.nodes.filter((n) => n.selected) ?? []
-    return (
-      selected.length === 1 &&
-      (selected[0].type === 'image' ||
-        selected[0].type === 'video' ||
-        selected[0].type === 'podcast')
-    )
+    const nodes = s.projects.find((p) => p.id === s.activeProjectId)?.nodes
+    if (!nodes) return false
+    let only: (typeof nodes)[number] | null = null
+    for (const n of nodes) {
+      if (!n.selected) continue
+      if (only) return false // 选中超过一个 → 不满足
+      only = n
+    }
+    return only?.type === 'image' || only?.type === 'video' || only?.type === 'podcast'
   })
   if (panelOpen) return null
   return (
