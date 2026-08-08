@@ -5,7 +5,7 @@ import { Link2 } from 'lucide-react'
 import { RES_INPUT_HANDLE } from '@/lib/graph'
 import { sourceKind, toneColor, type HandleTone } from '@/lib/handleTypes'
 import { computeBoundingBox } from '@/lib/layout'
-import { selectedResourceNodes } from '@/lib/multiConnect'
+import { selectedResourceNodes, selectedResourceSignature } from '@/lib/multiConnect'
 import type { FlowNode } from '@/lib/types'
 import { useActiveProject, useFlowStore } from '@/store/useFlowStore'
 
@@ -16,9 +16,12 @@ type DropTarget =
 
 /** 子节点的 position 是相对父容器的，算包围盒前先转成绝对坐标（分组不嵌套，父级只需查一层）。 */
 function toAbsolute(nodes: FlowNode[], all: FlowNode[]): FlowNode[] {
+  if (!nodes.some((n) => n.parentId)) return nodes
+  // 建一次索引再查，别在 map 里逐个 all.find（那是 O(N×M)，这里每帧都要跑）
+  const byId = new Map(all.map((n) => [n.id, n]))
   return nodes.map((n) => {
     if (!n.parentId) return n
-    const parent = all.find((p) => p.id === n.parentId)
+    const parent = byId.get(n.parentId)
     if (!parent) return n
     return {
       ...n,
@@ -57,6 +60,28 @@ export function MultiConnectHandle({
   onDropOnPane,
 }: {
   /** 松手落在画布空白处：由 FlowCanvas 在该处弹建节点菜单，选中后新建节点并把选中资源全连上。 */
+  onDropOnPane: (clientX: number, clientY: number) => void
+}) {
+  // ⚡ 显隐判定单独一层，且只订阅一个**字符串**签名——绝不能返回数组/对象，
+  // 那样 Object.is 必不相等，每次 store 写入（拖动=每帧）都会重渲染。
+  // 关键在于这一层**不碰 useViewport**：按钮不显示时（绝大多数时候）平移完全不触及本组件。
+  const selectedSig = useFlowStore((s) => {
+    const project = s.projects.find((p) => p.id === s.activeProjectId)
+    return project ? selectedResourceSignature(project.nodes) : ''
+  })
+
+  // 少于 2 个资源节点就整个不挂载——下面那层的 useViewport 订阅也就无从谈起
+  if (!selectedSig.includes('|')) return null
+  return <MultiConnectButton onDropOnPane={onDropOnPane} />
+}
+
+/**
+ * 按钮本体：只在「框选了 ≥2 个资源节点」时挂载，此时才订阅 viewport（要把 flow 坐标换算成画布面坐标）。
+ * 渲染体很轻（一个 button + 可选的预览线），平移时随 viewport 每帧重渲染是可以接受的。
+ */
+function MultiConnectButton({
+  onDropOnPane,
+}: {
   onDropOnPane: (clientX: number, clientY: number) => void
 }) {
   const project = useActiveProject()

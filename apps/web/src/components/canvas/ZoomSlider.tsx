@@ -1,11 +1,5 @@
 import { Magnet, Map as MapIcon, Maximize, Minus, Mouse, Plus, Touchpad } from 'lucide-react'
-import {
-  Panel,
-  useReactFlow,
-  useStore,
-  useViewport,
-  type PanelProps,
-} from '@xyflow/react'
+import { Panel, useReactFlow, useStore, type PanelProps } from '@xyflow/react'
 import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
 import { cn } from '@/lib/utils'
@@ -36,7 +30,10 @@ export function ZoomSlider({
   trackpadEnabled?: boolean
   onToggleTrackpad?: () => void
 }) {
-  const { zoom } = useViewport()
+  // ⚡ 只订 zoom，不用 useViewport()：后者返回 {x,y,zoom} 新对象并按 shallow 比较，
+  // 平移改 x/y 也会触发重渲染——本面板只用得到 zoom，却要为此每帧重建 Radix Slider + 6 个按钮。
+  // 取 transform[2] 返回 number、按 Object.is 比较，平移期间不重渲染，只在缩放时更新。
+  const zoom = useStore((s) => s.transform[2])
   const { zoomTo, zoomIn, zoomOut, fitView } = useReactFlow()
   const minZoom = useStore((state) => state.minZoom)
   const maxZoom = useStore((state) => state.maxZoom)
