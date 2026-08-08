@@ -1,7 +1,7 @@
 {
   "name": "@openflow/desktop",
   "private": true,
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "OpenFlow desktop shell (Electron)",
   "author": "OpenFlow",
   "type": "module",
