@@ -5,7 +5,7 @@
 export const IMAGE_MODELS = ['Image 2', 'Nano Banana'] as const
 
 /** 视频类可选的具名模型（固定预置）。 */
-export const VIDEO_MODELS = ['Seedance'] as const
+export const VIDEO_MODELS = ['Seedance', 'Kling', 'MiniMax'] as const
 
 /**
  * 合并「手动维护列表 + 端点动态获取列表」为 Model 下拉候选：去空 / 去重 / 排序，
@@ -30,6 +30,8 @@ export function mergeModelOptions(
 /** 视频具名模型（展示名）→ AIGC 接口的 model_name。 */
 export const VIDEO_API_MODEL: Record<string, string> = {
   Seedance: 'seedance',
+  Kling: 'kling',
+  MiniMax: 'MiniMax-H3',
 }
 
 /** 取某视频模型对应的 AIGC model_name（无映射时回退展示名）。 */
@@ -53,29 +55,63 @@ export function imageApiModel(model: string): string {
 
 /**
  * 图像节点可调选项的取值（下拉枚举）。
- * Image 2 受支持的尺寸：1080p / 4k 各两种宽高比（9:16 竖、16:9 横）。
+ * Image 2 受支持的全量尺寸：auto + 1K/2K/4K 各档的常用宽高比。
+ * 次序即下拉顺序：auto 打头，其后按 1K → 2K → 4K 分档，档内横竖成对。
  */
 export const IMAGE_SIZE_OPTIONS = [
-  '1536x864', // 1k 16:9
-  '864x1536', // 1k 9:16
-  '2048x1152', // 2k 9:16
-  '1152x2048', // 2k 9:16
-  '3840x2160', // 4k 16:9
-  '2160x3840', // 4k 9:16
+  'auto',
+  // 1K
+  '1024x1024',
+  '1536x864',
+  '864x1536',
+  '1536x1152',
+  '1152x1536',
+  '1536x1024',
+  '1024x1536',
+  // 2K
+  '2048x2048',
+  '2048x1152',
+  '1152x2048',
+  '2048x1536',
+  '1536x2048',
+  // 4K
+  '3840x2160',
+  '2160x3840',
+  '3840x2880',
+  '2880x3840',
+  '3840x2560',
+  '2560x3840',
 ] as const
 
 /** 尺寸的人类可读标签（下拉里显示，比裸像素值直观）。 */
 export const IMAGE_SIZE_LABELS: Record<string, string> = {
-  '1536x864': '1k · 16:9',
-  '864x1536': '1k · 9:16',
-  '2048x1152': '2k · 16:9',
-  '1152x2048': '2k · 9:16',
+  auto: '自动',
+  '1024x1024': '1K · 1:1',
+  '1536x864': '1K · 16:9',
+  '864x1536': '1K · 9:16',
+  '1536x1152': '1K · 4:3',
+  '1152x1536': '1K · 3:4',
+  '1536x1024': '1K · 3:2',
+  '1024x1536': '1K · 2:3',
+  '2048x2048': '2K · 1:1',
+  '2048x1152': '2K · 16:9',
+  '1152x2048': '2K · 9:16',
+  '2048x1536': '2K · 4:3',
+  '1536x2048': '2K · 3:4',
   '3840x2160': '4K · 16:9',
   '2160x3840': '4K · 9:16',
+  '3840x2880': '4K · 4:3',
+  '2880x3840': '4K · 3:4',
+  '3840x2560': '4K · 3:2',
+  '2560x3840': '4K · 2:3',
 }
 
-/** 图像节点尺寸默认值（首选项）。 */
-export const IMAGE_SIZE_DEFAULT = IMAGE_SIZE_OPTIONS[0]
+/**
+ * 图像节点尺寸默认值。
+ * 写死 '1536x864' 而非取 OPTIONS[0]（现在是 auto）——新建节点的默认出图尺寸不该
+ * 因为「给下拉补了个 auto 选项」而悄悄变掉。
+ */
+export const IMAGE_SIZE_DEFAULT = '1536x864'
 export const IMAGE_QUALITY_OPTIONS = ['auto', 'low', 'medium', 'high'] as const
 export const IMAGE_N_OPTIONS = [1, 2, 3, 4] as const
 
@@ -107,8 +143,12 @@ export const NANO_IMAGE_SIZE_DEFAULT = '2K'
 
 // ---- Seedance(seedance) 视频专用选项 ----
 
+/** Seedance 2.5 的 version 值：能力与 2.0 差异较大（分辨率/时长/生成音频），单独常量供能力表分支。 */
+export const SEEDANCE_VERSION_25 = 'doubao-seedance-2-5-260628'
+
 /** Seedance 的 version 选项。 */
 export const SEEDANCE_VERSION_OPTIONS = [
+  { value: SEEDANCE_VERSION_25, label: 'seedance-2.5（480p/720p，最长 30s，可生成音频）' },
   { value: 'nami-seedance-2.0', label: 'nami-seedance-2.0（akool，风控低）' },
   { value: 'seedance-2.0', label: 'seedance-2.0' },
   { value: 'seedance-1.5-pro', label: 'seedance-1.5-pro' },
@@ -220,8 +260,8 @@ export const SEEDANCE_RATIO_OPTIONS = [
   'adaptive',
 ] as const
 
-/** 宽高比的人类可读标签（下拉里显示；adaptive 用中文更直观）。 */
-export const SEEDANCE_RATIO_LABELS: Record<string, string> = {
+/** 宽高比的人类可读标签（三家模型的宽高比下拉共用；adaptive 用中文更直观）。 */
+export const VIDEO_RATIO_LABELS: Record<string, string> = {
   adaptive: '自适应',
 }
 
@@ -232,6 +272,248 @@ export const SEEDANCE_RATIO_DEFAULT = 'adaptive'
 export const SEEDANCE_DURATION_MIN = 4
 export const SEEDANCE_DURATION_MAX = 15
 export const SEEDANCE_DURATION_DEFAULT = 6
+
+// ---- 可灵(kling) / MiniMax-H3 视频专用选项 ----
+
+/** 可灵的 version 选项。 */
+export const KLING_VERSION_OPTIONS = [{ value: 'kling-v3-omni-global', label: 'kling-v3-omni' }] as const
+export const KLING_VERSION_DEFAULT = KLING_VERSION_OPTIONS[0].value
+
+/**
+ * 可灵 config.aspect_ratio 选项。
+ * 注意：适配文档只给了示例值 16:9，未列举全集；这里按可灵官方支持的三种常用比例实现，
+ * 若上游放开更多比例，补进这个数组即可（其余逻辑按能力表自动生效）。
+ */
+export const KLING_RATIO_OPTIONS = ['16:9', '9:16', '1:1'] as const
+
+/** 可灵 config.mode（生成质量档）：标准 720P / 专家 1080P。 */
+export const KLING_QUALITY_OPTIONS = [
+  { value: 'std', label: '标准（std · 720P，性价比高）' },
+  { value: 'pro', label: '专家（pro · 1080P，高品质）' },
+] as const
+export const KLING_QUALITY_DEFAULT = 'pro'
+
+/** 可灵多镜头分镜上限（config.multi_shot=true 时的 multi_prompt 段数）。 */
+export const KLING_SHOT_MAX = 6
+/** 单段分镜的最短时长（秒）；各段之和须等于任务总时长。 */
+export const KLING_SHOT_DURATION_MIN = 1
+
+/** MiniMax-H3 的 version 选项。 */
+export const MINIMAX_VERSION_OPTIONS = [{ value: 'MiniMax-H3', label: 'MiniMax-H3' }] as const
+export const MINIMAX_VERSION_DEFAULT = MINIMAX_VERSION_OPTIONS[0].value
+
+/** MiniMax-H3 config.resolution 选项。 */
+export const MINIMAX_RESOLUTION_OPTIONS = ['768P', '2K'] as const
+
+/** MiniMax-H3 config.ratio 选项。 */
+export const MINIMAX_RATIO_OPTIONS = [
+  'adaptive',
+  '21:9',
+  '16:9',
+  '4:3',
+  '1:1',
+  '3:4',
+  '9:16',
+] as const
+
+// ---- 视频模型能力表：按「模型 + version」收窄可选项 ----
+// 三个模型的 config 形状与取值范围差异很大（2.5 只到 720p 但时长可 30s、可灵没有 resolution 只有
+// std/pro 档、MiniMax 是 768P/2K），把差异集中收在这张表里：Inspector 据它渲染控件、
+// requestBody 据它归一化取值，避免「面板能选但上游必拒」的组合。
+
+/** 模型特有的可调项（出现在 Inspector 且下发到各自 config 字段）。 */
+export type VideoModelFeature =
+  /** seedance 2.5：config.generate_audio */
+  | 'generateAudio'
+  /** kling：config.sound（on/off） */
+  | 'sound'
+  /** kling：config.mode（std/pro） */
+  | 'qualityMode'
+  /** kling：config.multi_shot + 顶层 multi_prompt 分镜 */
+  | 'multiShot'
+  /** MiniMax：config['aigc-watermark'] */
+  | 'watermark'
+
+export type VideoModelSpec = {
+  /** 可选分辨率（空数组=该模型不发 resolution，如可灵用 std/pro 档代替）。 */
+  resolutions: readonly string[]
+  resolutionDefault: string
+  /** 可选宽高比。 */
+  ratios: readonly string[]
+  ratioDefault: string
+  /** 首尾帧变体下被强制的宽高比（如 seedance 2.5 固定 adaptive）；undefined=不强制。 */
+  framesRatio?: string
+  /** 时长范围（秒，步长 1）。 */
+  durationMin: number
+  durationMax: number
+  durationDefault: number
+  /** 是否支持「自动时长」（下发 duration=-1）。 */
+  durationAuto: boolean
+  /** 该模型特有的可调项。 */
+  features: readonly VideoModelFeature[]
+}
+
+/** 「自动时长」下发给上游的 duration 值。 */
+export const VIDEO_DURATION_AUTO = -1
+
+const SEEDANCE_SPEC_LEGACY: VideoModelSpec = {
+  resolutions: SEEDANCE_RESOLUTION_OPTIONS,
+  resolutionDefault: SEEDANCE_RESOLUTION_DEFAULT,
+  ratios: SEEDANCE_RATIO_OPTIONS,
+  ratioDefault: SEEDANCE_RATIO_DEFAULT,
+  durationMin: SEEDANCE_DURATION_MIN,
+  durationMax: SEEDANCE_DURATION_MAX,
+  durationDefault: SEEDANCE_DURATION_DEFAULT,
+  durationAuto: false,
+  features: [],
+}
+
+const SEEDANCE_SPEC_25: VideoModelSpec = {
+  resolutions: ['480p', '720p'],
+  resolutionDefault: '720p',
+  ratios: SEEDANCE_RATIO_OPTIONS,
+  ratioDefault: SEEDANCE_RATIO_DEFAULT,
+  // 首帧 / 首尾帧生视频只支持 adaptive，输出宽高比跟随首帧图片
+  framesRatio: 'adaptive',
+  durationMin: 4,
+  durationMax: 30,
+  durationDefault: 5,
+  durationAuto: true,
+  features: ['generateAudio'],
+}
+
+const KLING_SPEC: VideoModelSpec = {
+  resolutions: [],
+  resolutionDefault: '',
+  ratios: KLING_RATIO_OPTIONS,
+  ratioDefault: '16:9',
+  durationMin: 3,
+  durationMax: 15,
+  durationDefault: 5,
+  durationAuto: false,
+  features: ['sound', 'qualityMode', 'multiShot'],
+}
+
+const MINIMAX_SPEC: VideoModelSpec = {
+  resolutions: MINIMAX_RESOLUTION_OPTIONS,
+  resolutionDefault: '768P',
+  ratios: MINIMAX_RATIO_OPTIONS,
+  ratioDefault: 'adaptive',
+  durationMin: 4,
+  durationMax: 15,
+  durationDefault: 5,
+  durationAuto: false,
+  features: ['watermark'],
+}
+
+/** 各模型的 version 下拉选项（展示名 → 选项列表）。 */
+export function videoVersionOptions(model: string): readonly { value: string; label: string }[] {
+  switch (videoApiModel(model)) {
+    case 'kling':
+      return KLING_VERSION_OPTIONS
+    case 'MiniMax-H3':
+      return MINIMAX_VERSION_OPTIONS
+    default:
+      return SEEDANCE_VERSION_OPTIONS
+  }
+}
+
+/** 某模型的默认 version。 */
+export function videoDefaultVersion(model: string): string {
+  switch (videoApiModel(model)) {
+    case 'kling':
+      return KLING_VERSION_DEFAULT
+    case 'MiniMax-H3':
+      return MINIMAX_VERSION_DEFAULT
+    default:
+      return SEEDANCE_VERSION_DEFAULT
+  }
+}
+
+/** 取「模型 + version」对应的能力表（version 省略/未知时按该模型的默认 version）。 */
+export function videoModelSpec(model: string, version?: string): VideoModelSpec {
+  switch (videoApiModel(model)) {
+    case 'kling':
+      return KLING_SPEC
+    case 'MiniMax-H3':
+      return MINIMAX_SPEC
+    default:
+      return (version ?? SEEDANCE_VERSION_DEFAULT) === SEEDANCE_VERSION_25
+        ? SEEDANCE_SPEC_25
+        : SEEDANCE_SPEC_LEGACY
+  }
+}
+
+/** 该能力表是否含某个可调项。 */
+export function videoHasFeature(spec: VideoModelSpec, feature: VideoModelFeature): boolean {
+  return spec.features.includes(feature)
+}
+
+/**
+ * 变体 → 上游 mode。
+ * 三家的「首尾帧」都叫 first_last_frame；「参考」这一侧 MiniMax 用 reference_frame，
+ * seedance / 可灵用 reference_image。
+ */
+export function videoModeFor(model: string, variant: VideoVariant): string {
+  if (variant === 'frames') return 'first_last_frame'
+  return videoApiModel(model) === 'MiniMax-H3' ? 'reference_frame' : 'reference_image'
+}
+
+/** 变体在该模型下的中文叫法（节点副标题 / 菜单项用）。 */
+export function videoVariantLabel(model: string, variant: VideoVariant): string {
+  if (variant === 'frames') return '首尾帧'
+  switch (videoApiModel(model)) {
+    case 'kling':
+      return '关键帧'
+    case 'MiniMax-H3':
+      return '参考帧'
+    default:
+      return '参考图'
+  }
+}
+
+/**
+ * 该「模型 + 变体」是否接受参考音频 / 参考视频。
+ * 可灵只吃图；MiniMax 只有参考帧模式支持音视频，首尾帧模式仅支持图片。
+ * 不接受的一律在构造请求时丢弃，免得发出去必被上游拒。
+ */
+export function videoAcceptsRefs(
+  model: string,
+  variant: VideoVariant,
+): { audio: boolean; video: boolean } {
+  switch (videoApiModel(model)) {
+    case 'kling':
+      return { audio: false, video: false }
+    case 'MiniMax-H3':
+      return variant === 'reference' ? { audio: true, video: true } : { audio: false, video: false }
+    default:
+      // seedance：音频两种变体都收；参考视频沿用既有约定，只在参考图变体下发
+      return { audio: true, video: variant === 'reference' }
+  }
+}
+
+/** 分辨率归一化：不在该 spec 支持列表里的旧值回退到默认（spec 无分辨率则返回空串）。 */
+export function normalizeVideoResolution(spec: VideoModelSpec, value: string | undefined): string {
+  if (spec.resolutions.length === 0) return ''
+  return value && spec.resolutions.includes(value) ? value : spec.resolutionDefault
+}
+
+/** 宽高比归一化：首尾帧被强制的 spec 直接取强制值；否则不在列表里的旧值回退默认。 */
+export function normalizeVideoRatio(
+  spec: VideoModelSpec,
+  value: string | undefined,
+  variant: VideoVariant,
+): string {
+  if (variant === 'frames' && spec.framesRatio) return spec.framesRatio
+  return value && spec.ratios.includes(value) ? value : spec.ratioDefault
+}
+
+/** 时长归一化：自动(-1) 仅在支持时保留；否则夹到 [min,max] 整数，无值取默认。 */
+export function normalizeVideoDuration(spec: VideoModelSpec, value: number | undefined): number {
+  if (value === VIDEO_DURATION_AUTO) return spec.durationAuto ? VIDEO_DURATION_AUTO : spec.durationDefault
+  if (typeof value !== 'number' || !Number.isFinite(value)) return spec.durationDefault
+  return Math.min(spec.durationMax, Math.max(spec.durationMin, Math.round(value)))
+}
 
 // ---- 播客音频（火山 TTS，seed-tts-2.0）专用选项 ----
 

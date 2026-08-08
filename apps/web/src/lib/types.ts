@@ -1,4 +1,5 @@
 import type { Edge, Node } from '@xyflow/react'
+import type { VideoShot } from '@openflow/shared'
 import type { VideoTask, VideoVariant } from './nodeCatalog'
 
 /** 节点种类：文本 prompt / 图像生成 / 视频生成 / 播客音频 / 桌面拖入的媒体素材。 */
@@ -72,8 +73,21 @@ export type GenerationNodeData = {
   resolution?: string
   /** config.ratio（宽高比），如 16:9 / adaptive。 */
   ratio?: string
-  /** config.duration，秒。 */
+  /** config.duration，秒；-1 表示自动时长（仅 seedance 2.5 支持）。 */
   duration?: number
+  // ↓ 模型特有可调项（由 videoModelSpec 的 features 决定是否出现在 Inspector）：
+  /** seedance 2.5：config.generate_audio（生成音频）。 */
+  generateAudio?: boolean
+  /** 可灵：config.sound（生成音效）。 */
+  sound?: boolean
+  /** 可灵：config.mode（生成质量档），'std' | 'pro'。 */
+  qualityMode?: string
+  /** 可灵：config.multi_shot（多镜头分镜模式）。开启后不发 prompt，改发 multi_prompt。 */
+  multiShot?: boolean
+  /** 可灵多镜头的分镜列表（最多 6 段，各段时长之和须等于总时长）。 */
+  shots?: VideoShot[]
+  /** MiniMax：config['aigc-watermark']。 */
+  watermark?: boolean
   /** 是否正在生成。 */
   running?: boolean
   /** 生成结果的视频 URL 列表，未运行时为空。 */

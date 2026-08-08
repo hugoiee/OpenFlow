@@ -96,19 +96,33 @@ export type GenImageBody = {
   imageSize?: string
 }
 
-/** POST /api/video 视频生成请求体（seedance，经后端代理到 AIGC /aigc 接口）。req_from 由后端从全局设置注入。 */
+/**
+ * 可灵多镜头模式的一段分镜（config.multi_shot=true 时以 multi_prompt 数组下发）。
+ * index 由后端按数组序生成（1 基），前端只维护内容与时长。
+ */
+export type VideoShot = {
+  /** 该段的画面描述。 */
+  prompt: string
+  /** 该段时长（秒，≥1）；所有段之和须等于任务总时长。 */
+  duration: number
+}
+
+/**
+ * POST /api/video 视频生成请求体（seedance / kling / MiniMax-H3，经后端代理到 AIGC /aigc 接口）。
+ * req_from 由后端从全局设置注入。三家 config 形状不同，后端 buildVideoPayload 按 model 分支组装。
+ */
 export type GenVideoBody = {
   /** 归属项目 id（用于建任务、按节点重连）。 */
   projectId: string
   /** 发起生成的节点 id（用于建任务、按节点重连）。 */
   nodeId: string
-  /** model_name，如 seedance。 */
+  /** model_name：seedance / kling / MiniMax-H3。 */
   model: string
-  /** version：seedance-1.5-pro / seedance-2.0 等。 */
+  /** version：seedance-2.0 / doubao-seedance-2-5-260628 / kling-v3-omni-global / MiniMax-H3 等。 */
   version: string
-  /** mode：first_last_frame / reference_image。 */
+  /** mode：first_last_frame / reference_image（seedance·kling）/ reference_frame（MiniMax）。 */
   mode: string
-  /** 生成指令。 */
+  /** 生成指令。多镜头模式下不下发（改用 shots）。 */
   prompt: string
   /** 输入图 URL 列表（0=t2v / 1=首帧 / 2=首尾帧）。 */
   images: string[]
@@ -116,12 +130,25 @@ export type GenVideoBody = {
   audios?: string[]
   /** 输入参考视频 URL 列表（参考图变体专用，来自上游视频生成节点/视频素材，作 video_list；无则空）。 */
   videos?: string[]
-  /** config.resolution，如 720p。 */
+  /** config.resolution，如 720p / 768P；空串=该模型不发这个字段（可灵用 qualityMode 代替）。 */
   resolution: string
-  /** config.ratio（宽高比），如 16:9 / adaptive；省略则由后端回退默认。 */
+  /** config.ratio / config.aspect_ratio（宽高比），如 16:9 / adaptive；省略则由后端回退默认。 */
   ratio?: string
-  /** config.duration，秒。 */
+  /** config.duration，秒；-1 表示自动（仅 seedance 2.5 支持）。可灵下发时转字符串。 */
   duration: number
+  // ↓ 模型特有可调项（后端按 model 取舍，不适用的模型忽略）：
+  /** seedance 2.5：config.generate_audio（生成音频）。 */
+  generateAudio?: boolean
+  /** 可灵：config.sound，true→'on' / false→'off'。 */
+  sound?: boolean
+  /** 可灵：config.mode（生成质量档），'std' | 'pro'。 */
+  qualityMode?: string
+  /** 可灵：config.multi_shot（多镜头分镜模式）。开启时不发 prompt，改发 multi_prompt。 */
+  multiShot?: boolean
+  /** 可灵多镜头的分镜列表（multiShot 为 true 时有效，最多 6 段）。 */
+  shots?: VideoShot[]
+  /** MiniMax：config['aigc-watermark']。 */
+  watermark?: boolean
 }
 
 /** 播客的一个说话角色：脚本里的角色名 + 火山音色库的音色 ID（voice_type/speaker）。 */

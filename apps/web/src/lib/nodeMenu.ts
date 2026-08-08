@@ -1,5 +1,5 @@
 import { Type, Image as ImageIcon, Banana, Clapperboard, Images, Podcast, type LucideIcon } from 'lucide-react'
-import { IMAGE_MODELS, VIDEO_MODELS, type VideoVariant } from '@/lib/nodeCatalog'
+import { IMAGE_MODELS, VIDEO_MODELS, videoVariantLabel, type VideoVariant } from '@/lib/nodeCatalog'
 import { type FlowNodeType } from '@/lib/types'
 
 // 可添加节点的清单项：类型 + 展示名 + 图标（+ 图像/视频类的预置模型 + 视频变体）。
@@ -38,23 +38,24 @@ export const NODE_GROUPS: { label: string; items: NodeMenuItem[] }[] = [
   },
   {
     label: '视频模型',
-    // Seedance 拆成两个变体节点：首尾帧 / 参考图（都只连 Prompt 时退化为文生视频）
-    items: [
+    // 每个视频模型都拆成两个变体节点：首尾帧 / 参考侧（各家叫法不同，见 videoVariantLabel）。
+    // 两个变体都在只连 Prompt（无图）时退化为文生视频。
+    items: VIDEO_MODELS.flatMap((m) => [
       {
         type: 'video' as const,
-        label: `${VIDEO_MODELS[0]} 首尾帧`,
+        label: `${m} ${videoVariantLabel(m, 'frames')}`,
         icon: Clapperboard,
-        model: VIDEO_MODELS[0],
+        model: m,
         videoVariant: 'frames' as const,
       },
       {
         type: 'video' as const,
-        label: `${VIDEO_MODELS[0]} 参考图`,
+        label: `${m} ${videoVariantLabel(m, 'reference')}`,
         icon: Images,
-        model: VIDEO_MODELS[0],
+        model: m,
         videoVariant: 'reference' as const,
       },
-    ],
+    ]),
   },
   {
     label: '音频模型',

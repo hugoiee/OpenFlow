@@ -1,7 +1,7 @@
 // 生成请求体的单一来源：图像 / 视频 / 播客节点「点击生成时发送的请求 JSON」都由这里构造。
 // 节点组件的 handleRun 与右侧 Inspector 的「请求 JSON 预览」共用，保证预览与实发一致、不漂移。
 
-import type { GenImageBody, GenPodcastBody, GenVideoBody } from '@openflow/shared'
+import type { GenImageBody, GenPodcastBody, GenVideoBody, VideoShot } from '@openflow/shared'
 import {
   IMAGE_INPUT_HANDLE_PREFIX,
   collectUpstreamAudioRefs,
@@ -14,6 +14,9 @@ import { applyMentions, collectMentionedRefs } from './mentions'
 import {
   IMAGE_SIZE_DEFAULT,
   IMAGE_SIZE_OPTIONS,
+  KLING_QUALITY_DEFAULT,
+  KLING_SHOT_DURATION_MIN,
+  KLING_SHOT_MAX,
   NANO_ASPECT_DEFAULT,
   NANO_IMAGE_SIZE_DEFAULT,
   NANO_VERSION_DEFAULT,
@@ -24,15 +27,27 @@ import {
   PODCAST_ROLE_B_DEFAULT,
   PODCAST_SAMPLE_RATE_DEFAULT,
   PODCAST_SPEECH_RATE_DEFAULT,
-  SEEDANCE_DURATION_DEFAULT,
   SEEDANCE_RATIO_DEFAULT,
-  SEEDANCE_RESOLUTION_DEFAULT,
-  SEEDANCE_VERSION_DEFAULT,
   VIDEO_VARIANT_DEFAULT,
   imageApiModel,
+  normalizeVideoDuration,
+  normalizeVideoRatio,
+  normalizeVideoResolution,
+  videoAcceptsRefs,
   videoApiModel,
+  videoDefaultVersion,
+  videoHasFeature,
+  videoModeFor,
+  videoModelSpec,
 } from './nodeCatalog'
-import type { ImageNode, PodcastNode, Project, PromptMentionRef, VideoNode } from './types'
+import type {
+  GenerationNodeData,
+  ImageNode,
+  PodcastNode,
+  Project,
+  PromptMentionRef,
+  VideoNode,
+} from './types'
 
 /** 每行一个 URL 的文本框 → 去空的 URL 列表。 */
 function linesToUrls(text: string | undefined): string[] {
@@ -83,22 +98,42 @@ export function buildImageRequest(project: Project, node: ImageNode): GenImageBo
   return { ...base, size, n: d.n ?? 1, quality: d.quality ?? 'auto' }
 }
 
-/** 视频生成节点（seedance）：POST /api/video 的请求体。 */
+/**
+ * 可灵分镜列表归一化：截到上限段数、时长取 ≥1 的整数（空 prompt 留着，由后端过滤，
+ * 免得 Inspector 里正在敲一半的段从预览里凭空消失）。
+ */
+function normalizeShots(shots: GenerationNodeData['shots']): VideoShot[] {
+  return (shots ?? []).slice(0, KLING_SHOT_MAX).map((s) => ({
+    prompt: s.prompt ?? '',
+    duration: Math.max(KLING_SHOT_DURATION_MIN, Math.round(s.duration) || KLING_SHOT_DURATION_MIN),
+  }))
+}
+
+/** 视频生成节点（seedance / kling / MiniMax-H3）：POST /api/video 的请求体。 */
 export function buildVideoRequest(project: Project, node: VideoNode): GenVideoBody {
   const id = node.id
   const d = node.data
   const variant = d.videoVariant ?? (d.videoTask === 'reference' ? 'reference' : VIDEO_VARIANT_DEFAULT)
+  // 能力表按「模型 + version」定可选范围：面板存下的旧值超出范围时在这里统一回退，
+  // 避免换了模型/版本后还把上游必拒的参数发出去。
+  const version = d.version ?? videoDefaultVersion(d.model)
+  const spec = videoModelSpec(d.model, version)
+  const accepts = videoAcceptsRefs(d.model, variant)
+
   const imageRefs = collectUpstreamImageRefs(project, id)
-  const audioRefs = collectUpstreamAudioRefs(project, id)
-  const videoRefs = collectUpstreamVideoRefs(project, id)
+  // 该模型/变体不吃的资源直接不采集：连了也不发（如可灵只吃图、MiniMax 首尾帧只吃图）
+  const audioRefs = accepts.audio ? collectUpstreamAudioRefs(project, id) : []
+  const videoRefs = accepts.video ? collectUpstreamVideoRefs(project, id) : []
   const allRefs = [...imageRefs, ...audioRefs, ...videoRefs]
   const mentions: PromptMentionRef[] = []
   const rawPrompt = collectUpstreamPrompt(project, id, { handle: 'user', mentionsOut: mentions })
   // 统一资源端点 + @ 调用：各类资源分别看——被 @ 到 → 只发被 @ 的（@ 序）；没 @ → 全发（连线序）
   const mentioned = collectMentionedRefs(rawPrompt, mentions, allRefs)
-  const audios = [...pickRefs(mentioned.audio, audioRefs), ...linesToUrls(d.audiosText)]
-  // 变体 → 后端 mode + 有序输入图；两变体都在无图（只连 Prompt）时退化为文生视频。
-  //   参考图有图 → reference_image + 统一端点图（@ 筛选后）；
+  const audios = accepts.audio
+    ? [...pickRefs(mentioned.audio, audioRefs), ...linesToUrls(d.audiosText)]
+    : []
+  // 变体 → 上游 mode + 有序输入图；两变体都在无图（只连 Prompt）时退化为文生视频。
+  //   参考侧有图 → reference_image / reference_frame + 统一端点图（@ 筛选后）；
   //   首尾帧 → first_last_frame + First/Last 专用端点（image-0/1）前 2 张，**不受 @ 筛选**（图序即端点语义）。
   let mode: string
   let images: string[]
@@ -106,18 +141,18 @@ export function buildVideoRequest(project: Project, node: VideoNode): GenVideoBo
     const framesRefs = imageRefs.filter(
       (r) => typeof r.handle === 'string' && r.handle.startsWith(IMAGE_INPUT_HANDLE_PREFIX),
     )
-    mode = 'first_last_frame'
+    mode = videoModeFor(d.model, 'frames')
     images = [...framesRefs.map((r) => r.url), ...linesToUrls(d.imagesText)].slice(0, 2)
   } else {
     const combined = [...pickRefs(mentioned.image, imageRefs), ...linesToUrls(d.imagesText)]
-    mode = combined.length > 0 ? 'reference_image' : 'first_last_frame'
+    mode = videoModeFor(d.model, combined.length > 0 ? 'reference' : 'frames')
     images = combined
   }
-  const ratio = d.ratio ?? SEEDANCE_RATIO_DEFAULT
+  const ratio = normalizeVideoRatio(spec, d.ratio, variant)
   const pickedVideos = pickRefs(mentioned.video, videoRefs)
-  const sentVideos = variant === 'reference' && pickedVideos.length > 0 ? pickedVideos : undefined
+  const sentVideos = pickedVideos.length > 0 ? pickedVideos : undefined
   // @ 引用 → <<<image_N>>>/<<<audio_N>>>/<<<video_N>>> 占位符：N 按「最终实发」列表算
-  // （被 @ 筛选掉 / frames 裁掉 / 非 reference 不发的视频 → 引用悬空原样保留）
+  // （被 @ 筛选掉 / frames 裁掉 / 该模型不收的资源 → 引用悬空原样保留）
   const prompt = applyMentions(rawPrompt, mentions, allRefs, {
     image: images,
     audio: audios,
@@ -127,16 +162,27 @@ export function buildVideoRequest(project: Project, node: VideoNode): GenVideoBo
     projectId: project.id,
     nodeId: id,
     model: videoApiModel(d.model),
-    version: d.version ?? SEEDANCE_VERSION_DEFAULT,
+    version,
     mode,
     prompt,
     images,
     audios,
     videos: sentVideos,
-    resolution: d.resolution ?? SEEDANCE_RESOLUTION_DEFAULT,
-    // adaptive（自适应）=不约束宽高比、等价旧行为，故不传；仅选了固定比例时下发
-    ratio: ratio === SEEDANCE_RATIO_DEFAULT ? undefined : ratio,
-    duration: d.duration ?? SEEDANCE_DURATION_DEFAULT,
+    resolution: normalizeVideoResolution(spec, d.resolution),
+    // seedance 沿用旧约定：adaptive（自适应）=不约束宽高比，故不传；
+    // 可灵 / MiniMax 的 aspect_ratio / ratio 是必填项（其 adaptive 也要显式给），一律下发。
+    ratio:
+      videoApiModel(d.model) === 'seedance' && ratio === SEEDANCE_RATIO_DEFAULT ? undefined : ratio,
+    duration: normalizeVideoDuration(spec, d.duration),
+    // 模型特有可调项：该模型没有这项能力就不下发（后端据「是否为 undefined」取舍）
+    generateAudio: videoHasFeature(spec, 'generateAudio') ? (d.generateAudio ?? true) : undefined,
+    sound: videoHasFeature(spec, 'sound') ? (d.sound ?? true) : undefined,
+    qualityMode: videoHasFeature(spec, 'qualityMode')
+      ? d.qualityMode || KLING_QUALITY_DEFAULT
+      : undefined,
+    multiShot: videoHasFeature(spec, 'multiShot') ? Boolean(d.multiShot) : undefined,
+    shots: videoHasFeature(spec, 'multiShot') && d.multiShot ? normalizeShots(d.shots) : undefined,
+    watermark: videoHasFeature(spec, 'watermark') ? Boolean(d.watermark) : undefined,
   }
 }
 
@@ -198,14 +244,63 @@ export function buildImageUpstream(project: Project, node: ImageNode, reqFrom: s
   }
 }
 
-/** 视频（seedance）：内网 AIGC 网关的 POST body（镜像 provider.ts runVideoGen）。 */
+/**
+ * 视频：内网 AIGC 网关的 POST body（**逐字镜像 provider.ts buildVideoPayload 的三个分支**）。
+ * 改后端那份时务必同步这里，否则 Inspector 的「请求预览」就不再等于实发。
+ */
 export function buildVideoUpstream(project: Project, node: VideoNode, reqFrom: string) {
   const body = buildVideoRequest(project, node)
-  return {
+  const base = {
     req_from: reqFrom,
     model_name: body.model,
     version: body.version,
     mode: body.mode,
+  }
+  if (body.model === 'kling') {
+    const shots = (body.shots ?? []).filter((s) => s.prompt.trim())
+    const multiShot = Boolean(body.multiShot) && shots.length > 0
+    return {
+      ...base,
+      ...(multiShot ? {} : { prompt: body.prompt }),
+      image_list: body.images,
+      config: {
+        duration: String(body.duration),
+        sound: body.sound === false ? 'off' : 'on',
+        mode: body.qualityMode?.trim() || KLING_QUALITY_DEFAULT,
+        aspect_ratio: body.ratio?.trim() || '16:9',
+        multi_shot: multiShot,
+        ...(multiShot ? { shot_type: 'customize' } : {}),
+      },
+      ...(multiShot
+        ? {
+            multi_prompt: shots.map((s, i) => ({
+              index: i + 1,
+              prompt: s.prompt,
+              duration: String(s.duration),
+            })),
+          }
+        : {}),
+    }
+  }
+  if (body.model === 'MiniMax-H3') {
+    const videos = body.videos ?? []
+    const audios = body.audios ?? []
+    return {
+      ...base,
+      prompt: body.prompt,
+      image_list: body.images,
+      ...(videos.length ? { video_list: videos } : {}),
+      ...(audios.length ? { audio_list: audios } : {}),
+      config: {
+        resolution: body.resolution,
+        ratio: body.ratio?.trim() || 'adaptive',
+        duration: body.duration,
+        'aigc-watermark': Boolean(body.watermark),
+      },
+    }
+  }
+  return {
+    ...base,
     prompt: body.prompt,
     image_list: body.images,
     video_list: body.videos ?? [],
@@ -215,6 +310,7 @@ export function buildVideoUpstream(project: Project, node: VideoNode, reqFrom: s
       resolution: body.resolution,
       duration: body.duration,
       ...(body.ratio?.trim() ? { ratio: body.ratio } : {}),
+      ...(typeof body.generateAudio === 'boolean' ? { generate_audio: body.generateAudio } : {}),
     },
   }
 }

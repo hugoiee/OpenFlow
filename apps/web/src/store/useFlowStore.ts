@@ -25,11 +25,9 @@ import {
   PODCAST_ROLE_A_DEFAULT,
   PODCAST_ROLE_B_DEFAULT,
   PODCAST_SPEECH_RATE_DEFAULT,
-  SEEDANCE_DURATION_DEFAULT,
-  SEEDANCE_RATIO_DEFAULT,
-  SEEDANCE_RESOLUTION_DEFAULT,
-  SEEDANCE_VERSION_DEFAULT,
   VIDEO_VARIANT_DEFAULT,
+  videoDefaultVersion,
+  videoModelSpec,
   type VideoVariant,
 } from '@/lib/nodeCatalog'
 import {
@@ -206,7 +204,10 @@ function createNode(
       },
     }
   }
-  // 视频生成节点（seedance）：变体（首尾帧/参考图）+ 具名模型 + 可调选项默认值；运行/结果初始为空
+  // 视频生成节点：变体（首尾帧/参考图）+ 具名模型 + 可调选项默认值；运行/结果初始为空。
+  // 默认值取自该模型的能力表——三家的分辨率/比例/时长范围各不相同，写死一套会一建出来就越界。
+  const version = videoDefaultVersion(model)
+  const spec = videoModelSpec(model, version)
   return {
     id: newId('n_'),
     type: 'video',
@@ -218,10 +219,10 @@ function createNode(
       imageInputs: 1,
       audioInputs: 1,
       imagesText: '',
-      version: SEEDANCE_VERSION_DEFAULT,
-      resolution: SEEDANCE_RESOLUTION_DEFAULT,
-      ratio: SEEDANCE_RATIO_DEFAULT,
-      duration: SEEDANCE_DURATION_DEFAULT,
+      version,
+      resolution: spec.resolutionDefault,
+      ratio: spec.ratioDefault,
+      duration: spec.durationDefault,
       running: false,
       result: [],
     },

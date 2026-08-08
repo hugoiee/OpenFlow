@@ -309,13 +309,25 @@ export async function uploadFiles(
   return urls
 }
 
-/** 构造视频生成的请求体（同 buildImagePayload，独立于发送导出供历史指纹复用）。 */
+/**
+ * 构造视频生成的请求体（同 buildImagePayload，独立于发送导出供历史指纹复用）。
+ * 三家网关的 config 形状互不相同，按 model_name 分三支组装：
+ *   seedance      → { resolution, duration, ratio?, generate_audio? }
+ *   kling         → { duration:字符串, sound:'on'|'off', mode:'std'|'pro', aspect_ratio, multi_shot, shot_type? }
+ *                   多镜头时不发 prompt，改发顶层 multi_prompt
+ *   MiniMax-H3    → { resolution, ratio, duration, 'aigc-watermark' }
+ */
 export function buildVideoPayload(input: VideoGenInput): AigcPayload {
-  return {
+  const base = {
     req_from: resolveReqFrom(input.reqFrom),
     model_name: input.model,
     version: input.version,
     mode: input.mode,
+  }
+  if (input.model === 'kling') return buildKlingPayload(input, base)
+  if (input.model === 'MiniMax-H3') return buildMinimaxPayload(input, base)
+  return {
+    ...base,
     prompt: input.prompt,
     image_list: input.images ?? [],
     video_list: input.videos ?? [],
@@ -325,6 +337,62 @@ export function buildVideoPayload(input: VideoGenInput): AigcPayload {
       resolution: input.resolution,
       duration: input.duration,
       ...(input.ratio?.trim() ? { ratio: input.ratio } : {}),
+      // 只有支持的 version（2.5）才由前端传上来；未传即不下发，让网关用自己的默认
+      ...(typeof input.generateAudio === 'boolean' ? { generate_audio: input.generateAudio } : {}),
+    },
+  }
+}
+
+/**
+ * 可灵：只吃图（不发 video_list / audio_list），duration 是字符串。
+ * 多镜头模式（multi_shot=true）下 **prompt 整个字段都不发**，画面描述改由 multi_prompt 逐段给出；
+ * 分镜为空则自动退回单镜头，免得发出一个既没 prompt 又没 multi_prompt 的空请求。
+ */
+function buildKlingPayload(input: VideoGenInput, base: Record<string, unknown>): AigcPayload {
+  const shots = (input.shots ?? []).filter((s) => s.prompt.trim())
+  const multiShot = Boolean(input.multiShot) && shots.length > 0
+  return {
+    ...base,
+    ...(multiShot ? {} : { prompt: input.prompt }),
+    image_list: input.images ?? [],
+    config: {
+      duration: String(input.duration),
+      sound: input.sound === false ? 'off' : 'on',
+      mode: input.qualityMode?.trim() || 'pro',
+      aspect_ratio: input.ratio?.trim() || '16:9',
+      multi_shot: multiShot,
+      ...(multiShot ? { shot_type: 'customize' } : {}),
+    },
+    ...(multiShot
+      ? {
+          multi_prompt: shots.map((s, i) => ({
+            index: i + 1,
+            prompt: s.prompt,
+            duration: String(s.duration),
+          })),
+        }
+      : {}),
+  }
+}
+
+/**
+ * MiniMax-H3：参考帧模式支持图/音/视，首尾帧模式只支持图。
+ * 该发哪些由前端按变体裁好（videoAcceptsRefs），这里只做「空列表不下发」。
+ */
+function buildMinimaxPayload(input: VideoGenInput, base: Record<string, unknown>): AigcPayload {
+  const videos = input.videos ?? []
+  const audios = input.audios ?? []
+  return {
+    ...base,
+    prompt: input.prompt,
+    image_list: input.images ?? [],
+    ...(videos.length ? { video_list: videos } : {}),
+    ...(audios.length ? { audio_list: audios } : {}),
+    config: {
+      resolution: input.resolution,
+      ratio: input.ratio?.trim() || 'adaptive',
+      duration: input.duration,
+      'aigc-watermark': Boolean(input.watermark),
     },
   }
 }
