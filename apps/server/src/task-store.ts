@@ -167,6 +167,13 @@ function planFor(kind: 'image' | 'video', params: string): GenPlan {
     resolution: p.resolution || '720p',
     ratio: typeof p.ratio === 'string' ? p.ratio : undefined,
     duration: typeof p.duration === 'number' ? p.duration : 6,
+    // 模型特有可调项：一律「传了才带上」，没传的让 buildVideoPayload 各自兜底
+    generateAudio: typeof p.generateAudio === 'boolean' ? p.generateAudio : undefined,
+    sound: typeof p.sound === 'boolean' ? p.sound : undefined,
+    qualityMode: typeof p.qualityMode === 'string' ? p.qualityMode : undefined,
+    multiShot: typeof p.multiShot === 'boolean' ? p.multiShot : undefined,
+    shots: Array.isArray(p.shots) ? p.shots : undefined,
+    watermark: typeof p.watermark === 'boolean' ? p.watermark : undefined,
   }
   return { payload: buildVideoPayload(input), send: () => runVideoGen(input) }
 }

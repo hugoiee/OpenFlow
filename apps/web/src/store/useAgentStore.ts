@@ -48,7 +48,9 @@ export const useAgentStore = create<AgentState>()((set, get) => {
   return {
     conversations: {},
     sending: {},
-    panelOpen: localStorage.getItem(PANEL_KEY) !== '0',
+    // 默认收起：画布是主角，Agent 面板占掉一整条右栏；只留右下角悬浮按钮作入口。
+    // 判 '1' 而非 !== '0'——没存过偏好（首次打开 / 清过 localStorage）时才会落到默认值。
+    panelOpen: localStorage.getItem(PANEL_KEY) === '1',
 
     setPanelOpen: (open) => {
       localStorage.setItem(PANEL_KEY, open ? '1' : '0')
