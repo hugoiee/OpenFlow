@@ -11,7 +11,7 @@ import { TaskFailurePanel } from './TaskFailurePanel'
 import { createVideoTaskApi } from '@/lib/api'
 import { pollTask } from '@/lib/taskPolling'
 import { RES_INPUT_HANDLE, imageInputHandleId } from '@/lib/graph'
-import { VIDEO_VARIANT_DEFAULT } from '@/lib/nodeCatalog'
+import { VIDEO_VARIANT_DEFAULT, videoVariantLabel } from '@/lib/nodeCatalog'
 import { buildVideoRequest } from '@/lib/requestBody'
 import { type VideoNode as VideoNodeType } from '@/lib/types'
 import { useFlowStore } from '@/store/useFlowStore'
@@ -122,8 +122,14 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
     }
     // 请求体与 Inspector 的「请求 JSON 预览」同源（buildVideoRequest），保证预览=实发
     const body = buildVideoRequest(project, node)
-    if (!body.prompt.trim()) {
-      fail('请先连接一个有内容的 Prompt 节点')
+    // 可灵多镜头模式下画面描述写在分镜里、顶层 prompt 本就为空——此时改校验分镜非空
+    const hasShots = Boolean(body.multiShot) && (body.shots ?? []).some((s) => s.prompt.trim())
+    if (!body.prompt.trim() && !hasShots) {
+      fail(
+        body.multiShot
+          ? '请先填写至少一段分镜内容，或关闭多镜头改用 Prompt 节点'
+          : '请先连接一个有内容的 Prompt 节点',
+      )
       return
     }
     updateNodeData(id, {
@@ -174,7 +180,7 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
         id={id}
         icon={Video}
         title={data.label}
-        subtitle={`${data.model} · ${isReference ? '参考图' : '首尾帧'}`}
+        subtitle={`${data.model} · ${videoVariantLabel(data.model, variant)}`}
         selected={selected}
       />
       <CardContent className="flex flex-col gap-2 px-3">

@@ -1,7 +1,7 @@
 {
   "name": "@openflow/desktop",
   "private": true,
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "OpenFlow desktop shell (Electron)",
   "author": "OpenFlow",
   "type": "module",
@@ -18,6 +18,7 @@
     "dist:mac": "pnpm run build && electron-builder --mac; code=$?; pnpm run rebuild:node; exit $code",
     "dist:win": "pnpm run build && pnpm run rebuild:win && electron-builder --win -c.npmRebuild=false; code=$?; pnpm run rebuild:node; exit $code",
     "dist:all": "pnpm run build && electron-builder --mac && pnpm run rebuild:win && electron-builder --win -c.npmRebuild=false; code=$?; pnpm run rebuild:node; exit $code",
+    "test": "node --experimental-strip-types --test src/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

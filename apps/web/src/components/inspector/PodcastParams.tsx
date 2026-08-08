@@ -7,6 +7,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Slider } from '@/components/ui/slider'
+import { ToggleRow } from '@/components/inspector/ToggleRow'
 import { useCompositionField } from '@/hooks/useCompositionField'
 import {
   PODCAST_LANGUAGE_OPTIONS,
@@ -97,35 +98,6 @@ function SliderRow({
         className="py-1"
       />
     </div>
-  )
-}
-
-/** 开关行（additions 文本处理项共用；样式对齐 LlmParams 的思考开关）。 */
-function ToggleRow({
-  label,
-  title,
-  value,
-  onChange,
-}: {
-  label: string
-  title: string
-  value: boolean
-  onChange: (v: boolean) => void
-}) {
-  return (
-    <button
-      type="button"
-      title={title}
-      onClick={() => onChange(!value)}
-      className={`flex items-center justify-between rounded-md border px-2 py-1.5 text-[11px] transition-colors ${
-        value
-          ? 'border-primary bg-primary/10 font-medium text-foreground'
-          : 'text-muted-foreground hover:bg-accent'
-      }`}
-    >
-      <span>{label}</span>
-      <span>{value ? '开' : '关'}</span>
-    </button>
   )
 }
 
