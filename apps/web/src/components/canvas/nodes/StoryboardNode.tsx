@@ -18,7 +18,7 @@ import { useCompositionField } from '@/hooks/useCompositionField'
 import { NodeHeader } from './NodeHeader'
 import { NodeHandle } from './NodeHandle'
 import { agentExpandApi } from '@/lib/api'
-import { storyboardRoleImageHandleId } from '@/lib/graph'
+import { storyboardRoleAudioHandleId, storyboardRoleImageHandleId } from '@/lib/graph'
 import { STORYBOARD_CONCURRENCY, STORYBOARD_SCRIPT_PLACEHOLDER } from '@/lib/nodeCatalog'
 import { buildItems } from '@/lib/storyboard'
 import { type StoryboardItem, type StoryboardNode as StoryboardNodeType } from '@/lib/types'
@@ -213,7 +213,7 @@ export function StoryboardNode({
         handleClassName="!size-2.5 !rounded-sm !border-2 !border-background !bg-primary"
       />
       <NodeHeader id={id} icon={ListVideo} title={data.label} selected={selected} />
-      {/* 左侧两个角色参考图端点（图像绿）：落成时按行首说话人连给对应视频节点 */}
+      {/* 左侧角色端点（参考图×2 + 音色参考×2）：落成时按行首说话人连给对应视频节点 */}
       <NodeHandle
         type="target"
         id={storyboardRoleImageHandleId(0)}
@@ -227,6 +227,20 @@ export function StoryboardNode({
         index={1}
         tone="image"
         label={`${roleLabel(1)} 参考图`}
+      />
+      <NodeHandle
+        type="target"
+        id={storyboardRoleAudioHandleId(0)}
+        index={2}
+        tone="audio"
+        label={`${roleLabel(0)} 音色`}
+      />
+      <NodeHandle
+        type="target"
+        id={storyboardRoleAudioHandleId(1)}
+        index={3}
+        tone="audio"
+        label={`${roleLabel(1)} 音色`}
       />
       <CardContent className="flex min-h-0 flex-1 flex-col gap-2 px-3">
         {/* 两个角色名：脚本行首按此匹配说话人（同播客节点语义） */}

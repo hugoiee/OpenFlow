@@ -40,7 +40,12 @@ import {
   detachChildren,
   nodeSize,
 } from '@/lib/layout'
-import { RES_INPUT_HANDLE, normalizeResourceEdges, storyboardRoleImageHandleId } from '@/lib/graph'
+import {
+  RES_INPUT_HANDLE,
+  normalizeResourceEdges,
+  storyboardRoleAudioHandleId,
+  storyboardRoleImageHandleId,
+} from '@/lib/graph'
 import { isValidTypedConnection } from '@/lib/handleTypes'
 import { collectMultiConnectEdges, collectSelectedResourceEdges } from '@/lib/multiConnect'
 import { normalizeShotPrompt } from '@/lib/storyboard'
@@ -690,13 +695,21 @@ export const useFlowStore = create<FlowState>()((set, get) => {
       const project = projects.find((p) => p.id === activeProjectId)
       if (!project || shots.length === 0) return 0
       const videoModel = model ?? 'Seedance'
-      // 角色 → 已连参考图：从分镜节点的角色端点反查素材节点 id（未连图则该组只连 Prompt）
+      // 角色 → 已连参考图/音色参考：从分镜节点的角色端点反查素材节点 id（未连则该项跳过）
       const roleImageSource: (string | undefined)[] = [0, 1].map(
         (roleIndex) =>
           project.edges.find(
             (e) =>
               e.target === storyboardNodeId &&
               e.targetHandle === storyboardRoleImageHandleId(roleIndex),
+          )?.source,
+      )
+      const roleAudioSource: (string | undefined)[] = [0, 1].map(
+        (roleIndex) =>
+          project.edges.find(
+            (e) =>
+              e.target === storyboardNodeId &&
+              e.targetHandle === storyboardRoleAudioHandleId(roleIndex),
           )?.source,
       )
       // 摆到现有内容下方，成对横排逐行向下（找底逻辑同 addAgentGeneration）
@@ -737,12 +750,23 @@ export const useFlowStore = create<FlowState>()((set, get) => {
           target: videoNode.id,
           type: 'default',
         })
-        // 说话人参考图 → 视频统一资源端点 res（每节点仅 1 图，prompt 里的 <<<image_1>>> 序号必对）
+        // 说话人参考图/音色参考 → 视频统一资源端点 res（每节点各仅 1 条，
+        // prompt 里的 <<<image_1>>>/<<<audio_1>>> 序号必对——图与音在实发时是两张独立列表）
         const imageSource = roleImageSource[shot.roleIndex]
         if (imageSource) {
           newEdges.push({
             id: newId('e_'),
             source: imageSource,
+            target: videoNode.id,
+            targetHandle: RES_INPUT_HANDLE,
+            type: 'default',
+          })
+        }
+        const audioSource = roleAudioSource[shot.roleIndex]
+        if (audioSource) {
+          newEdges.push({
+            id: newId('e_'),
+            source: audioSource,
             target: videoNode.id,
             targetHandle: RES_INPUT_HANDLE,
             type: 'default',

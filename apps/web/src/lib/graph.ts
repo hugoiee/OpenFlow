@@ -45,6 +45,12 @@ export function storyboardRoleImageHandleId(roleIndex: number): string {
   return `${STORYBOARD_ROLE_IMAGE_HANDLE_PREFIX}${roleIndex}`
 }
 
+/** 脚本分镜节点的角色音色参考端点 handle id 前缀：角色 i 的端点为 `role-audio-${i}`（语义同 role-image-）。 */
+export const STORYBOARD_ROLE_AUDIO_HANDLE_PREFIX = 'role-audio-'
+export function storyboardRoleAudioHandleId(roleIndex: number): string {
+  return `${STORYBOARD_ROLE_AUDIO_HANDLE_PREFIX}${roleIndex}`
+}
+
 /** 节点图像输入端点数量（含旧数据兜底）：至少 1。 */
 export function imageInputCount(imageInputs: number | undefined): number {
   return Math.max(1, imageInputs ?? 1)

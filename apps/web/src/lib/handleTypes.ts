@@ -6,6 +6,7 @@ import {
   AUDIO_INPUT_HANDLE_PREFIX,
   IMAGE_INPUT_HANDLE_PREFIX,
   RES_INPUT_HANDLE,
+  STORYBOARD_ROLE_AUDIO_HANDLE_PREFIX,
   STORYBOARD_ROLE_IMAGE_HANDLE_PREFIX,
   VIDEO_INPUT_HANDLE_PREFIX,
 } from './graph'
@@ -74,6 +75,12 @@ export function targetAccepts(
     targetHandle.startsWith(STORYBOARD_ROLE_IMAGE_HANDLE_PREFIX)
   ) {
     return ['image'] // 脚本分镜的角色参考图端点只接图像
+  }
+  if (
+    typeof targetHandle === 'string' &&
+    targetHandle.startsWith(STORYBOARD_ROLE_AUDIO_HANDLE_PREFIX)
+  ) {
+    return ['audio'] // 脚本分镜的角色音色参考端点只接音频
   }
   if (typeof targetHandle === 'string' && targetHandle.startsWith(IMAGE_INPUT_HANDLE_PREFIX)) {
     return ['image'] // 图像输入端点只接图像
