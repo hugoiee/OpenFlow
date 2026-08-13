@@ -145,7 +145,7 @@ export function StoryboardNode({
       roleBName: roleNames[1],
     })
     if (!template.includes('{{line}}')) {
-      window.alert('模板里缺少 {{line}} 占位符（代表台词行），请点「模板」检查')
+      window.alert('prompt 里缺少 {{line}} 占位符（代表台词行），请展开「发送给 LLM 的 prompt」检查')
       return
     }
     let nextItems: StoryboardItem[]
@@ -274,12 +274,12 @@ export function StoryboardNode({
             className="nodrag flex items-center gap-1 self-start text-[11px] text-muted-foreground hover:text-foreground"
           >
             {templateOpen ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
-            模板（用 {'{{line}}'} 代表台词行）
+            发送给 LLM 的 prompt（{'{{line}}'} 替换为台词行后原样发出）
           </button>
           {templateOpen && (
             <Textarea
               {...templateField}
-              placeholder="prompt 模板，{{line}} 会被替换为台词行原文"
+              placeholder="每行台词实际发送给 LLM 的完整 prompt；{{line}} 会被替换为该行台词原文（含角色名前缀），无其他包装"
               className="nodrag nowheel field-sizing-fixed h-36 w-full resize-none font-mono text-[10px] leading-relaxed"
             />
           )}
