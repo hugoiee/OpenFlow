@@ -2,8 +2,8 @@ import type { Edge, Node } from '@xyflow/react'
 import type { VideoShot } from '@openflow/shared'
 import type { VideoTask, VideoVariant } from './nodeCatalog'
 
-/** 节点种类：文本 prompt / 图像生成 / 视频生成 / 播客音频 / 桌面拖入的媒体素材。 */
-export type FlowNodeType = 'prompt' | 'image' | 'video' | 'podcast' | 'asset'
+/** 节点种类：文本 prompt / 图像生成 / 视频生成 / 播客音频 / 桌面拖入的媒体素材 / 脚本分镜。 */
+export type FlowNodeType = 'prompt' | 'image' | 'video' | 'podcast' | 'asset' | 'storyboard'
 
 /** @ 引用的资源种类（与实发列表 image_list/audio_list/video_list 对应）。 */
 export type MentionKind = 'image' | 'audio' | 'video'
@@ -160,6 +160,43 @@ export type PodcastNodeData = {
   taskId?: string
 }
 
+/** 脚本分镜单行的运行状态（pending/running 为纯前端请求瞬时态，载入时复位为 idle）。 */
+export type StoryboardItemStatus = 'idle' | 'pending' | 'running' | 'done' | 'error'
+
+/** 脚本分镜的一行台词条目：拆行快照 + 逐行 LLM 生成的视频 prompt。 */
+export type StoryboardItem = {
+  /** 台词行原文（含「角色名: 」前缀；点「生成」时按当前脚本整表重建）。 */
+  line: string
+  /** 说话人下标：0=角色A / 1=角色B（落成节点时按它连对应角色的参考图）。 */
+  roleIndex: number
+  /** LLM 生成的完整视频 prompt（done 时非空）。 */
+  prompt?: string
+  status: StoryboardItemStatus
+  /** 该行生成失败的错误信息（status=error 时展示，可单行重试）。 */
+  error?: string
+}
+
+/**
+ * 脚本分镜节点：整篇双人播客脚本 + prompt 模板（{{line}} 占位符），逐行调 Agent LLM
+ * 生成 Seedance 口播 prompt，再一键落成 N 组「Prompt → 视频」节点对。
+ * 左侧两个图像端点各连一张角色人像参考图（落成时按行首说话人自动连给视频节点）。
+ */
+export type StoryboardNodeData = {
+  label: string
+  /** 整篇播客脚本：每行「角色名: 台词」。 */
+  script: string
+  /** prompt 模板，含 {{line}} 占位符（发送时替换为台词行原文）。 */
+  template: string
+  /** 角色 1 名字（脚本行首匹配用，同播客节点语义）。 */
+  roleAName: string
+  /** 角色 2 名字。 */
+  roleBName: string
+  /** 逐行拆分后的生成条目（点「生成」时按当前脚本重建；prompt 随项目持久化）。 */
+  items?: StoryboardItem[]
+  /** 是否有批量生成在跑（瞬时态，载入复位）。 */
+  running?: boolean
+}
+
 /** 图像生成节点的数据：具名模型 + 可调选项 + 运行状态与结果。 */
 export type ImageNodeData = {
   label: string
@@ -209,6 +246,7 @@ export type VideoNode = Node<GenerationNodeData, 'video'>
 export type PodcastNode = Node<PodcastNodeData, 'podcast'>
 export type AssetNode = Node<AssetNodeData, 'asset'>
 export type GroupNode = Node<GroupNodeData, 'group'>
+export type StoryboardNode = Node<StoryboardNodeData, 'storyboard'>
 export type FlowNode =
   | PromptNode
   | ImageNode
@@ -216,6 +254,7 @@ export type FlowNode =
   | PodcastNode
   | AssetNode
   | GroupNode
+  | StoryboardNode
 
 /** 一个项目 = 一块画布。 */
 export type Project = {

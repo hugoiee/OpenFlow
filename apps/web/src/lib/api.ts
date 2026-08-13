@@ -1,6 +1,8 @@
 import type {
   AgentChatBody,
   AgentChatResponse,
+  AgentExpandBody,
+  AgentExpandResponse,
   AgentModelsBody,
   AgentModelsResponse,
   AgentTestBody,
@@ -137,6 +139,18 @@ export function agentChatApi(body: AgentChatBody): Promise<AgentChatResponse> {
     method: 'POST',
     body: JSON.stringify(body),
   })
+}
+
+// ---- 脚本分镜逐行扩写 ----
+// 同步接口：后端把模板 {{line}} 替换为台词行后单次调 Agent LLM，返回该行的视频 prompt 纯文本。
+// signal 供分镜节点卸载/中止时取消进行中的请求（request 的 {...init} 会透传给 fetch）。
+export async function agentExpandApi(body: AgentExpandBody, signal?: AbortSignal): Promise<string> {
+  const { prompt } = await request<AgentExpandResponse>('/agent/expand', {
+    method: 'POST',
+    body: JSON.stringify(body),
+    signal,
+  })
+  return prompt
 }
 
 // ---- Agent 连接测试（最小用量）----

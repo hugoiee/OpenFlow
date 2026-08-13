@@ -1,13 +1,14 @@
 import { Hono } from 'hono'
 import type {
   AgentChatBody,
+  AgentExpandBody,
   AgentMessage,
   AgentModelsBody,
   AgentModelsResponse,
   AgentTestBody,
   AgentTestResponse,
 } from '@openflow/shared'
-import { listAgentModels, runAgentChat, runAgentConnectionTest } from '../agent'
+import { listAgentModels, runAgentChat, runAgentConnectionTest, runAgentExpand } from '../agent'
 import { readSettings } from '../settings-store'
 
 export const agent = new Hono()
@@ -33,6 +34,24 @@ agent.post('/agent/chat', async (c) => {
   }
   try {
     return c.json(await runAgentChat(messages, readSettings()))
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
+    // 配置缺失是用户可自行修复的 400；上游 LLM 调用失败回 502
+    return c.json({ error: message }, message.includes('请在设置中填写') ? 400 : 502)
+  }
+})
+
+// 脚本分镜逐行扩写：模板 {{line}} 替换为台词后单次调 Agent LLM，返回该行的视频 prompt 纯文本。
+// 前端逐行并发调用本接口（每行一次请求，单行可重试）；不建任务、不落库。
+agent.post('/agent/expand', async (c) => {
+  const body = await c.req.json<AgentExpandBody>().catch(() => null)
+  const template = typeof body?.template === 'string' ? body.template : ''
+  const line = typeof body?.line === 'string' ? body.line.trim() : ''
+  if (!template.trim() || !line) {
+    return c.json({ error: '缺少模板或台词' }, 400)
+  }
+  try {
+    return c.json(await runAgentExpand({ template, line }, readSettings()))
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e)
     // 配置缺失是用户可自行修复的 400；上游 LLM 调用失败回 502

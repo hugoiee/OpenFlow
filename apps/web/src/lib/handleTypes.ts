@@ -6,6 +6,7 @@ import {
   AUDIO_INPUT_HANDLE_PREFIX,
   IMAGE_INPUT_HANDLE_PREFIX,
   RES_INPUT_HANDLE,
+  STORYBOARD_ROLE_IMAGE_HANDLE_PREFIX,
   VIDEO_INPUT_HANDLE_PREFIX,
 } from './graph'
 
@@ -67,6 +68,12 @@ export function targetAccepts(
     // 其余节点类型压根没有 res 端点 → 一律不收（批量连线按钮会拿 res 试连任意落点节点）
     if (targetNode?.type === 'video') return ['image', 'audio', 'video'] as const
     return targetNode?.type === 'image' ? (['image'] as const) : ([] as const)
+  }
+  if (
+    typeof targetHandle === 'string' &&
+    targetHandle.startsWith(STORYBOARD_ROLE_IMAGE_HANDLE_PREFIX)
+  ) {
+    return ['image'] // 脚本分镜的角色参考图端点只接图像
   }
   if (typeof targetHandle === 'string' && targetHandle.startsWith(IMAGE_INPUT_HANDLE_PREFIX)) {
     return ['image'] // 图像输入端点只接图像
