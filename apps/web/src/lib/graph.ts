@@ -51,6 +51,9 @@ export function storyboardRoleAudioHandleId(roleIndex: number): string {
   return `${STORYBOARD_ROLE_AUDIO_HANDLE_PREFIX}${roleIndex}`
 }
 
+/** 脚本分镜节点的「分镜表」输入端点：脚本切割节点的输出连到这里（连线本身是组织性的，数据由切割动作直接写入）。 */
+export const STORYBOARD_SEGMENTS_HANDLE = 'segments'
+
 /** 节点图像输入端点数量（含旧数据兜底）：至少 1。 */
 export function imageInputCount(imageInputs: number | undefined): number {
   return Math.max(1, imageInputs ?? 1)

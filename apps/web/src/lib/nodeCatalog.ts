@@ -589,8 +589,20 @@ export const STORYBOARD_NODE_META = {
   label: '脚本分镜',
 } as const
 
+/** 脚本切割节点的展示元信息。 */
+export const SPLITTER_NODE_META = {
+  label: '脚本切割',
+} as const
+
 /** 逐行调 LLM 的前端并发上限（单行一次请求，失败可单行重试）。 */
 export const STORYBOARD_CONCURRENCY = 3
+
+/** 口播语速估算：每秒约念出的字数（只数实际念出的字，标点/空白不计）。 */
+export const STORYBOARD_CHARS_PER_SECOND = 6
+
+/** 单段视频时长范围（秒）：seedance 2.0 只支持 4~15s，切段与时长估算都按此夹取。 */
+export const STORYBOARD_SEG_MIN_SECONDS = 4
+export const STORYBOARD_SEG_MAX_SECONDS = 15
 
 /** 分镜脚本占位提示（格式同播客节点：每行「角色名: 台词」）。 */
 export const STORYBOARD_SCRIPT_PLACEHOLDER = `每行「角色名: 台词」，如：
