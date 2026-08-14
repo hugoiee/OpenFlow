@@ -198,6 +198,11 @@ export type SplitterNodeData = {
   roleAName: string
   /** 角色 2 名字。 */
   roleBName: string
+  /**
+   * 切分语速（字/秒）：决定「多少字算一段」与各段估算时长。
+   * 旧数据缺失 → 按默认 6 字/秒（见 nodeCatalog.normalizeSplitSpeed）。
+   */
+  charsPerSecond?: number
 }
 
 /**

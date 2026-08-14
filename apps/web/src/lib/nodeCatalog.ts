@@ -597,8 +597,27 @@ export const SPLITTER_NODE_META = {
 /** 逐行调 LLM 的前端并发上限（单行一次请求，失败可单行重试）。 */
 export const STORYBOARD_CONCURRENCY = 3
 
-/** 口播语速估算：每秒约念出的字数（只数实际念出的字，标点/空白不计）。 */
+/** 口播语速估算的默认值：每秒约念出的字数（只数实际念出的字，标点/空白不计）。 */
 export const STORYBOARD_CHARS_PER_SECOND = 6
+
+/**
+ * 脚本切割节点可选的语速档位（字/秒）：中文口播常见 4~8，配音越快同样时长塞得下越多字。
+ * 只在切割节点上可调（分镜节点只接收切好的段落，其行内重估仍按默认值）。
+ */
+export const STORYBOARD_SPEED_OPTIONS = [
+  { value: 4, label: '4 字/秒（很慢）' },
+  { value: 5, label: '5 字/秒（偏慢）' },
+  { value: 6, label: '6 字/秒（标准）' },
+  { value: 7, label: '7 字/秒（偏快）' },
+  { value: 8, label: '8 字/秒（很快）' },
+] as const
+
+/** 语速归一：非法/旧数据（undefined）或不在档位内的值回退默认 6 字/秒。 */
+export function normalizeSplitSpeed(value: number | undefined): number {
+  return STORYBOARD_SPEED_OPTIONS.some((o) => o.value === value)
+    ? (value as number)
+    : STORYBOARD_CHARS_PER_SECOND
+}
 
 /** 单段视频时长范围（秒）：seedance 2.0 只支持 4~15s，切段与时长估算都按此夹取。 */
 export const STORYBOARD_SEG_MIN_SECONDS = 4
