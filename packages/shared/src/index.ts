@@ -342,6 +342,23 @@ export type AgentModelsResponse = {
 }
 
 /**
+ * POST /api/agent/expand 请求体：脚本分镜逐行扩写。
+ * 后端把模板中的 {{line}} 全部替换为台词行后，作为唯一 user message 单次调 Agent LLM
+ * （复用 agentEndpoint/agentApiKey/agentModel 配置；不带画布 Agent 的生图系统提示词）。
+ */
+export type AgentExpandBody = {
+  /** prompt 模板，含 {{line}} 占位符（可出现多次，全部替换）。 */
+  template: string
+  /** 台词行原文（含「角色名: 」前缀）。 */
+  line: string
+}
+
+/** POST /api/agent/expand 成功响应：LLM 输出的视频 prompt 纯文本。失败走非 2xx + { error }。 */
+export type AgentExpandResponse = {
+  prompt: string
+}
+
+/**
  * GET /api/update-check 响应：客户端「检查更新」用。
  * 后端只负责查 GitHub Releases 的最新版本（绕 CORS + 进程内缓存防撞匿名 API 限流），
  * **不做版本比较**——当前版本只有前端的 APP_VERSION 一处权威来源，

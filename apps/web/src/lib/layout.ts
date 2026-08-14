@@ -16,6 +16,7 @@ const FALLBACK_SIZE: Record<string, { w: number; h: number }> = {
   video: { w: 288, h: 400 },
   asset: { w: 220, h: 220 },
   group: { w: 200, h: 200 },
+  storyboard: { w: 360, h: 420 },
 }
 
 /** 取节点渲染尺寸：优先 measured（React Flow 实测），其次显式 width/height，最后按类型兜底。 */

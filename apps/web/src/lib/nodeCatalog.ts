@@ -582,6 +582,33 @@ export const PODCAST_NODE_META = {
   model: '火山 seed-tts-2.0',
 } as const
 
+// ---- 脚本分镜节点（播客脚本 → 逐行 LLM 生成 Seedance 口播 prompt）----
+
+/** 脚本分镜节点的展示元信息。 */
+export const STORYBOARD_NODE_META = {
+  label: '脚本分镜',
+} as const
+
+/** 脚本切割节点的展示元信息。 */
+export const SPLITTER_NODE_META = {
+  label: '脚本切割',
+} as const
+
+/** 逐行调 LLM 的前端并发上限（单行一次请求，失败可单行重试）。 */
+export const STORYBOARD_CONCURRENCY = 3
+
+/** 口播语速估算：每秒约念出的字数（只数实际念出的字，标点/空白不计）。 */
+export const STORYBOARD_CHARS_PER_SECOND = 6
+
+/** 单段视频时长范围（秒）：seedance 2.0 只支持 4~15s，切段与时长估算都按此夹取。 */
+export const STORYBOARD_SEG_MIN_SECONDS = 4
+export const STORYBOARD_SEG_MAX_SECONDS = 15
+
+/** 分镜脚本占位提示（格式同播客节点：每行「角色名: 台词」）。 */
+export const STORYBOARD_SCRIPT_PLACEHOLDER = `每行「角色名: 台词」，如：
+主持人: 狂揽 130 亿美金！2026 世界杯成为最赚钱的一届赛事。
+嘉宾: 这个数字确实夸张，我们拆开看看钱从哪来。`
+
 /** 生成类节点（image/video）的展示元信息（连接点配色）。 */
 export const GEN_NODE_META: Record<'image' | 'video', { label: string; handle: string }> = {
   image: {

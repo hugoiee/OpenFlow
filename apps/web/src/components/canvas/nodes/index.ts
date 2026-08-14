@@ -5,6 +5,8 @@ import { SeedanceNode } from './SeedanceNode'
 import { PodcastNode } from './PodcastNode'
 import { AssetNode } from './AssetNode'
 import { GroupNode } from './GroupNode'
+import { SplitterNode } from './SplitterNode'
+import { StoryboardNode } from './StoryboardNode'
 
 export const nodeTypes: NodeTypes = {
   prompt: PromptNode,
@@ -13,4 +15,6 @@ export const nodeTypes: NodeTypes = {
   podcast: PodcastNode,
   asset: AssetNode,
   group: GroupNode,
+  splitter: SplitterNode,
+  storyboard: StoryboardNode,
 }

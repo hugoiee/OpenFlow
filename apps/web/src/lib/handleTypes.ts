@@ -6,6 +6,9 @@ import {
   AUDIO_INPUT_HANDLE_PREFIX,
   IMAGE_INPUT_HANDLE_PREFIX,
   RES_INPUT_HANDLE,
+  STORYBOARD_ROLE_AUDIO_HANDLE_PREFIX,
+  STORYBOARD_ROLE_IMAGE_HANDLE_PREFIX,
+  STORYBOARD_SEGMENTS_HANDLE,
   VIDEO_INPUT_HANDLE_PREFIX,
 } from './graph'
 
@@ -41,6 +44,7 @@ export function sourceKind(node: FlowNode | undefined): SourceKind {
   if (node.type === 'prompt') return 'text'
   if (node.type === 'image') return 'image'
   if (node.type === 'video') return 'video' // Seedance 视频生成节点的输出作视频源
+  if (node.type === 'splitter') return 'text' // 脚本切割节点的输出是切好段的脚本（文本粉）
   if (node.type === 'asset') {
     return node.data.kind === 'image' ? 'image' : node.data.kind === 'video' ? 'video' : 'audio'
   }
@@ -67,6 +71,21 @@ export function targetAccepts(
     // 其余节点类型压根没有 res 端点 → 一律不收（批量连线按钮会拿 res 试连任意落点节点）
     if (targetNode?.type === 'video') return ['image', 'audio', 'video'] as const
     return targetNode?.type === 'image' ? (['image'] as const) : ([] as const)
+  }
+  if (
+    typeof targetHandle === 'string' &&
+    targetHandle.startsWith(STORYBOARD_ROLE_IMAGE_HANDLE_PREFIX)
+  ) {
+    return ['image'] // 脚本分镜的角色参考图端点只接图像
+  }
+  if (
+    typeof targetHandle === 'string' &&
+    targetHandle.startsWith(STORYBOARD_ROLE_AUDIO_HANDLE_PREFIX)
+  ) {
+    return ['audio'] // 脚本分镜的角色音色参考端点只接音频
+  }
+  if (targetHandle === STORYBOARD_SEGMENTS_HANDLE) {
+    return ['text'] // 分镜表端点：接脚本切割节点的输出（文本类）
   }
   if (typeof targetHandle === 'string' && targetHandle.startsWith(IMAGE_INPUT_HANDLE_PREFIX)) {
     return ['image'] // 图像输入端点只接图像

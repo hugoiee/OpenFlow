@@ -35,6 +35,25 @@ export function videoInputHandleId(index: number): string {
  */
 export const RES_INPUT_HANDLE = 'res'
 
+/**
+ * 脚本分镜节点的角色参考图端点 handle id 前缀：角色 i 的端点为 `role-image-${i}`（0=角色A / 1=角色B）。
+ * 刻意不用 image-N 旧编号前缀——虽然 normalizeResourceEdges 只归并 image/video 目标节点的边，
+ * 专用前缀让「分镜节点的角色图」与生成节点端点体系彻底隔离，不共享任何采集/归并语义。
+ */
+export const STORYBOARD_ROLE_IMAGE_HANDLE_PREFIX = 'role-image-'
+export function storyboardRoleImageHandleId(roleIndex: number): string {
+  return `${STORYBOARD_ROLE_IMAGE_HANDLE_PREFIX}${roleIndex}`
+}
+
+/** 脚本分镜节点的角色音色参考端点 handle id 前缀：角色 i 的端点为 `role-audio-${i}`（语义同 role-image-）。 */
+export const STORYBOARD_ROLE_AUDIO_HANDLE_PREFIX = 'role-audio-'
+export function storyboardRoleAudioHandleId(roleIndex: number): string {
+  return `${STORYBOARD_ROLE_AUDIO_HANDLE_PREFIX}${roleIndex}`
+}
+
+/** 脚本分镜节点的「分镜表」输入端点：脚本切割节点的输出连到这里（连线本身是组织性的，数据由切割动作直接写入）。 */
+export const STORYBOARD_SEGMENTS_HANDLE = 'segments'
+
 /** 节点图像输入端点数量（含旧数据兜底）：至少 1。 */
 export function imageInputCount(imageInputs: number | undefined): number {
   return Math.max(1, imageInputs ?? 1)

@@ -1,5 +1,7 @@
 import type {
   AgentChatResponse,
+  AgentExpandBody,
+  AgentExpandResponse,
   AgentImageAction,
   AgentMessage,
   AgentModelsBody,
@@ -281,6 +283,69 @@ export async function runAgentChat(
     )
   }
   return parsePlan(content)
+}
+
+/**
+ * 脚本分镜逐行扩写：把模板中的 {{line}} 全部替换为台词行后作为唯一 user message 单次调 LLM。
+ * 刻意不带画布 Agent 的生图 SYSTEM_PROMPT——模板本身就是完整指令，输出是纯文本 prompt 而非 JSON 计划。
+ * 端点/Key/模型解析与 runAgentChat 一致（设置优先 → env，缺失抛「请在设置中填写」供路由分流 400）。
+ */
+export async function runAgentExpand(
+  body: AgentExpandBody,
+  settings: SettingsDTO,
+): Promise<AgentExpandResponse> {
+  const endpoint = settings.agentEndpoint.trim() || AGENT_ENDPOINT
+  if (!endpoint) throw new Error('未配置 Agent 接口地址，请在设置中填写')
+  const model = settings.agentModel.trim() || AGENT_MODEL
+  if (!model) throw new Error('未配置 Agent 模型名，请在设置中填写')
+  const apiKey = settings.agentApiKey.trim() || AGENT_API_KEY
+
+  const url = resolveChatCompletionsUrl(endpoint)
+  let res: Response
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+      },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: 'user', content: body.template.replaceAll('{{line}}', body.line) }],
+        temperature: 0.6,
+      }),
+      signal: AbortSignal.timeout(120_000),
+    })
+  } catch (e) {
+    if (e instanceof Error && e.name === 'TimeoutError') {
+      throw new Error(`Agent LLM 请求超时（120 秒无响应）：${url}，请检查 Agent 接口地址`)
+    }
+    const cause = e instanceof Error && e.cause instanceof Error ? e.cause.message : undefined
+    throw new Error(
+      `Agent LLM 请求失败（${url}）：${cause ?? (e instanceof Error ? e.message : String(e))}`,
+    )
+  }
+  const raw = await res.text().catch(() => '')
+  let data: unknown = null
+  try {
+    data = JSON.parse(raw)
+  } catch {
+    // 非 JSON 响应，data 留 null
+  }
+  if (!res.ok) {
+    throw new Error(
+      `Agent LLM HTTP ${res.status}：${extractLlmError(data) ?? (raw.trim().slice(0, 300) || '(空响应)')}`,
+    )
+  }
+  const content = (
+    data as { choices?: { message?: { content?: unknown } }[] } | null
+  )?.choices?.[0]?.message?.content
+  if (typeof content !== 'string' || !content.trim()) {
+    throw new Error(
+      `Agent LLM 返回内容为空或非 chat/completions 格式：${raw.trim().slice(0, 200) || '(空响应)'}`,
+    )
+  }
+  return { prompt: content.trim() }
 }
 
 /**
