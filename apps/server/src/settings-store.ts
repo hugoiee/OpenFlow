@@ -9,6 +9,7 @@ type SettingsRow = {
   upload_media_endpoint: string
   aigc_history_endpoint: string
   agent_endpoint: string
+  agent_api_style: string
   agent_api_key: string
   agent_model: string
   agent_model_list: string
@@ -36,7 +37,7 @@ function parseModelList(raw: string | null | undefined): string[] {
 function ensureRow(): SettingsRow {
   let row = db
     .prepare(
-      'SELECT id, default_req_from, aigc_endpoint, upload_endpoint, upload_media_endpoint, aigc_history_endpoint, agent_endpoint, agent_api_key, agent_model, agent_model_list, volc_tts_api_key FROM settings WHERE id = ?',
+      'SELECT id, default_req_from, aigc_endpoint, upload_endpoint, upload_media_endpoint, aigc_history_endpoint, agent_endpoint, agent_api_style, agent_api_key, agent_model, agent_model_list, volc_tts_api_key FROM settings WHERE id = ?',
     )
     .get(SINGLETON) as SettingsRow | undefined
   if (!row) {
@@ -49,6 +50,7 @@ function ensureRow(): SettingsRow {
       upload_media_endpoint: '',
       aigc_history_endpoint: '',
       agent_endpoint: '',
+      agent_api_style: '',
       agent_api_key: '',
       agent_model: '',
       agent_model_list: '[]',
@@ -67,6 +69,9 @@ export function readSettings(): SettingsDTO {
     uploadMediaEndpoint: row.upload_media_endpoint ?? '',
     aigcHistoryEndpoint: row.aigc_history_endpoint ?? '',
     agentEndpoint: row.agent_endpoint ?? '',
+    // 协议脏值不在这里归一：readSettings 只如实回读（设置面板要能显示「未选择」），
+    // 归一交给 llm.ts 的 resolveAgentConfig（发请求时才需要确定值）
+    agentApiStyle: (row.agent_api_style ?? '') as SettingsDTO['agentApiStyle'],
     agentApiKey: row.agent_api_key ?? '',
     agentModel: row.agent_model ?? '',
     agentModelList: parseModelList(row.agent_model_list),
@@ -79,7 +84,7 @@ export function writeSettings(patch: Partial<SettingsDTO>): void {
   const cur = readSettings()
   const next = { ...cur, ...patch }
   db.prepare(
-    'UPDATE settings SET default_req_from = ?, aigc_endpoint = ?, upload_endpoint = ?, upload_media_endpoint = ?, aigc_history_endpoint = ?, agent_endpoint = ?, agent_api_key = ?, agent_model = ?, agent_model_list = ?, volc_tts_api_key = ? WHERE id = ?',
+    'UPDATE settings SET default_req_from = ?, aigc_endpoint = ?, upload_endpoint = ?, upload_media_endpoint = ?, aigc_history_endpoint = ?, agent_endpoint = ?, agent_api_style = ?, agent_api_key = ?, agent_model = ?, agent_model_list = ?, volc_tts_api_key = ? WHERE id = ?',
   ).run(
     next.defaultReqFrom,
     next.aigcEndpoint,
@@ -87,6 +92,7 @@ export function writeSettings(patch: Partial<SettingsDTO>): void {
     next.uploadMediaEndpoint,
     next.aigcHistoryEndpoint,
     next.agentEndpoint,
+    next.agentApiStyle,
     next.agentApiKey,
     next.agentModel,
     JSON.stringify(next.agentModelList ?? []),

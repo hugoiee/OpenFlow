@@ -39,6 +39,7 @@ db.exec(`
     upload_media_endpoint TEXT NOT NULL DEFAULT '',
     aigc_history_endpoint TEXT NOT NULL DEFAULT '',
     agent_endpoint TEXT NOT NULL DEFAULT '',
+    agent_api_style TEXT NOT NULL DEFAULT '',
     agent_api_key TEXT NOT NULL DEFAULT '',
     agent_model TEXT NOT NULL DEFAULT '',
     agent_model_list TEXT NOT NULL DEFAULT '[]',
@@ -92,6 +93,8 @@ for (const col of [
   'upload_media_endpoint',
   'aigc_history_endpoint',
   'agent_endpoint',
+  // 接口协议（'responses' | 'chat'）：空串=未选择，由 llm.ts 归一到默认值
+  'agent_api_style',
   'agent_api_key',
   'agent_model',
   'volc_tts_api_key',

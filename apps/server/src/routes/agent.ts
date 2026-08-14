@@ -59,13 +59,19 @@ agent.post('/agent/expand', async (c) => {
   }
 })
 
-// 最小用量连接测试：用请求体（或已存）的 Agent 配置发一条 max_tokens:1 的探测请求验证连通。
-// 入参各字段可省略——省略/空则回退已存设置（apiKey 空 = 测已保存的密钥）。
+// 最小用量连接测试：用请求体（或已存）的 Agent 配置发一条最小探测请求验证连通。
+// 入参各字段可省略——省略/空则回退已存设置（apiKey 空 = 测已保存的密钥）；
+// apiStyle 也要透传，否则设置面板「切了协议还没保存就点测试」测的是旧协议。
 agent.post('/agent/test', async (c) => {
   const body = await c.req.json<AgentTestBody>().catch(() => ({}) as AgentTestBody)
   try {
     const result = await runAgentConnectionTest(
-      { endpoint: body?.endpoint, apiKey: body?.apiKey, model: body?.model },
+      {
+        endpoint: body?.endpoint,
+        apiKey: body?.apiKey,
+        model: body?.model,
+        apiStyle: body?.apiStyle,
+      },
       readSettings(),
     )
     return c.json({ ok: true, ...result } satisfies AgentTestResponse)

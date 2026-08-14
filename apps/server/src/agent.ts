@@ -1,4 +1,5 @@
 import type {
+  AgentApiStyle,
   AgentChatResponse,
   AgentExpandBody,
   AgentExpandResponse,
@@ -8,11 +9,21 @@ import type {
   AgentTestBody,
   SettingsDTO,
 } from '@openflow/shared'
+import {
+  buildExpandRequestBody,
+  buildPlanRequestBody,
+  buildProbeRequestBody,
+  llmTextError,
+  parseModelList,
+  readLlmText,
+  requestLlmJson,
+  resolveAgentConfig,
+  resolveLlmUrl,
+  resolveModelsUrl,
+} from './llm'
 
-// 画布 Agent 的 LLM（OpenAI 兼容 /chat/completions）；设置优先，env 兜底，均无则报错引导配置
-const AGENT_ENDPOINT = process.env.AGENT_ENDPOINT ?? ''
-const AGENT_API_KEY = process.env.AGENT_API_KEY ?? ''
-const AGENT_MODEL = process.env.AGENT_MODEL ?? ''
+// 本文件只管画布 Agent 的业务语义（系统提示词 + JSON 计划解析）；
+// 端点推导 / 两种线格式的请求体与响应解析 / 超时与错误翻译全在 llm.ts。
 
 // 单轮最多执行的生图动作数，防止模型失控刷屏画布
 const MAX_ACTIONS = 8
@@ -36,64 +47,7 @@ const SYSTEM_PROMPT = `你是 OpenFlow 节点式 AI 画布的内置 Agent。用�
 - reply 保持简短（1~3 句），不要把 prompt 全文复述在 reply 里。`
 
 /**
- * 把配置的端点规范成完整 /chat/completions 地址（已带该后缀则原样使用）。
- * 按 URL pathname 判断/追加，保住查询串与锚点（如 Azure 的 ?api-version=、带 token 的网关）。
- */
-export function resolveChatCompletionsUrl(endpoint: string): string {
-  try {
-    const url = new URL(endpoint)
-    const path = url.pathname.replace(/\/+$/, '')
-    if (!/\/chat\/completions$/i.test(path)) url.pathname = `${path}/chat/completions`
-    return url.toString()
-  } catch {
-    // 非标准 URL：退回纯字符串拼接，交给 fetch 报错
-    const base = endpoint.replace(/\/+$/, '')
-    return /\/chat\/completions$/i.test(base) ? base : `${base}/chat/completions`
-  }
-}
-
-/**
- * 从配置的端点推导 GET /models 地址（用于动态获取可用模型列表）。
- * 若端点配成 .../chat/completions，剥掉该层取基址；保住查询串（如 Azure 的 ?api-version=）。
- */
-export function resolveModelsUrl(endpoint: string): string {
-  try {
-    const url = new URL(endpoint)
-    let path = url.pathname.replace(/\/+$/, '').replace(/\/chat\/completions$/i, '')
-    if (!/\/models$/i.test(path)) path = `${path}/models`
-    url.pathname = path
-    return url.toString()
-  } catch {
-    // 非标准 URL：退回纯字符串拼接，交给 fetch 报错
-    const base = endpoint.replace(/\/+$/, '').replace(/\/chat\/completions$/i, '')
-    return /\/models$/i.test(base) ? base : `${base}/models`
-  }
-}
-
-/**
- * 从 /models 响应稳健解析出模型 ID 列表。
- * 兼容三种形态：OpenAI 的 { data: [{ id }] } / 顶层数组 / 字符串数组；去重后按字母排序。
- */
-function parseModelList(data: unknown): string[] {
-  const arr: unknown[] = Array.isArray(data)
-    ? data
-    : data && typeof data === 'object' && Array.isArray((data as Record<string, unknown>).data)
-      ? ((data as Record<string, unknown>).data as unknown[])
-      : []
-  const ids = new Set<string>()
-  for (const item of arr) {
-    if (typeof item === 'string') {
-      if (item.trim()) ids.add(item.trim())
-    } else if (item && typeof item === 'object') {
-      const id = (item as Record<string, unknown>).id
-      if (typeof id === 'string' && id.trim()) ids.add(id.trim())
-    }
-  }
-  return [...ids].sort((a, b) => a.localeCompare(b))
-}
-
-/**
- * 调 OpenAI 兼容端点的 GET /models 列出可用模型 ID。
+ * 列出端点 GET /models 的可用模型 ID（与线格式无关，两种协议共用同一个地址）。
  * 端点/Key：入参非空优先，否则回退已存设置，再回退 env；端点缺失或响应为空/格式不符时抛可读错误。
  * （前端据此把「手填模型名」换成动态下拉；抛错时前端回退手填。）
  */
@@ -101,59 +55,21 @@ export async function listAgentModels(
   override: AgentModelsBody,
   settings: SettingsDTO,
 ): Promise<string[]> {
-  const endpoint = override.endpoint?.trim() || settings.agentEndpoint.trim() || AGENT_ENDPOINT
-  if (!endpoint) throw new Error('未配置 Agent 接口地址，请在设置中填写')
-  const apiKey = override.apiKey?.trim() || settings.agentApiKey.trim() || AGENT_API_KEY
-
-  const url = resolveModelsUrl(endpoint)
-  let res: Response
-  try {
-    res = await fetch(url, {
-      method: 'GET',
-      headers: { ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}) },
-      // 列模型应很快返回，30 秒足以判定
-      signal: AbortSignal.timeout(30_000),
-    })
-  } catch (e) {
-    if (e instanceof Error && e.name === 'TimeoutError') {
-      throw new Error(`获取模型列表超时（30 秒无响应）：${url}，请检查 Agent 接口地址`)
-    }
-    const cause = e instanceof Error && e.cause instanceof Error ? e.cause.message : undefined
-    throw new Error(
-      `获取模型列表失败（${url}）：${cause ?? (e instanceof Error ? e.message : String(e))}`,
-    )
-  }
-  const raw = await res.text().catch(() => '')
-  let data: unknown = null
-  try {
-    data = JSON.parse(raw)
-  } catch {
-    // 非 JSON 响应，data 留 null
-  }
-  if (!res.ok) {
-    throw new Error(
-      `获取模型列表失败 HTTP ${res.status}：${extractLlmError(data) ?? (raw.trim().slice(0, 300) || '(空响应)')}`,
-    )
-  }
+  // 列模型不需要模型名，故 requireModel:false
+  const cfg = resolveAgentConfig(settings, override, { requireModel: false })
+  const url = resolveModelsUrl(cfg.endpoint)
+  // 列模型应很快返回，30 秒足以判定
+  const { data } = await requestLlmJson({
+    url,
+    apiKey: cfg.apiKey,
+    timeoutMs: 30_000,
+    label: '获取模型列表',
+  })
   const models = parseModelList(data)
   if (models.length === 0) {
     throw new Error(`该端点未返回可用模型（GET /models 响应为空或格式不符）：${url}`)
   }
   return models
-}
-
-/** 从 LLM 错误响应里尽量取可读信息。 */
-export function extractLlmError(data: unknown): string | undefined {
-  if (!data || typeof data !== 'object') return undefined
-  const o = data as Record<string, unknown>
-  for (const v of [o.error, o.message, o.msg]) {
-    if (typeof v === 'string' && v) return v
-    if (v && typeof v === 'object') {
-      const m = (v as Record<string, unknown>).message
-      if (typeof m === 'string' && m) return m
-    }
-  }
-  return undefined
 }
 
 /**
@@ -221,189 +137,76 @@ function parsePlan(content: string): AgentChatResponse {
 }
 
 /**
- * 调 OpenAI 兼容接口跑一轮 Agent 对话 → 答复 + 画布动作计划。
- * 端点/Key/模型：设置非空优先，否则回退 env；端点或模型都取不到时抛可读错误。
+ * 跑一轮 Agent 对话 → 答复 + 画布动作计划。
+ * 端点/Key/模型/协议：设置非空优先，否则回退 env；端点或模型都取不到时抛可读错误。
  */
 export async function runAgentChat(
   messages: AgentMessage[],
   settings: SettingsDTO,
 ): Promise<AgentChatResponse> {
-  const endpoint = settings.agentEndpoint.trim() || AGENT_ENDPOINT
-  if (!endpoint) throw new Error('未配置 Agent 接口地址，请在设置中填写')
-  const model = settings.agentModel.trim() || AGENT_MODEL
-  if (!model) throw new Error('未配置 Agent 模型名，请在设置中填写')
-  const apiKey = settings.agentApiKey.trim() || AGENT_API_KEY
-
-  const url = resolveChatCompletionsUrl(endpoint)
-  let res: Response
-  try {
-    res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-      },
-      body: JSON.stringify({
-        model,
-        messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...messages],
-        temperature: 0.6,
-      }),
-      // LLM 长回复可能较慢，但不能无限挂着占住请求
-      signal: AbortSignal.timeout(120_000),
-    })
-  } catch (e) {
-    // 网络层失败：把地址与底层原因翻译成可读中文，方便定位是配置写错还是网关挂了
-    if (e instanceof Error && e.name === 'TimeoutError') {
-      throw new Error(`Agent LLM 请求超时（120 秒无响应）：${url}，请检查 Agent 接口地址`)
-    }
-    const cause = e instanceof Error && e.cause instanceof Error ? e.cause.message : undefined
-    throw new Error(
-      `Agent LLM 请求失败（${url}）：${cause ?? (e instanceof Error ? e.message : String(e))}`,
-    )
-  }
-  // 先按文本读，再尝试 JSON：非 JSON 响应（HTML 门户页等）也能给出有内容的报错
-  const raw = await res.text().catch(() => '')
-  let data: unknown = null
-  try {
-    data = JSON.parse(raw)
-  } catch {
-    // 非 JSON 响应，data 留 null
-  }
-  if (!res.ok) {
-    throw new Error(
-      `Agent LLM HTTP ${res.status}：${extractLlmError(data) ?? (raw.trim().slice(0, 300) || '(空响应)')}`,
-    )
-  }
-  const content = (
-    data as { choices?: { message?: { content?: unknown } }[] } | null
-  )?.choices?.[0]?.message?.content
-  if (typeof content !== 'string' || !content.trim()) {
-    throw new Error(
-      `Agent LLM 返回内容为空或非 chat/completions 格式：${raw.trim().slice(0, 200) || '(空响应)'}`,
-    )
-  }
-  return parsePlan(content)
+  const cfg = resolveAgentConfig(settings)
+  const { data, raw } = await requestLlmJson({
+    url: resolveLlmUrl(cfg.endpoint, cfg.apiStyle),
+    apiKey: cfg.apiKey,
+    body: buildPlanRequestBody(cfg.apiStyle, {
+      model: cfg.model,
+      systemPrompt: SYSTEM_PROMPT,
+      messages,
+    }),
+    // LLM 长回复可能较慢，但不能无限挂着占住请求
+    timeoutMs: 120_000,
+    label: 'Agent LLM 请求',
+  })
+  const text = readLlmText(cfg.apiStyle, data)
+  if ('error' in text) throw llmTextError('Agent LLM ', text, raw)
+  return parsePlan(text.text)
 }
 
 /**
- * 脚本分镜逐行扩写：把模板中的 {{line}} 全部替换为台词行后作为唯一 user message 单次调 LLM。
+ * 脚本分镜逐行扩写：把模板中的 {{line}} 全部替换为台词行后作为唯一一条用户输入单次调 LLM。
  * 刻意不带画布 Agent 的生图 SYSTEM_PROMPT——模板本身就是完整指令，输出是纯文本 prompt 而非 JSON 计划。
- * 端点/Key/模型解析与 runAgentChat 一致（设置优先 → env，缺失抛「请在设置中填写」供路由分流 400）。
  */
 export async function runAgentExpand(
   body: AgentExpandBody,
   settings: SettingsDTO,
 ): Promise<AgentExpandResponse> {
-  const endpoint = settings.agentEndpoint.trim() || AGENT_ENDPOINT
-  if (!endpoint) throw new Error('未配置 Agent 接口地址，请在设置中填写')
-  const model = settings.agentModel.trim() || AGENT_MODEL
-  if (!model) throw new Error('未配置 Agent 模型名，请在设置中填写')
-  const apiKey = settings.agentApiKey.trim() || AGENT_API_KEY
-
-  const url = resolveChatCompletionsUrl(endpoint)
-  let res: Response
-  try {
-    res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-      },
-      body: JSON.stringify({
-        model,
-        messages: [{ role: 'user', content: body.template.replaceAll('{{line}}', body.line) }],
-        temperature: 0.6,
-      }),
-      signal: AbortSignal.timeout(120_000),
-    })
-  } catch (e) {
-    if (e instanceof Error && e.name === 'TimeoutError') {
-      throw new Error(`Agent LLM 请求超时（120 秒无响应）：${url}，请检查 Agent 接口地址`)
-    }
-    const cause = e instanceof Error && e.cause instanceof Error ? e.cause.message : undefined
-    throw new Error(
-      `Agent LLM 请求失败（${url}）：${cause ?? (e instanceof Error ? e.message : String(e))}`,
-    )
-  }
-  const raw = await res.text().catch(() => '')
-  let data: unknown = null
-  try {
-    data = JSON.parse(raw)
-  } catch {
-    // 非 JSON 响应，data 留 null
-  }
-  if (!res.ok) {
-    throw new Error(
-      `Agent LLM HTTP ${res.status}：${extractLlmError(data) ?? (raw.trim().slice(0, 300) || '(空响应)')}`,
-    )
-  }
-  const content = (
-    data as { choices?: { message?: { content?: unknown } }[] } | null
-  )?.choices?.[0]?.message?.content
-  if (typeof content !== 'string' || !content.trim()) {
-    throw new Error(
-      `Agent LLM 返回内容为空或非 chat/completions 格式：${raw.trim().slice(0, 200) || '(空响应)'}`,
-    )
-  }
-  return { prompt: content.trim() }
+  const cfg = resolveAgentConfig(settings)
+  const { data, raw } = await requestLlmJson({
+    url: resolveLlmUrl(cfg.endpoint, cfg.apiStyle),
+    apiKey: cfg.apiKey,
+    body: buildExpandRequestBody(cfg.apiStyle, {
+      model: cfg.model,
+      prompt: body.template.replaceAll('{{line}}', body.line),
+    }),
+    timeoutMs: 120_000,
+    label: 'Agent LLM 请求',
+  })
+  const text = readLlmText(cfg.apiStyle, data)
+  if ('error' in text) throw llmTextError('Agent LLM ', text, raw)
+  return { prompt: text.text }
 }
 
 /**
- * 最小用量连接测试：用配置的 endpoint/key/model 发一条极小的 chat/completions 请求
- * （max_tokens:1），验证接口可达、鉴权有效、模型被接受，只耗 ~1 个输出 token。
- * 端点/模型：入参非空优先，否则回退已存设置，再回退 env；缺失时抛可读错误（供 400）。
- * apiKey 入参为空则回退已存密钥/env（沿用写入-only 语义：不传即测已保存的 Key）。
+ * 最小用量连接测试：用配置的 endpoint/key/model/协议发一条极小的请求，
+ * 验证接口可达、鉴权有效、模型被接受（chat 侧 max_tokens:1 / responses 侧 max_output_tokens:16）。
+ * 入参非空优先，否则回退已存设置，再回退 env（apiKey 沿用写入-only 语义：不传即测已保存的 Key）。
+ *
+ * ⚠️ 刻意**只看 HTTP 状态、不解析响应内容**：推理型模型在这么小的输出上限下必然返回
+ * status:'incomplete' 且 output 里只有 reasoning 项，一解析就会把完全正常的网关误报成失败。
  */
 export async function runAgentConnectionTest(
   override: AgentTestBody,
   settings: SettingsDTO,
-): Promise<{ model: string; latencyMs: number }> {
-  const endpoint = override.endpoint?.trim() || settings.agentEndpoint.trim() || AGENT_ENDPOINT
-  if (!endpoint) throw new Error('未配置 Agent 接口地址，请在设置中填写')
-  const model = override.model?.trim() || settings.agentModel.trim() || AGENT_MODEL
-  if (!model) throw new Error('未配置 Agent 模型名，请在设置中填写')
-  const apiKey = override.apiKey?.trim() || settings.agentApiKey.trim() || AGENT_API_KEY
-
-  const url = resolveChatCompletionsUrl(endpoint)
+): Promise<{ model: string; apiStyle: AgentApiStyle; latencyMs: number }> {
+  const cfg = resolveAgentConfig(settings, override)
   const startedAt = Date.now()
-  let res: Response
-  try {
-    res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-      },
-      // 最小用量：只探连通，限制输出 1 token、temperature 0
-      body: JSON.stringify({
-        model,
-        messages: [{ role: 'user', content: 'ping' }],
-        max_tokens: 1,
-        temperature: 0,
-      }),
-      // 连接测试不该久等，30 秒足以判定可达性
-      signal: AbortSignal.timeout(30_000),
-    })
-  } catch (e) {
-    if (e instanceof Error && e.name === 'TimeoutError') {
-      throw new Error(`连接测试超时（30 秒无响应）：${url}，请检查 Agent 接口地址`)
-    }
-    const cause = e instanceof Error && e.cause instanceof Error ? e.cause.message : undefined
-    throw new Error(
-      `连接测试失败（${url}）：${cause ?? (e instanceof Error ? e.message : String(e))}`,
-    )
-  }
-  const raw = await res.text().catch(() => '')
-  let data: unknown = null
-  try {
-    data = JSON.parse(raw)
-  } catch {
-    // 非 JSON 响应，data 留 null
-  }
-  if (!res.ok) {
-    throw new Error(
-      `连接测试失败 HTTP ${res.status}：${extractLlmError(data) ?? (raw.trim().slice(0, 300) || '(空响应)')}`,
-    )
-  }
-  return { model, latencyMs: Date.now() - startedAt }
+  await requestLlmJson({
+    url: resolveLlmUrl(cfg.endpoint, cfg.apiStyle),
+    apiKey: cfg.apiKey,
+    body: buildProbeRequestBody(cfg.apiStyle, { model: cfg.model }),
+    // 连接测试不该久等，30 秒足以判定可达性
+    timeoutMs: 30_000,
+    label: '连接测试',
+  })
+  return { model: cfg.model, apiStyle: cfg.apiStyle, latencyMs: Date.now() - startedAt }
 }

@@ -11,6 +11,7 @@ import {
   SlidersHorizontal,
   XCircle,
 } from 'lucide-react'
+import type { AgentApiStyle } from '@openflow/shared'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -55,7 +56,7 @@ const SECTIONS: {
     id: 'api',
     label: 'API 接入',
     icon: Cable,
-    desc: '画布 Agent 与 Any LLM 节点共用的 OpenAI 兼容接口配置。',
+    desc: '画布 Agent 与脚本分镜扩写共用的 LLM 接口配置（Responses / Chat Completions 两种协议）。',
   },
   {
     id: 'network',
@@ -65,6 +66,12 @@ const SECTIONS: {
   },
 ]
 
+/** 接口协议下拉的展示名（连接测试成功文案也用它，好让「选错协议但恰好 200」一眼看出）。 */
+const API_STYLE_LABEL: Record<AgentApiStyle, string> = {
+  responses: 'Responses API',
+  chat: 'Chat Completions',
+}
+
 export function SettingsDialog({ children }: { children: React.ReactNode }) {
   const defaultReqFrom = useSettingsStore((s) => s.defaultReqFrom)
   const aigcEndpoint = useSettingsStore((s) => s.aigcEndpoint)
@@ -72,6 +79,7 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
   const uploadMediaEndpoint = useSettingsStore((s) => s.uploadMediaEndpoint)
   const aigcHistoryEndpoint = useSettingsStore((s) => s.aigcHistoryEndpoint)
   const agentEndpoint = useSettingsStore((s) => s.agentEndpoint)
+  const agentApiStyle = useSettingsStore((s) => s.agentApiStyle)
   const hasAgentApiKey = useSettingsStore((s) => s.hasAgentApiKey)
   const hasVolcTtsApiKey = useSettingsStore((s) => s.hasVolcTtsApiKey)
   const agentModel = useSettingsStore((s) => s.agentModel)
@@ -92,6 +100,8 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
   const [uploadMedia, setUploadMedia] = useState('')
   const [aigcHistory, setAigcHistory] = useState('')
   const [agentUrl, setAgentUrl] = useState('')
+  // 接口协议：决定端点被补什么后缀、请求体发什么形状（空=未选过，按后端默认 responses 显示）
+  const [apiStyle, setApiStyle] = useState<AgentApiStyle>('responses')
   const [agentKey, setAgentKey] = useState('')
   const [volcKey, setVolcKey] = useState('')
   const [agentModelName, setAgentModelName] = useState('')
@@ -115,6 +125,7 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
       setUploadMedia(uploadMediaEndpoint)
       setAigcHistory(aigcHistoryEndpoint)
       setAgentUrl(agentEndpoint)
+      setApiStyle(agentApiStyle || 'responses')
       setAgentKey('') // 密钥不回显（后端不回明文）；留空=保持已存值
       setVolcKey('') // 同上：火山语音 Key 也是写入-only
       setAgentModelName(agentModel)
@@ -134,8 +145,13 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
         endpoint: agentUrl.trim(),
         apiKey: agentKey.trim() || undefined,
         model: agentModelName.trim(),
+        // 协议也用草稿值：切了下拉还没保存就点测试时，测的必须是眼前这个协议
+        apiStyle,
       })
-      setTestResult({ ok: true, message: `连接成功 · 模型 ${r.model} · ${r.latencyMs}ms` })
+      setTestResult({
+        ok: true,
+        message: `连接成功 · ${API_STYLE_LABEL[r.apiStyle]} · 模型 ${r.model} · ${r.latencyMs}ms`,
+      })
     } catch (e) {
       setTestResult({ ok: false, message: e instanceof Error ? e.message : String(e) })
     } finally {
@@ -172,6 +188,7 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
         uploadMediaEndpoint: uploadMedia.trim(),
         aigcHistoryEndpoint: aigcHistory.trim(),
         agentEndpoint: agentUrl.trim(),
+        agentApiStyle: apiStyle,
         // 密钥字段为空 = 用户没改：省略以保持后端已存值（后端合并写只覆盖出现的字段）
         ...(agentKey.trim() ? { agentApiKey: agentKey.trim() } : {}),
         ...(volcKey.trim() ? { volcTtsApiKey: volcKey.trim() } : {}),
@@ -247,8 +264,35 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
 
               {section === 'api' && (
                 <>
+                  {/* 协议放在地址之上：它决定地址会被补什么后缀，阅读顺序必须先协议后地址 */}
                   <div className="flex flex-col gap-1.5">
-                    <Label htmlFor="agentEndpoint">Agent 接口地址（OpenAI 兼容）</Label>
+                    <Label htmlFor="agentApiStyle">接口协议</Label>
+                    <Select
+                      value={apiStyle}
+                      onValueChange={(v) => {
+                        setApiStyle(v as AgentApiStyle)
+                        setTestResult(null)
+                      }}
+                    >
+                      <SelectTrigger id="agentApiStyle" className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="responses">
+                          {API_STYLE_LABEL.responses}（POST /responses）
+                        </SelectItem>
+                        <SelectItem value="chat">
+                          {API_STYLE_LABEL.chat}（POST /chat/completions）
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <span className="text-xs text-muted-foreground">
+                      按网关实际支持的接口选择；下面的地址只填到 /v1，后缀由这里决定。
+                    </span>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="agentEndpoint">Agent 接口地址</Label>
                     <Input
                       id="agentEndpoint"
                       value={agentUrl}
@@ -256,7 +300,7 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
                         setAgentUrl(e.target.value)
                         setTestResult(null)
                       }}
-                      placeholder="如 https://api.openai.com/v1（自动补 /chat/completions）"
+                      placeholder={`如 https://api.openai.com/v1（自动补 ${apiStyle === 'responses' ? '/responses' : '/chat/completions'}）`}
                     />
                   </div>
 
@@ -346,7 +390,7 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
                     </span>
                   </div>
 
-                  {/* 最小用量连接测试：发一条 max_tokens:1 的探测请求验证接口/密钥/模型可用 */}
+                  {/* 最小用量连接测试：发一条最小探测请求验证接口/密钥/模型/协议可用 */}
                   <div className="mt-1 flex flex-col gap-2 border-t pt-3">
                     <div className="flex items-center gap-3">
                       <Button
