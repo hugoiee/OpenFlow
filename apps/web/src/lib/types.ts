@@ -198,6 +198,11 @@ export type SplitterNodeData = {
   roleAName: string
   /** 角色 2 名字。 */
   roleBName: string
+  /**
+   * 切分语速（字/秒）：决定「多少字算一段」与各段估算时长。
+   * 旧数据缺失 → 按默认 6 字/秒（见 nodeCatalog.normalizeSplitSpeed）。
+   */
+  charsPerSecond?: number
 }
 
 /**
@@ -211,6 +216,8 @@ export type StoryboardNodeData = {
   script: string
   /** prompt 模板，含 {{line}} 占位符（发送时替换为台词行原文）。 */
   template: string
+  /** 逐段扩写用的 LLM 模型名；空/缺省=跟随全局设置里的 Agent 模型（端点/密钥/协议始终取全局）。 */
+  model?: string
   /** 角色 1 名字（脚本行首匹配用，同播客节点语义）。 */
   roleAName: string
   /** 角色 2 名字。 */

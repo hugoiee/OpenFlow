@@ -10,6 +10,14 @@ export type ProjectDTO = {
   pinned: boolean
 }
 
+/**
+ * Agent LLM 的接口协议（线格式）：
+ * 'responses' = POST {base}/responses（OpenAI Responses API，请求发 input、响应读 output）；
+ * 'chat'      = POST {base}/chat/completions（Chat Completions，请求发 messages、响应读 choices）。
+ * 两者的端点后缀由后端按此项自动补，用户只填到 /v1 即可。
+ */
+export type AgentApiStyle = 'responses' | 'chat'
+
 /** GET /api/settings 响应：全局调用方署名 + AIGC/上传端点。空字符串表示回退后端默认。 */
 export type SettingsDTO = {
   /** 全局调用方署名（req_from）；为空时后端回退默认值。 */
@@ -25,8 +33,10 @@ export type SettingsDTO = {
    * 两者皆空不报错，只是失去「同步响应没带回 URL 时去历史里找回结果」的能力。
    */
   aigcHistoryEndpoint: string
-  /** 画布 Agent 的 LLM 端点（OpenAI 兼容 /chat/completions）；为空时回退 env AGENT_ENDPOINT。 */
+  /** 画布 Agent 的 LLM 端点（填到基址即可，如 https://api.openai.com/v1；后缀按 agentApiStyle 自动补）；为空时回退 env AGENT_ENDPOINT。 */
   agentEndpoint: string
+  /** Agent LLM 的接口协议；空串=未选择，回退 env AGENT_API_STYLE，再回退 'responses'。 */
+  agentApiStyle: AgentApiStyle | ''
   /** 画布 Agent 的 LLM API Key（可空：无鉴权网关不需要）；为空时回退 env AGENT_API_KEY。GET /api/settings 不回明文（恒为空串），以 hasAgentApiKey 表示已配置。 */
   agentApiKey: string
   /** 画布 Agent 的 LLM 模型名（如 gpt-4o / doubao-xxx）；为空时回退 env AGENT_MODEL。 */
@@ -58,6 +68,8 @@ export type SaveSettingsBody = {
   aigcHistoryEndpoint?: string
   /** Agent LLM 端点（空串=清空回退 env；省略=保持原值）。 */
   agentEndpoint?: string
+  /** Agent LLM 接口协议（空串=清空回退 env/默认；省略=保持原值）。 */
+  agentApiStyle?: AgentApiStyle | ''
   /** Agent LLM API Key（空串=清空回退 env；省略=保持原值）。 */
   agentApiKey?: string
   /** Agent LLM 模型名（空串=清空回退 env；省略=保持原值）。 */
@@ -314,13 +326,20 @@ export type AgentTestBody = {
   apiKey?: string
   /** 待测模型名；空则回退已存设置 / env。 */
   model?: string
+  /**
+   * 待测接口协议；省略则回退已存设置 / env。
+   * 设置面板支持「存盘前用草稿值试」，协议不跟着传的话，切了下拉却测的是旧协议。
+   */
+  apiStyle?: AgentApiStyle
 }
 
-/** POST /api/agent/test 成功响应：连通即 ok，附实际生效模型名与往返耗时。失败走非 2xx + { error }。 */
+/** POST /api/agent/test 成功响应：连通即 ok，附实际生效模型名/协议与往返耗时。失败走非 2xx + { error }。 */
 export type AgentTestResponse = {
   ok: true
   /** 实际用于测试的模型名。 */
   model: string
+  /** 实际用于测试的接口协议（协议选错但恰好 200 时，这是最直观的排查线索）。 */
+  apiStyle: AgentApiStyle
   /** 请求往返耗时（毫秒）。 */
   latencyMs: number
 }
@@ -351,6 +370,12 @@ export type AgentExpandBody = {
   template: string
   /** 台词行原文（含「角色名: 」前缀）。 */
   line: string
+  /**
+   * 本次扩写用的模型名；省略/空则回退设置里的 agentModel。
+   * 分镜节点各自可选模型——同一画布上不同分镜想用不同模型（便宜的跑草稿、强的跑定稿）时不必改全局设置。
+   * 端点/密钥/协议仍统一走全局设置。
+   */
+  model?: string
 }
 
 /** POST /api/agent/expand 成功响应：LLM 输出的视频 prompt 纯文本。失败走非 2xx + { error }。 */

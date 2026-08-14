@@ -68,13 +68,13 @@ const SENTENCE_RE = /[^。！？；…!?;]*[。！？；…!?;]+|[^。！？；�
 // 逗号级切分（超长单句的次级切点）：、，以及英文逗号
 const CLAUSE_RE = /[^，、,]*[，、,]+|[^，、,]+$/g
 
-/** 单段最多可念的字数（15s × 每秒字数）。 */
-const SEG_MAX_CHARS = STORYBOARD_SEG_MAX_SECONDS * STORYBOARD_CHARS_PER_SECOND
+/** 单段最多可念的字数（15s × 每秒字数）。语速可调故按需现算。 */
+const segMaxChars = (charsPerSecond: number) => STORYBOARD_SEG_MAX_SECONDS * charsPerSecond
 /** 低于该字数（4s × 每秒字数）的尾段尽量并回前段，避免「台词几个字、视频好几秒」的发呆段。 */
-const SEG_MIN_CHARS = STORYBOARD_SEG_MIN_SECONDS * STORYBOARD_CHARS_PER_SECOND
+const segMinChars = (charsPerSecond: number) => STORYBOARD_SEG_MIN_SECONDS * charsPerSecond
 
 /** 把可能超长的片段按逗号（仍超则硬切）切成 ≤SEG_MAX_CHARS 的块。 */
-function splitOversized(piece: string): string[] {
+function splitOversized(piece: string, SEG_MAX_CHARS: number): string[] {
   if (countSpokenChars(piece) <= SEG_MAX_CHARS) return [piece]
   const out: string[] = []
   let buf = ''
@@ -99,15 +99,21 @@ function splitOversized(piece: string): string[] {
  * 把一个说话人回合切成若干段，每段念出字数 ≤ 15s 语速上限：
  * 先按句末标点切句 → 贪心装箱（装得下就并入当前段）→ 超长单句按逗号再切 →
  * 结尾短尾段（< 4s 字数）能并回前段则并回。返回各段文本（换行合并为空格）。
+ * charsPerSecond=切分语速（字/秒，切割节点上可调），省略则按默认 6。
  */
-export function splitTurnIntoSegments(text: string): string[] {
+export function splitTurnIntoSegments(
+  text: string,
+  charsPerSecond: number = STORYBOARD_CHARS_PER_SECOND,
+): string[] {
+  const SEG_MAX_CHARS = segMaxChars(charsPerSecond)
+  const SEG_MIN_CHARS = segMinChars(charsPerSecond)
   const flat = text.replaceAll('\n', ' ').trim()
   if (!flat) return []
   const pieces = (flat.match(SENTENCE_RE) ?? [flat]).map((s) => s.trim()).filter(Boolean)
   const segments: string[] = []
   let buf = ''
   for (const piece of pieces) {
-    for (const chunk of splitOversized(piece)) {
+    for (const chunk of splitOversized(piece, SEG_MAX_CHARS)) {
       if (buf && countSpokenChars(buf + chunk) > SEG_MAX_CHARS) {
         segments.push(buf)
         buf = ''
@@ -130,25 +136,36 @@ export function splitTurnIntoSegments(text: string): string[] {
   return segments
 }
 
-/** 段文本 → 估算视频时长（秒）：念出字数/语速，四舍五入后夹到 4~15。 */
-export function estimateSegmentDuration(text: string): number {
-  const seconds = Math.round(countSpokenChars(text) / STORYBOARD_CHARS_PER_SECOND)
+/**
+ * 段文本 → 估算视频时长（秒）：念出字数/语速，四舍五入后夹到 4~15。
+ * charsPerSecond 省略则按默认 6（分镜节点的行内重估/Excel 导入走默认，只有切割节点传值）。
+ */
+export function estimateSegmentDuration(
+  text: string,
+  charsPerSecond: number = STORYBOARD_CHARS_PER_SECOND,
+): number {
+  const seconds = Math.round(countSpokenChars(text) / charsPerSecond)
   return Math.min(STORYBOARD_SEG_MAX_SECONDS, Math.max(STORYBOARD_SEG_MIN_SECONDS, seconds))
 }
 
 /**
  * 用脚本原文重建分镜表格行：拆说话人回合 → 每回合按语速切段 → 每段估算时长；
  * 全部置 idle、清空 prompt/error。text 不含角色名前缀（表格 A 列是说话人、B 列是段文本）。
- * 切割节点与分镜节点的「切分脚本」双入口共用。
+ * 切割节点与分镜节点的「切分脚本」双入口共用；charsPerSecond=切分语速（省略按默认 6，
+ * 只有切割节点会传自己配置的档位）。
  */
-export function buildItems(script: string, roleNames: [string, string]): StoryboardItem[] {
+export function buildItems(
+  script: string,
+  roleNames: [string, string],
+  charsPerSecond: number = STORYBOARD_CHARS_PER_SECOND,
+): StoryboardItem[] {
   const items: StoryboardItem[] = []
   for (const turn of splitScriptTurns(script, roleNames)) {
-    for (const segment of splitTurnIntoSegments(turn.text)) {
+    for (const segment of splitTurnIntoSegments(turn.text, charsPerSecond)) {
       items.push({
         text: segment,
         roleIndex: turn.roleIndex,
-        duration: estimateSegmentDuration(segment),
+        duration: estimateSegmentDuration(segment, charsPerSecond),
         status: 'idle' as const,
       })
     }

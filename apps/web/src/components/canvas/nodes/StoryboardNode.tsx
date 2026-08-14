@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { NodeResizer, type NodeProps } from '@xyflow/react'
 import {
   Check,
@@ -27,6 +27,7 @@ import {
   storyboardRoleImageHandleId,
 } from '@/lib/graph'
 import {
+  mergeModelOptions,
   STORYBOARD_CONCURRENCY,
   STORYBOARD_SCRIPT_PLACEHOLDER,
   STORYBOARD_SEG_MAX_SECONDS,
@@ -40,10 +41,19 @@ import {
 } from '@/lib/storyboard'
 import { type StoryboardItem, type StoryboardNode as StoryboardNodeType } from '@/lib/types'
 import { useFlowStore } from '@/store/useFlowStore'
+import { useSettingsStore } from '@/store/useSettingsStore'
 
 // 节点默认/最小尺寸：六列表格需要宽卡片（prompt 列要能读）
 const DEFAULT_WIDTH = 760
 const DEFAULT_HEIGHT = 520
+
+/**
+ * 左侧端点槽位（handleTop = 48 + index×32）：按**角色**分组——同一角色的参考图与音色相邻，
+ * 两个角色之间**空出一个槽位**（组内 32px / 组间 64px），一眼能看出哪两条线属于同一个人。
+ */
+const SLOT_SEGMENTS = 0
+const SLOT_ROLE_IMAGE = [1, 4] as const
+const SLOT_ROLE_AUDIO = [2, 5] as const
 
 /** 单段状态图标：排队沙漏 / 生成中转圈 / 完成绿勾 / 失败红叉 / 未跑空位。 */
 function ItemStatusIcon({ status }: { status: StoryboardItem['status'] }) {
@@ -229,6 +239,22 @@ export function StoryboardNode({
   const items = data.items ?? []
   const doneCount = items.filter((it) => it.status === 'done' && it.prompt).length
 
+  // 逐段扩写用的模型：本节点选定值，空=跟随全局设置（端点/密钥/协议始终取全局）
+  const model = data.model ?? ''
+  const agentModel = useSettingsStore((s) => s.agentModel)
+  const agentEndpoint = useSettingsStore((s) => s.agentEndpoint)
+  const agentModelList = useSettingsStore((s) => s.agentModelList)
+  const agentModels = useSettingsStore((s) => s.agentModels)
+  const agentModelsLoaded = useSettingsStore((s) => s.agentModelsLoaded)
+  const agentModelsLoading = useSettingsStore((s) => s.agentModelsLoading)
+  const loadAgentModels = useSettingsStore((s) => s.loadAgentModels)
+  // 候选与设置面板同源：手动维护的列表 ∪ 端点动态获取（当前已选值置顶保留，防改端点后选项消失）
+  const modelOptions = mergeModelOptions(agentModelList, agentModels, model)
+  // 列表尚未取过就拉一次（loaded 成败都置 true，故最多一次）；没配端点时不发请求
+  useEffect(() => {
+    if (agentEndpoint.trim() && !agentModelsLoaded && !agentModelsLoading) void loadAgentModels()
+  }, [agentEndpoint, agentModelsLoaded, agentModelsLoading, loadAgentModels])
+
   const [scriptOpen, setScriptOpen] = useState(false)
   const [templateOpen, setTemplateOpen] = useState(false)
   const [pasteOpen, setPasteOpen] = useState(false)
@@ -256,6 +282,8 @@ export function StoryboardNode({
     template: string,
     rows: StoryboardItem[],
     indices: number[],
+    /** 本次用的模型名（空=跟随全局设置）。 */
+    model: string,
   ) => {
     const controller = new AbortController()
     abortRef.current = controller
@@ -277,7 +305,7 @@ export function StoryboardNode({
             String(rows[idx].duration ?? ''),
           )
           const prompt = await agentExpandApi(
-            { template: rowTemplate, line: composeLine(rows[idx]) },
+            { template: rowTemplate, line: composeLine(rows[idx]), model },
             controller.signal,
           )
           store().patchStoryboardItem(projectId, id, idx, {
@@ -382,6 +410,7 @@ export function StoryboardNode({
       template,
       items,
       items.map((_, i) => i),
+      model,
     )
   }
 
@@ -393,7 +422,7 @@ export function StoryboardNode({
     const template = templateField.value
     if (!ensureTemplate(template)) return
     state.updateNodeDataInProject(projectId, id, { running: true })
-    void runIndices(projectId, template, items, [index])
+    void runIndices(projectId, template, items, [index], model)
   }
 
   // 落成节点：已生成的段 → N 组「Prompt → Seedance」节点对（不自动运行视频生成）
@@ -449,42 +478,32 @@ export function StoryboardNode({
         handleClassName="!size-2.5 !rounded-sm !border-2 !border-background !bg-primary"
       />
       <NodeHeader id={id} icon={ListVideo} title={data.label} selected={selected} />
-      {/* 左侧端点：分镜表（上游脚本切割节点连入）+ 角色参考图×2 + 角色音色×2 */}
+      {/* 左侧端点：分镜表（上游脚本切割节点连入）+ 每个角色一组「参考图 + 音色」（组间空一槽） */}
       <NodeHandle
         type="target"
         id={STORYBOARD_SEGMENTS_HANDLE}
-        index={0}
+        index={SLOT_SEGMENTS}
         tone="prompt"
         label="分镜表"
       />
-      <NodeHandle
-        type="target"
-        id={storyboardRoleImageHandleId(0)}
-        index={1}
-        tone="image"
-        label={`${roleLabel(0)} 参考图`}
-      />
-      <NodeHandle
-        type="target"
-        id={storyboardRoleImageHandleId(1)}
-        index={2}
-        tone="image"
-        label={`${roleLabel(1)} 参考图`}
-      />
-      <NodeHandle
-        type="target"
-        id={storyboardRoleAudioHandleId(0)}
-        index={3}
-        tone="audio"
-        label={`${roleLabel(0)} 音色`}
-      />
-      <NodeHandle
-        type="target"
-        id={storyboardRoleAudioHandleId(1)}
-        index={4}
-        tone="audio"
-        label={`${roleLabel(1)} 音色`}
-      />
+      {[0, 1].map((roleIndex) => (
+        <Fragment key={roleIndex}>
+          <NodeHandle
+            type="target"
+            id={storyboardRoleImageHandleId(roleIndex)}
+            index={SLOT_ROLE_IMAGE[roleIndex]}
+            tone="image"
+            label={`${roleLabel(roleIndex)} 参考图`}
+          />
+          <NodeHandle
+            type="target"
+            id={storyboardRoleAudioHandleId(roleIndex)}
+            index={SLOT_ROLE_AUDIO[roleIndex]}
+            tone="audio"
+            label={`${roleLabel(roleIndex)} 音色`}
+          />
+        </Fragment>
+      ))}
       <CardContent className="flex min-h-0 flex-1 flex-col gap-2 px-3">
         {/* 角色名 + Excel 互通工具栏 */}
         <div className="flex shrink-0 items-center gap-1.5">
@@ -639,6 +658,24 @@ export function StoryboardNode({
             </span>
           )}
           <div className="ml-auto flex items-center gap-1.5">
+            {/* 扩写模型：原生 select（Radix 下拉在 React Flow 节点内打不开，见 MentionMenu 注释）。
+                候选空时也保留控件，「跟随全局设置」始终可选，不会出现无从选择的死角 */}
+            <select
+              value={model}
+              onChange={(e) => updateNodeData(id, { model: e.target.value })}
+              disabled={running}
+              className="nodrag h-8 max-w-40 rounded-md border border-input bg-transparent px-1.5 text-[11px] text-foreground"
+              title={`逐段扩写用的模型（端点/密钥/协议仍取全局设置）${
+                model ? '' : `；当前跟随全局：${agentModel || '未设置'}`
+              }`}
+            >
+              <option value="">跟随全局设置{agentModel ? `（${agentModel}）` : ''}</option>
+              {modelOptions.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
             <Button
               size="sm"
               variant="outline"

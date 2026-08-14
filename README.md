@@ -144,9 +144,10 @@ pnpm --filter @openflow/desktop dev
 | `UPLOAD_ENDPOINT` | （无内置默认） | 图片上传接口，如 `http://<your-host>:8511/api/upload` |
 | `UPLOAD_MEDIA_ENDPOINT` | （无内置默认） | 音频/视频上传接口，如 `http://<your-host>:8511/api/upload-media` |
 | `AIGC_HISTORY_ENDPOINT` | （无内置默认） | AIGC 历史任务查询接口，如 `http://<your-host>:8511/api/task-history`；用于生成接口没带回结果 URL 时找回结果 |
-| `AGENT_ENDPOINT` | （无内置默认） | 画布 Agent / Any LLM 的 OpenAI 兼容接口地址 |
-| `AGENT_API_KEY` | （无内置默认） | 画布 Agent / Any LLM 的 API Key |
-| `AGENT_MODEL` | （无内置默认） | 画布 Agent / Any LLM 的模型名 |
+| `AGENT_ENDPOINT` | （无内置默认） | 画布 Agent / 分镜扩写的 LLM 接口地址（填到基址，如 `https://host/v1`） |
+| `AGENT_API_STYLE` | `responses` | 接口协议：`responses`（`POST /v1/responses`）或 `chat`（`POST /v1/chat/completions`） |
+| `AGENT_API_KEY` | （无内置默认） | 画布 Agent / 分镜扩写的 API Key |
+| `AGENT_MODEL` | （无内置默认） | 画布 Agent / 分镜扩写的模型名 |
 
 ```bash
 PORT=8787 AIGC_ENDPOINT=http://your-host/aigc pnpm server

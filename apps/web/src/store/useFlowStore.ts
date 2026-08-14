@@ -26,6 +26,7 @@ import {
   PODCAST_ROLE_B_DEFAULT,
   PODCAST_SPEECH_RATE_DEFAULT,
   SPLITTER_NODE_META,
+  STORYBOARD_CHARS_PER_SECOND,
   STORYBOARD_NODE_META,
   VIDEO_VARIANT_DEFAULT,
   videoDefaultVersion,
@@ -261,6 +262,7 @@ function createNode(
         script: '',
         roleAName: PODCAST_ROLE_A_DEFAULT,
         roleBName: PODCAST_ROLE_B_DEFAULT,
+        charsPerSecond: STORYBOARD_CHARS_PER_SECOND,
       },
     }
   }

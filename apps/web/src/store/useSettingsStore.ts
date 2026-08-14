@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { AgentModelsBody, SaveSettingsBody } from '@openflow/shared'
+import type { AgentApiStyle, AgentModelsBody, SaveSettingsBody } from '@openflow/shared'
 import { getSettingsApi, listAgentModelsApi, saveSettingsApi } from '@/lib/api'
 
 type SettingsState = {
@@ -13,8 +13,10 @@ type SettingsState = {
   uploadMediaEndpoint: string
   /** AIGC 历史任务查询端点；为空=后端回退 env，两者皆空则没有「结果找回」能力。 */
   aigcHistoryEndpoint: string
-  /** 画布 Agent 的 LLM 端点（OpenAI 兼容）；为空=后端回退 env。 */
+  /** 画布 Agent 的 LLM 端点（填到基址即可，后缀按协议自动补）；为空=后端回退 env。 */
   agentEndpoint: string
+  /** Agent LLM 的接口协议；空串=未选择，后端回退 env 再回退 responses。 */
+  agentApiStyle: AgentApiStyle | ''
   /** 服务端是否已配置 Agent API Key（明文不回传，只有这个标记）。 */
   hasAgentApiKey: boolean
   /** 服务端是否已配置火山语音 API Key（播客 TTS 用；明文不回传，只有这个标记）。 */
@@ -51,6 +53,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   uploadMediaEndpoint: '',
   aigcHistoryEndpoint: '',
   agentEndpoint: '',
+  agentApiStyle: '',
   hasAgentApiKey: false,
   hasVolcTtsApiKey: false,
   agentModel: '',
@@ -70,6 +73,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
       uploadMediaEndpoint: dto.uploadMediaEndpoint,
       aigcHistoryEndpoint: dto.aigcHistoryEndpoint,
       agentEndpoint: dto.agentEndpoint,
+      agentApiStyle: dto.agentApiStyle ?? '',
       hasAgentApiKey: dto.hasAgentApiKey ?? false,
       hasVolcTtsApiKey: dto.hasVolcTtsApiKey ?? false,
       agentModel: dto.agentModel,
