@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { NodeResizer, type NodeProps } from '@xyflow/react'
 import {
   Check,
@@ -44,6 +44,14 @@ import { useFlowStore } from '@/store/useFlowStore'
 // 节点默认/最小尺寸：六列表格需要宽卡片（prompt 列要能读）
 const DEFAULT_WIDTH = 760
 const DEFAULT_HEIGHT = 520
+
+/**
+ * 左侧端点槽位（handleTop = 48 + index×32）：按**角色**分组——同一角色的参考图与音色相邻，
+ * 两个角色之间**空出一个槽位**（组内 32px / 组间 64px），一眼能看出哪两条线属于同一个人。
+ */
+const SLOT_SEGMENTS = 0
+const SLOT_ROLE_IMAGE = [1, 4] as const
+const SLOT_ROLE_AUDIO = [2, 5] as const
 
 /** 单段状态图标：排队沙漏 / 生成中转圈 / 完成绿勾 / 失败红叉 / 未跑空位。 */
 function ItemStatusIcon({ status }: { status: StoryboardItem['status'] }) {
@@ -449,42 +457,32 @@ export function StoryboardNode({
         handleClassName="!size-2.5 !rounded-sm !border-2 !border-background !bg-primary"
       />
       <NodeHeader id={id} icon={ListVideo} title={data.label} selected={selected} />
-      {/* 左侧端点：分镜表（上游脚本切割节点连入）+ 角色参考图×2 + 角色音色×2 */}
+      {/* 左侧端点：分镜表（上游脚本切割节点连入）+ 每个角色一组「参考图 + 音色」（组间空一槽） */}
       <NodeHandle
         type="target"
         id={STORYBOARD_SEGMENTS_HANDLE}
-        index={0}
+        index={SLOT_SEGMENTS}
         tone="prompt"
         label="分镜表"
       />
-      <NodeHandle
-        type="target"
-        id={storyboardRoleImageHandleId(0)}
-        index={1}
-        tone="image"
-        label={`${roleLabel(0)} 参考图`}
-      />
-      <NodeHandle
-        type="target"
-        id={storyboardRoleImageHandleId(1)}
-        index={2}
-        tone="image"
-        label={`${roleLabel(1)} 参考图`}
-      />
-      <NodeHandle
-        type="target"
-        id={storyboardRoleAudioHandleId(0)}
-        index={3}
-        tone="audio"
-        label={`${roleLabel(0)} 音色`}
-      />
-      <NodeHandle
-        type="target"
-        id={storyboardRoleAudioHandleId(1)}
-        index={4}
-        tone="audio"
-        label={`${roleLabel(1)} 音色`}
-      />
+      {[0, 1].map((roleIndex) => (
+        <Fragment key={roleIndex}>
+          <NodeHandle
+            type="target"
+            id={storyboardRoleImageHandleId(roleIndex)}
+            index={SLOT_ROLE_IMAGE[roleIndex]}
+            tone="image"
+            label={`${roleLabel(roleIndex)} 参考图`}
+          />
+          <NodeHandle
+            type="target"
+            id={storyboardRoleAudioHandleId(roleIndex)}
+            index={SLOT_ROLE_AUDIO[roleIndex]}
+            tone="audio"
+            label={`${roleLabel(roleIndex)} 音色`}
+          />
+        </Fragment>
+      ))}
       <CardContent className="flex min-h-0 flex-1 flex-col gap-2 px-3">
         {/* 角色名 + Excel 互通工具栏 */}
         <div className="flex shrink-0 items-center gap-1.5">
