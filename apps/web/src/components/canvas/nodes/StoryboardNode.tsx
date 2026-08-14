@@ -4,6 +4,8 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  ClipboardCopy,
+  ClipboardPaste,
   Clock,
   ListVideo,
   Loader2,
@@ -30,13 +32,18 @@ import {
   STORYBOARD_SEG_MAX_SECONDS,
   STORYBOARD_SEG_MIN_SECONDS,
 } from '@/lib/nodeCatalog'
-import { buildItems, estimateSegmentDuration } from '@/lib/storyboard'
+import {
+  buildItems,
+  estimateSegmentDuration,
+  itemsToTsv,
+  parseItemsTsv,
+} from '@/lib/storyboard'
 import { type StoryboardItem, type StoryboardNode as StoryboardNodeType } from '@/lib/types'
 import { useFlowStore } from '@/store/useFlowStore'
 
-// 节点默认/最小尺寸：分镜表格 + 折叠区需要比普通节点更大的空间
-const DEFAULT_WIDTH = 460
-const DEFAULT_HEIGHT = 480
+// 节点默认/最小尺寸：六列表格需要宽卡片（prompt 列要能读）
+const DEFAULT_WIDTH = 760
+const DEFAULT_HEIGHT = 520
 
 /** 单段状态图标：排队沙漏 / 生成中转圈 / 完成绿勾 / 失败红叉 / 未跑空位。 */
 function ItemStatusIcon({ status }: { status: StoryboardItem['status'] }) {
@@ -48,33 +55,34 @@ function ItemStatusIcon({ status }: { status: StoryboardItem['status'] }) {
 }
 
 /**
- * 分镜表格的一行：A 角色徽标 / B 段文本（可编辑，改完自动重估 C）/ C 时长（可编辑）/
- * D 状态 + 单段运行/查看。独立组件——B 列的 IME 防抖 hook 不能在父组件循环里创建。
+ * 表格一行 <tr>：序号（可编辑，改序号=把本行挪到该位置）/ 发言人（下拉切角色）/
+ * 脚本（可编辑，改完自动重估时长）/ 时长（可编辑）/ 生成（状态 + 单段运行）/
+ * prompt（只读可滚动，可直接选中复制）。独立组件——脚本列的 IME 防抖 hook 不能在父组件循环里创建。
  */
 function StoryboardRow({
   item,
   index,
-  roleName,
+  roleNames,
   running,
-  expanded,
   onPatch,
+  onMove,
   onRun,
-  onToggleExpand,
 }: {
   item: StoryboardItem
   index: number
-  roleName: string
+  /** 两个角色显示名（发言人下拉的选项）。 */
+  roleNames: [string, string]
   running: boolean
-  expanded: boolean
   onPatch: (index: number, patch: Partial<StoryboardItem>) => void
+  /** 把第 index 行挪到 targetIndex（0 基，已夹取）；running 中禁用（worker 按下标写回会错位）。 */
+  onMove: (index: number, targetIndex: number) => void
   onRun: (index: number) => void
-  onToggleExpand: (index: number) => void
 }) {
-  // B 列：改完文本自动按语速重估 C 列时长（之后仍可手动改 C 覆盖）
+  // 脚本列：改完文本自动按语速重估时长（之后仍可手动改时长覆盖）
   const textField = useCompositionField(item.text ?? '', (v) =>
     onPatch(index, { text: v, duration: estimateSegmentDuration(v) }),
   )
-  // C 列：本地承接输入，失焦/回车时夹到 4~15 提交；外部值变化（如改 B 列重估）时
+  // 时长列：本地承接输入，失焦/回车时夹到 4~15 提交；外部值变化（如改脚本重估）时
   // 用「渲染期对比上次 prop」的官方派生模式同步回本地（effect 里 setState 会被 lint 拦）
   const [durationLocal, setDurationLocal] = useState(String(item.duration ?? ''))
   const [prevDuration, setPrevDuration] = useState(item.duration)
@@ -91,31 +99,72 @@ function StoryboardRow({
     if (clamped !== item.duration) onPatch(index, { duration: clamped })
   }
 
+  // 序号列：本地承接输入，失焦/回车提交=把本行挪到该位置。行组件按位置复用（key=下标），
+  // 移动后本位置换了条目但 index 不变——须在 index **或 item 引用**变化时都重置回真实序号，
+  // 否则输入框会留着移动前敲的旧值（数据已正确、仅显示漂移）
+  const [orderLocal, setOrderLocal] = useState(String(index + 1))
+  const [prevIndex, setPrevIndex] = useState(index)
+  const [prevItem, setPrevItem] = useState(item)
+  if (index !== prevIndex || item !== prevItem) {
+    setPrevIndex(index)
+    setPrevItem(item)
+    setOrderLocal(String(index + 1))
+  }
+  const commitOrder = () => {
+    const n = Number(orderLocal)
+    if (Number.isFinite(n) && Math.round(n) - 1 !== index) {
+      onMove(index, Math.round(n) - 1)
+    } else {
+      setOrderLocal(String(index + 1))
+    }
+  }
+
   return (
-    <div className="border-b px-2 py-1.5 text-[11px] last:border-b-0">
-      <div className="flex items-start gap-1.5">
-        <span className="mt-1 w-5 shrink-0 text-right text-muted-foreground">{index + 1}</span>
-        <span className="mt-1 max-w-16 shrink-0 truncate rounded bg-muted px-1 text-[10px] text-muted-foreground">
-          {roleName}
-        </span>
+    <tr className="border-b align-top last:border-b-0">
+      <td className="border-r px-1 py-1">
+        <Input
+          value={orderLocal}
+          onChange={(e) => setOrderLocal(e.target.value)}
+          onBlur={commitOrder}
+          onKeyDown={(e) => e.key === 'Enter' && commitOrder()}
+          disabled={running}
+          inputMode="numeric"
+          className="nodrag h-6 w-9 px-1 text-right text-[11px] tabular-nums"
+          title="序号：改成几就把本行挪到第几行（生成中不可改）"
+        />
+      </td>
+      <td className="border-r px-1 py-1">
+        {/* 原生 select（Radix 下拉在 React Flow 节点内打不开，见 MentionMenu 注释） */}
+        <select
+          value={item.roleIndex}
+          onChange={(e) => onPatch(index, { roleIndex: Number(e.target.value) })}
+          className="nodrag h-6 max-w-20 rounded-md border border-input bg-transparent px-1 text-[11px] text-foreground"
+          title="发言人（决定落成时连哪个角色的参考图/音色）"
+        >
+          <option value={0}>{roleNames[0]}</option>
+          <option value={1}>{roleNames[1]}</option>
+        </select>
+      </td>
+      <td className="border-r p-0">
         <Textarea
           {...textField}
-          rows={2}
-          className="nodrag field-sizing-fixed min-h-0 flex-1 resize-none px-1.5 py-1 text-[11px] leading-snug"
+          rows={3}
+          className="nodrag field-sizing-fixed min-h-0 w-full resize-none rounded-none border-0 px-1.5 py-1 text-[11px] leading-snug shadow-none focus-visible:ring-1"
         />
-        <div className="flex shrink-0 items-center gap-1">
-          <Input
-            value={durationLocal}
-            onChange={(e) => setDurationLocal(e.target.value)}
-            onBlur={commitDuration}
-            onKeyDown={(e) => e.key === 'Enter' && commitDuration()}
-            inputMode="numeric"
-            className="nodrag h-6 w-10 px-1 text-center text-[11px] tabular-nums"
-            title={`视频时长（秒，${STORYBOARD_SEG_MIN_SECONDS}~${STORYBOARD_SEG_MAX_SECONDS}）；落成时写进该段 Seedance 节点`}
-          />
-          <span className="text-[10px] text-muted-foreground">s</span>
-        </div>
-        <div className="mt-1 flex shrink-0 items-center gap-1">
+      </td>
+      <td className="border-r px-1 py-1">
+        <Input
+          value={durationLocal}
+          onChange={(e) => setDurationLocal(e.target.value)}
+          onBlur={commitDuration}
+          onKeyDown={(e) => e.key === 'Enter' && commitDuration()}
+          inputMode="numeric"
+          className="nodrag h-6 w-10 px-1 text-center text-[11px] tabular-nums"
+          title={`视频时长（秒，${STORYBOARD_SEG_MIN_SECONDS}~${STORYBOARD_SEG_MAX_SECONDS}）；落成时写进该段 Seedance 节点`}
+        />
+      </td>
+      <td className="border-r px-1 py-1">
+        <div className="flex items-center gap-0.5">
           <ItemStatusIcon status={item.status} />
           {!running && (
             <Button
@@ -132,36 +181,31 @@ function StoryboardRow({
               )}
             </Button>
           )}
-          {item.status === 'done' && item.prompt && (
-            <button
-              type="button"
-              className="shrink-0 text-[10px] text-muted-foreground hover:text-foreground"
-              onClick={() => onToggleExpand(index)}
-            >
-              {expanded ? '收起' : '查看'}
-            </button>
-          )}
         </div>
-      </div>
-      {item.status === 'error' && item.error && (
-        <p className="mt-1 whitespace-pre-wrap break-all pl-7 text-[10px] text-destructive">
-          {item.error}
-        </p>
-      )}
-      {item.status === 'done' && item.prompt && expanded && (
-        <pre className="mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap break-all rounded bg-muted/50 p-1.5 pl-2 font-sans text-[10px] leading-relaxed text-muted-foreground">
-          {item.prompt}
-        </pre>
-      )}
-    </div>
+      </td>
+      <td className="p-0">
+        {item.status === 'error' && item.error ? (
+          <div className="nowheel max-h-24 select-text overflow-y-auto whitespace-pre-wrap break-all px-1.5 py-1 text-[10px] leading-relaxed text-destructive">
+            {item.error}
+          </div>
+        ) : item.prompt ? (
+          <div className="nowheel max-h-24 select-text overflow-y-auto whitespace-pre-wrap break-all px-1.5 py-1 text-[10px] leading-relaxed text-muted-foreground">
+            {item.prompt}
+          </div>
+        ) : (
+          <span className="px-1.5 py-1 text-[10px] text-muted-foreground/50">—</span>
+        )}
+      </td>
+    </tr>
   )
 }
 
 /**
- * 脚本分镜节点（表格形态）：A 说话人 / B 分割后脚本（可编辑）/ C 时长（可编辑）/
- * D LLM 产出的 prompt。表格来源双入口——上游脚本切割节点写入，或本节点「粘贴脚本」区切分。
+ * 脚本分镜节点（Excel 式表格）：表头 序号/发言人/脚本/时长/生成/prompt。
+ * 表格来源三入口——上游脚本切割节点写入、本节点「粘贴脚本切分」、「从 Excel 粘贴」（TSV 导入）；
+ * 「复制表格」把整表（含表头与 prompt）以 TSV 写入剪贴板，可直接粘进 Excel。
  * 「生成」逐段并发调 Agent LLM（单段可重跑），「落成节点」批量建
- * 「Prompt → Seedance(reference)」节点对并按说话人自动连参考图/音色、写入 C 列时长。
+ * 「Prompt → Seedance(reference)」节点对并按发言人自动连参考图/音色、写入时长列。
  */
 export function StoryboardNode({
   id,
@@ -187,7 +231,9 @@ export function StoryboardNode({
 
   const [scriptOpen, setScriptOpen] = useState(false)
   const [templateOpen, setTemplateOpen] = useState(false)
-  const [expanded, setExpanded] = useState<Set<number>>(new Set())
+  const [pasteOpen, setPasteOpen] = useState(false)
+  // 工具栏操作反馈（复制/导入结果，纯 UI 态）
+  const [feedback, setFeedback] = useState('')
 
   // 卸载时中止进行中的逐段请求（被中断的段由 runner 末尾的清扫复位为 idle）
   const abortRef = useRef<AbortController | null>(null)
@@ -197,7 +243,7 @@ export function StoryboardNode({
     (roleIndex === 0 ? roleAField.value : roleBField.value).trim() ||
     (roleIndex === 0 ? '角色A' : '角色B')
 
-  /** 发送给 LLM 的台词行 = 「角色名: 段文本」（模板 {{line}} 的替换值）。 */
+  /** 发送给 LLM 的台词行 = 「发言人: 段文本」（模板 {{line}} 的替换值）。 */
   const composeLine = (it: StoryboardItem) => `${roleLabel(it.roleIndex)}: ${it.text}`
 
   /**
@@ -273,7 +319,7 @@ export function StoryboardNode({
     return false
   }
 
-  // 「切分脚本 → 重建表格」：本节点粘贴入口（另一入口是上游脚本切割节点）
+  // 「切分脚本 → 重建表格」：本节点粘贴入口（另两入口：上游切割节点 / 从 Excel 粘贴）
   const handleSplitScript = () => {
     const state = useFlowStore.getState()
     const projectId = state.activeProjectId
@@ -288,8 +334,38 @@ export function StoryboardNode({
       window.alert(e instanceof Error ? e.message : String(e))
       return
     }
-    setExpanded(new Set())
     state.setStoryboardItems(projectId, id, nextItems, false)
+    setFeedback(`已切 ${nextItems.length} 段`)
+  }
+
+  // 「复制表格」：整表（含表头与 prompt）以 TSV 写入剪贴板，直接粘进 Excel
+  const handleCopyTable = async () => {
+    const tsv = itemsToTsv(items, [roleLabel(0), roleLabel(1)])
+    try {
+      await navigator.clipboard.writeText(tsv)
+      setFeedback(`已复制 ${items.length} 行（含表头），可直接粘进 Excel`)
+    } catch {
+      window.alert('复制失败：浏览器拒绝了剪贴板写入')
+    }
+  }
+
+  // 「从 Excel 粘贴」导入：TSV 文本 → 重建表格（列：[序号,] 发言人, 脚本 [, 时长]）
+  const importTsv = (text: string) => {
+    const state = useFlowStore.getState()
+    const projectId = state.activeProjectId
+    if (!projectId || !text.trim()) return
+    try {
+      const { items: nextItems, roleAName, roleBName } = parseItemsTsv(text, [
+        roleAField.value,
+        roleBField.value,
+      ])
+      updateNodeData(id, { roleAName, roleBName })
+      state.setStoryboardItems(projectId, id, nextItems, false)
+      setFeedback(`已导入 ${nextItems.length} 行（发言人：${roleAName} / ${roleBName}）`)
+      setPasteOpen(false)
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : String(e))
+    }
   }
 
   // 「生成」：对表格全部行逐段跑 LLM（整表重置状态）
@@ -300,7 +376,6 @@ export function StoryboardNode({
     const template = templateField.value
     updateNodeData(id, { template })
     if (!ensureTemplate(template)) return
-    setExpanded(new Set())
     state.updateNodeDataInProject(projectId, id, { running: true })
     void runIndices(
       projectId,
@@ -343,13 +418,20 @@ export function StoryboardNode({
     if (state.activeProjectId) state.patchStoryboardItem(state.activeProjectId, id, index, patch)
   }
 
-  const toggleExpanded = (index: number) => {
-    setExpanded((prev) => {
-      const next = new Set(prev)
-      if (next.has(index)) next.delete(index)
-      else next.add(index)
-      return next
-    })
+  // 改序号=移动行：从 store 取最新表格（防 300ms 防抖窗口内的过期快照）整表重排后写回
+  const handleMoveRow = (from: number, target: number) => {
+    const state = useFlowStore.getState()
+    const projectId = state.activeProjectId
+    if (!projectId || running) return
+    const project = state.projects.find((p) => p.id === projectId)
+    const node = project?.nodes.find((n) => n.id === id)
+    if (node?.type !== 'storyboard') return
+    const current = [...(node.data.items ?? [])]
+    if (from < 0 || from >= current.length) return
+    const to = Math.min(current.length - 1, Math.max(0, target))
+    const [moved] = current.splice(from, 1)
+    current.splice(to, 0, moved)
+    state.setStoryboardItems(projectId, id, current, false)
   }
 
   return (
@@ -361,7 +443,7 @@ export function StoryboardNode({
     >
       <NodeResizer
         isVisible={selected}
-        minWidth={420}
+        minWidth={560}
         minHeight={400}
         lineClassName="!border-primary/60"
         handleClassName="!size-2.5 !rounded-sm !border-2 !border-background !bg-primary"
@@ -404,23 +486,66 @@ export function StoryboardNode({
         label={`${roleLabel(1)} 音色`}
       />
       <CardContent className="flex min-h-0 flex-1 flex-col gap-2 px-3">
-        {/* 两个角色名：表格 A 列展示 + 发送行「角色名: 段文本」+ 端点标签 */}
+        {/* 角色名 + Excel 互通工具栏 */}
         <div className="flex shrink-0 items-center gap-1.5">
           <Input
             {...roleAField}
             placeholder="角色A"
-            className="nodrag h-7 flex-1 text-xs"
+            className="nodrag h-7 w-24 text-xs"
             title="角色 1 名字"
           />
           <Input
             {...roleBField}
             placeholder="角色B"
-            className="nodrag h-7 flex-1 text-xs"
+            className="nodrag h-7 w-24 text-xs"
             title="角色 2 名字"
           />
+          <span className="min-w-0 flex-1 truncate text-right text-[10px] text-muted-foreground">
+            {feedback}
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleCopyTable}
+            disabled={items.length === 0}
+            className="nodrag h-7 gap-1 px-2 text-xs"
+            title="把整张表（含表头与 prompt 列）以制表符分隔复制到剪贴板，可直接粘进 Excel"
+          >
+            <ClipboardCopy className="size-3" />
+            复制表格
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setPasteOpen((v) => !v)}
+            className="nodrag h-7 gap-1 px-2 text-xs"
+            title="从 Excel 复制行后粘到输入区导入（列：[序号,] 发言人, 脚本 [, 时长]）"
+          >
+            <ClipboardPaste className="size-3" />
+            从 Excel 粘贴
+          </Button>
         </div>
 
-        {/* 粘贴脚本入口（默认收起；另一入口是上游脚本切割节点） */}
+        {/* 从 Excel 粘贴导入区：粘贴即导入（onPaste 拦截），也可手动编辑后点导入 */}
+        {pasteOpen && (
+          <div className="flex shrink-0 flex-col gap-1 rounded-md border border-dashed p-2">
+            <Textarea
+              placeholder={
+                '在 Excel 里复制行后，在此按 Ctrl/Cmd+V 直接导入。\n列约定（Tab 分隔）：[序号,] 发言人, 脚本 [, 时长]；表头行自动跳过。'
+              }
+              rows={3}
+              onPaste={(e) => {
+                e.preventDefault()
+                importTsv(e.clipboardData.getData('text/plain'))
+              }}
+              onChange={() => {}}
+              value=""
+              className="nodrag field-sizing-fixed w-full resize-none font-mono text-[10px] leading-relaxed"
+            />
+          </div>
+        )}
+
+        {/* 粘贴脚本入口（默认收起；表格另两入口：上游脚本切割节点 / 从 Excel 粘贴） */}
         <div className="flex shrink-0 flex-col gap-1">
           <button
             type="button"
@@ -464,32 +589,45 @@ export function StoryboardNode({
           {templateOpen && (
             <Textarea
               {...templateField}
-              placeholder="每段台词实际发送给 LLM 的完整 prompt；{{line}} 会被替换为「角色名: 段文本」，{{duration}}（可选）替换为该段时长秒数，无其他包装"
+              placeholder="每段台词实际发送给 LLM 的完整 prompt；{{line}} 会被替换为「发言人: 段文本」，{{duration}}（可选）替换为该段时长秒数，无其他包装"
               className="nodrag nowheel field-sizing-fixed h-36 w-full resize-none font-mono text-[10px] leading-relaxed"
             />
           )}
         </div>
 
-        {/* 分镜表格：A 说话人 / B 段文本（可编辑）/ C 时长（可编辑）/ D 状态与 prompt */}
+        {/* 分镜表格：序号 / 发言人 / 脚本（可编辑）/ 时长（可编辑）/ 生成 / prompt */}
         {items.length > 0 ? (
-          <div className="nodrag nowheel min-h-0 flex-1 overflow-y-auto rounded-md border">
-            {items.map((it, i) => (
-              <StoryboardRow
-                key={i}
-                item={it}
-                index={i}
-                roleName={roleLabel(it.roleIndex)}
-                running={running}
-                expanded={expanded.has(i)}
-                onPatch={handlePatchRow}
-                onRun={handleRunRow}
-                onToggleExpand={toggleExpanded}
-              />
-            ))}
+          <div className="nodrag nowheel min-h-0 flex-1 overflow-auto rounded-md border">
+            <table className="w-full border-collapse text-[11px]">
+              <thead className="sticky top-0 z-10 bg-muted">
+                <tr className="text-left text-[10px] text-muted-foreground">
+                  <th className="w-9 border-b border-r px-1.5 py-1 text-right font-medium">序号</th>
+                  <th className="w-14 border-b border-r px-1.5 py-1 font-medium">发言人</th>
+                  <th className="min-w-44 border-b border-r px-1.5 py-1 font-medium">脚本</th>
+                  <th className="w-13 border-b border-r px-1.5 py-1 font-medium">时长</th>
+                  <th className="w-13 border-b border-r px-1.5 py-1 font-medium">生成</th>
+                  <th className="min-w-44 border-b px-1.5 py-1 font-medium">prompt</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((it, i) => (
+                  <StoryboardRow
+                    key={i}
+                    item={it}
+                    index={i}
+                    roleNames={[roleLabel(0), roleLabel(1)]}
+                    running={running}
+                    onPatch={handlePatchRow}
+                    onMove={handleMoveRow}
+                    onRun={handleRunRow}
+                  />
+                ))}
+              </tbody>
+            </table>
           </div>
         ) : (
           <div className="flex min-h-0 flex-1 items-center justify-center rounded-md border border-dashed text-[11px] text-muted-foreground">
-            表格为空：连上游「脚本切割」节点点切割，或展开上方「粘贴脚本切分」
+            表格为空：连上游「脚本切割」节点点切割、展开「粘贴脚本切分」、或「从 Excel 粘贴」导入
           </div>
         )}
 

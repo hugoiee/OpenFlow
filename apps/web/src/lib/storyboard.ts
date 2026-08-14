@@ -159,6 +159,121 @@ export function buildItems(script: string, roleNames: [string, string]): Storybo
   return items
 }
 
+// ---- Excel（TSV）双向互通 ----
+
+/** TSV 字段转义：含制表符/换行/引号的字段用双引号包裹（Excel 粘贴时能还原多行单元格）。 */
+function escapeTsvField(v: string): string {
+  return /[\t\n\r"]/.test(v) ? `"${v.replaceAll('"', '""')}"` : v
+}
+
+/** 分镜表 → TSV（含表头：序号/发言人/脚本/时长(秒)/prompt），供「复制表格」粘进 Excel。 */
+export function itemsToTsv(items: StoryboardItem[], roleNames: [string, string]): string {
+  const roleName = (i: number) => roleNames[i]?.trim() || (i === 0 ? '角色A' : '角色B')
+  const rows = items.map((it, i) =>
+    [
+      String(i + 1),
+      roleName(it.roleIndex),
+      escapeTsvField(it.text),
+      String(it.duration ?? ''),
+      escapeTsvField(it.prompt ?? ''),
+    ].join('\t'),
+  )
+  return ['序号\t发言人\t脚本\t时长(秒)\tprompt', ...rows].join('\n')
+}
+
+/** 解析 TSV 文本为单元格矩阵：支持双引号包裹的字段（内含换行/制表符/"" 转义），\r\n 兼容。 */
+function parseTsvTable(text: string): string[][] {
+  const rows: string[][] = []
+  let cells: string[] = []
+  let cell = ''
+  let inQuotes = false
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]
+    if (inQuotes) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') {
+          cell += '"'
+          i++
+        } else inQuotes = false
+      } else cell += ch
+      continue
+    }
+    if (ch === '"' && cell === '') inQuotes = true
+    else if (ch === '\t') {
+      cells.push(cell)
+      cell = ''
+    } else if (ch === '\n' || ch === '\r') {
+      if (ch === '\r' && text[i + 1] === '\n') i++
+      cells.push(cell)
+      rows.push(cells)
+      cells = []
+      cell = ''
+    } else cell += ch
+  }
+  cells.push(cell)
+  rows.push(cells)
+  return rows.filter((r) => r.some((c) => c.trim()))
+}
+
+/**
+ * 从 Excel 粘贴的行导入分镜表。列约定（\t 分隔）：[序号,] 发言人, 脚本 [, 时长]——
+ * 首列纯数字视作序号丢弃，表头行（含「发言人/脚本/时长/说话人」字样）自动跳过；
+ * 时长缺省按语速估算，超范围夹到 4~15；prompt 列不导入（那是 LLM 的产出）。
+ * 发言人去重后最多 2 个：与节点已配角色名对得上则沿用其 A/B 映射，否则按出现序作 A/B。
+ */
+export function parseItemsTsv(
+  text: string,
+  currentRoles: [string, string],
+): { items: StoryboardItem[]; roleAName: string; roleBName: string } {
+  let rows = parseTsvTable(text)
+  const headerWords = ['发言人', '说话人', '脚本', '时长', '序号', 'prompt']
+  if (rows.length > 0 && rows[0].some((c) => headerWords.some((w) => c.trim().includes(w)))) {
+    rows = rows.slice(1)
+  }
+  const parsed: { speaker: string; text: string; duration?: number }[] = []
+  for (const raw of rows) {
+    let cells = raw.map((c) => c.trim())
+    // 首列纯数字 = Excel 里的序号列，丢弃
+    if (cells.length >= 3 && /^\d+$/.test(cells[0])) cells = cells.slice(1)
+    const [speaker, segText, durText] = cells
+    if (!speaker || !segText?.trim()) continue
+    const dur = Number(durText)
+    parsed.push({
+      speaker,
+      text: segText.trim(),
+      duration: Number.isFinite(dur) && durText ? dur : undefined,
+    })
+  }
+  if (parsed.length === 0) {
+    throw new Error('没有可导入的行：每行至少要有「发言人」和「脚本」两列（Tab 分隔）')
+  }
+  const speakers = [...new Set(parsed.map((r) => r.speaker))]
+  if (speakers.length > 2) {
+    throw new Error(`发言人超过 2 个（${speakers.join('、')}）：分镜节点只支持双人对话`)
+  }
+  // 与已配角色名对得上（不论顺序）则沿用既有 A/B 映射，否则按出现序作 A/B
+  const [curA, curB] = [currentRoles[0].trim(), currentRoles[1].trim()]
+  let roleAName: string
+  let roleBName: string
+  if (speakers.every((s) => s === curA || s === curB) && curA && curB) {
+    roleAName = curA
+    roleBName = curB
+  } else {
+    roleAName = speakers[0]
+    roleBName = speakers[1] ?? curB
+  }
+  const roleIndexOf = (s: string) => (s === roleAName ? 0 : 1)
+  const clamp = (n: number) =>
+    Math.min(STORYBOARD_SEG_MAX_SECONDS, Math.max(STORYBOARD_SEG_MIN_SECONDS, Math.round(n)))
+  const items = parsed.map((r) => ({
+    text: r.text,
+    roleIndex: roleIndexOf(r.speaker),
+    duration: r.duration != null ? clamp(r.duration) : estimateSegmentDuration(r.text),
+    status: 'idle' as const,
+  }))
+  return { items, roleAName, roleBName }
+}
+
 /**
  * 落成节点前归一 LLM 输出的资源引用：@ImageN → <<<image_N>>>、@AudioN → <<<audio_N>>>
  * （大小写不敏感）。模板范例里用 @Image1/@Audio1 引用人像参考图与角色音色参考，
