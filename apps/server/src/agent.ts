@@ -170,7 +170,8 @@ export async function runAgentExpand(
   body: AgentExpandBody,
   settings: SettingsDTO,
 ): Promise<AgentExpandResponse> {
-  const cfg = resolveAgentConfig(settings)
+  // 模型可被请求体覆盖（分镜节点各自选模型）；端点/密钥/协议仍统一取全局设置
+  const cfg = resolveAgentConfig(settings, { model: body.model })
   const { data, raw } = await requestLlmJson({
     url: resolveLlmUrl(cfg.endpoint, cfg.apiStyle),
     apiKey: cfg.apiKey,

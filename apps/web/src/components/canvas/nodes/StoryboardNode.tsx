@@ -27,6 +27,7 @@ import {
   storyboardRoleImageHandleId,
 } from '@/lib/graph'
 import {
+  mergeModelOptions,
   STORYBOARD_CONCURRENCY,
   STORYBOARD_SCRIPT_PLACEHOLDER,
   STORYBOARD_SEG_MAX_SECONDS,
@@ -40,6 +41,7 @@ import {
 } from '@/lib/storyboard'
 import { type StoryboardItem, type StoryboardNode as StoryboardNodeType } from '@/lib/types'
 import { useFlowStore } from '@/store/useFlowStore'
+import { useSettingsStore } from '@/store/useSettingsStore'
 
 // 节点默认/最小尺寸：六列表格需要宽卡片（prompt 列要能读）
 const DEFAULT_WIDTH = 760
@@ -237,6 +239,22 @@ export function StoryboardNode({
   const items = data.items ?? []
   const doneCount = items.filter((it) => it.status === 'done' && it.prompt).length
 
+  // 逐段扩写用的模型：本节点选定值，空=跟随全局设置（端点/密钥/协议始终取全局）
+  const model = data.model ?? ''
+  const agentModel = useSettingsStore((s) => s.agentModel)
+  const agentEndpoint = useSettingsStore((s) => s.agentEndpoint)
+  const agentModelList = useSettingsStore((s) => s.agentModelList)
+  const agentModels = useSettingsStore((s) => s.agentModels)
+  const agentModelsLoaded = useSettingsStore((s) => s.agentModelsLoaded)
+  const agentModelsLoading = useSettingsStore((s) => s.agentModelsLoading)
+  const loadAgentModels = useSettingsStore((s) => s.loadAgentModels)
+  // 候选与设置面板同源：手动维护的列表 ∪ 端点动态获取（当前已选值置顶保留，防改端点后选项消失）
+  const modelOptions = mergeModelOptions(agentModelList, agentModels, model)
+  // 列表尚未取过就拉一次（loaded 成败都置 true，故最多一次）；没配端点时不发请求
+  useEffect(() => {
+    if (agentEndpoint.trim() && !agentModelsLoaded && !agentModelsLoading) void loadAgentModels()
+  }, [agentEndpoint, agentModelsLoaded, agentModelsLoading, loadAgentModels])
+
   const [scriptOpen, setScriptOpen] = useState(false)
   const [templateOpen, setTemplateOpen] = useState(false)
   const [pasteOpen, setPasteOpen] = useState(false)
@@ -264,6 +282,8 @@ export function StoryboardNode({
     template: string,
     rows: StoryboardItem[],
     indices: number[],
+    /** 本次用的模型名（空=跟随全局设置）。 */
+    model: string,
   ) => {
     const controller = new AbortController()
     abortRef.current = controller
@@ -285,7 +305,7 @@ export function StoryboardNode({
             String(rows[idx].duration ?? ''),
           )
           const prompt = await agentExpandApi(
-            { template: rowTemplate, line: composeLine(rows[idx]) },
+            { template: rowTemplate, line: composeLine(rows[idx]), model },
             controller.signal,
           )
           store().patchStoryboardItem(projectId, id, idx, {
@@ -390,6 +410,7 @@ export function StoryboardNode({
       template,
       items,
       items.map((_, i) => i),
+      model,
     )
   }
 
@@ -401,7 +422,7 @@ export function StoryboardNode({
     const template = templateField.value
     if (!ensureTemplate(template)) return
     state.updateNodeDataInProject(projectId, id, { running: true })
-    void runIndices(projectId, template, items, [index])
+    void runIndices(projectId, template, items, [index], model)
   }
 
   // 落成节点：已生成的段 → N 组「Prompt → Seedance」节点对（不自动运行视频生成）
@@ -637,6 +658,24 @@ export function StoryboardNode({
             </span>
           )}
           <div className="ml-auto flex items-center gap-1.5">
+            {/* 扩写模型：原生 select（Radix 下拉在 React Flow 节点内打不开，见 MentionMenu 注释）。
+                候选空时也保留控件，「跟随全局设置」始终可选，不会出现无从选择的死角 */}
+            <select
+              value={model}
+              onChange={(e) => updateNodeData(id, { model: e.target.value })}
+              disabled={running}
+              className="nodrag h-8 max-w-40 rounded-md border border-input bg-transparent px-1.5 text-[11px] text-foreground"
+              title={`逐段扩写用的模型（端点/密钥/协议仍取全局设置）${
+                model ? '' : `；当前跟随全局：${agentModel || '未设置'}`
+              }`}
+            >
+              <option value="">跟随全局设置{agentModel ? `（${agentModel}）` : ''}</option>
+              {modelOptions.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
             <Button
               size="sm"
               variant="outline"

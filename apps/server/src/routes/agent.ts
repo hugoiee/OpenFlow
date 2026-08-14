@@ -47,11 +47,13 @@ agent.post('/agent/expand', async (c) => {
   const body = await c.req.json<AgentExpandBody>().catch(() => null)
   const template = typeof body?.template === 'string' ? body.template : ''
   const line = typeof body?.line === 'string' ? body.line.trim() : ''
+  // 模型可由分镜节点各自指定；空/缺省则回退全局设置里的模型
+  const model = typeof body?.model === 'string' ? body.model.trim() : ''
   if (!template.trim() || !line) {
     return c.json({ error: '缺少模板或台词' }, 400)
   }
   try {
-    return c.json(await runAgentExpand({ template, line }, readSettings()))
+    return c.json(await runAgentExpand({ template, line, model }, readSettings()))
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e)
     // 配置缺失是用户可自行修复的 400；上游 LLM 调用失败回 502

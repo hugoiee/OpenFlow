@@ -370,6 +370,12 @@ export type AgentExpandBody = {
   template: string
   /** 台词行原文（含「角色名: 」前缀）。 */
   line: string
+  /**
+   * 本次扩写用的模型名；省略/空则回退设置里的 agentModel。
+   * 分镜节点各自可选模型——同一画布上不同分镜想用不同模型（便宜的跑草稿、强的跑定稿）时不必改全局设置。
+   * 端点/密钥/协议仍统一走全局设置。
+   */
+  model?: string
 }
 
 /** POST /api/agent/expand 成功响应：LLM 输出的视频 prompt 纯文本。失败走非 2xx + { error }。 */
