@@ -1,4 +1,4 @@
-import { Type, Image as ImageIcon, Banana, Clapperboard, Images, Podcast, type LucideIcon } from 'lucide-react'
+import { Type, Image as ImageIcon, Banana, Clapperboard, Images, ListVideo, Podcast, Scissors, type LucideIcon } from 'lucide-react'
 import { IMAGE_MODELS, VIDEO_MODELS, videoVariantLabel, type VideoVariant } from '@/lib/nodeCatalog'
 import { type FlowNodeType } from '@/lib/types'
 
@@ -62,6 +62,15 @@ export const NODE_GROUPS: { label: string; items: NodeMenuItem[] }[] = [
     items: [
       // 双人对话播客：内置脚本 + 两个火山音色 ID，逐行 TTS 合成拼接
       { type: 'podcast', label: '播客 TTS（火山）', icon: Podcast },
+    ],
+  },
+  {
+    label: '工具',
+    items: [
+      // 脚本切割：整篇脚本原文按语速切成 4~15s 段，自动建/更新下游脚本分镜节点的表格
+      { type: 'splitter', label: '脚本切割', icon: Scissors },
+      // 脚本分镜：分镜表格逐段经 LLM 生成 Seedance 口播 prompt，再批量落成 Prompt→视频 节点对
+      { type: 'storyboard', label: '脚本分镜', icon: ListVideo },
     ],
   },
 ]

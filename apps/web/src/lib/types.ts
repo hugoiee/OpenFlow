@@ -2,8 +2,15 @@ import type { Edge, Node } from '@xyflow/react'
 import type { VideoShot } from '@openflow/shared'
 import type { VideoTask, VideoVariant } from './nodeCatalog'
 
-/** 节点种类：文本 prompt / 图像生成 / 视频生成 / 播客音频 / 桌面拖入的媒体素材。 */
-export type FlowNodeType = 'prompt' | 'image' | 'video' | 'podcast' | 'asset'
+/** 节点种类：文本 prompt / 图像生成 / 视频生成 / 播客音频 / 桌面拖入的媒体素材 / 脚本切割 / 脚本分镜。 */
+export type FlowNodeType =
+  | 'prompt'
+  | 'image'
+  | 'video'
+  | 'podcast'
+  | 'asset'
+  | 'splitter'
+  | 'storyboard'
 
 /** @ 引用的资源种类（与实发列表 image_list/audio_list/video_list 对应）。 */
 export type MentionKind = 'image' | 'audio' | 'video'
@@ -160,6 +167,67 @@ export type PodcastNodeData = {
   taskId?: string
 }
 
+/** 脚本分镜单行的运行状态（pending/running 为纯前端请求瞬时态，载入时复位为 idle）。 */
+export type StoryboardItemStatus = 'idle' | 'pending' | 'running' | 'done' | 'error'
+
+/** 脚本分镜表格的一行：A 说话人(roleIndex) / B 分割后脚本(text) / C 时长(duration) / D LLM 产出(prompt)。 */
+export type StoryboardItem = {
+  /** B 列：分割后的台词段文本（**不含**角色名前缀；可在表格里编辑）。 */
+  text: string
+  /** A 列：说话人下标 0=角色A / 1=角色B（落成节点时按它连对应角色的参考图/音色）。 */
+  roleIndex: number
+  /** C 列：估算视频时长（秒，= 念出字数/语速，夹到 4~15，可在表格里改）；落成时写进该段 Seedance 节点。 */
+  duration?: number
+  /** D 列：LLM 生成的完整视频 prompt（done 时非空）。 */
+  prompt?: string
+  status: StoryboardItemStatus
+  /** 该段生成失败的错误信息（status=error 时展示，可单段重试）。 */
+  error?: string
+}
+
+/**
+ * 脚本切割节点：粘贴整篇播客脚本原文（可含标题/小节标题行，会被跳过），点「切割」按语速
+ * 切成 4~15s 的段，**自动创建（或更新）下游已连线的脚本分镜节点**的表格。终端来源节点，
+ * 只有右侧一个输出端点连分镜节点的「分镜表」端点。
+ */
+export type SplitterNodeData = {
+  label: string
+  /** 整篇播客脚本原文：每行「角色名: 台词」，标题/小节标题行会被跳过。 */
+  script: string
+  /** 角色 1 名字（脚本行首匹配用）。 */
+  roleAName: string
+  /** 角色 2 名字。 */
+  roleBName: string
+  /**
+   * 切分语速（字/秒）：决定「多少字算一段」与各段估算时长。
+   * 旧数据缺失 → 按默认 6 字/秒（见 nodeCatalog.normalizeSplitSpeed）。
+   */
+  charsPerSecond?: number
+}
+
+/**
+ * 脚本分镜节点：整篇双人播客脚本 + prompt 模板（{{line}} 占位符），逐行调 Agent LLM
+ * 生成 Seedance 口播 prompt，再一键落成 N 组「Prompt → 视频」节点对。
+ * 左侧两个图像端点各连一张角色人像参考图（落成时按行首说话人自动连给视频节点）。
+ */
+export type StoryboardNodeData = {
+  label: string
+  /** 整篇播客脚本：每行「角色名: 台词」。 */
+  script: string
+  /** prompt 模板，含 {{line}} 占位符（发送时替换为台词行原文）。 */
+  template: string
+  /** 逐段扩写用的 LLM 模型名；空/缺省=跟随全局设置里的 Agent 模型（端点/密钥/协议始终取全局）。 */
+  model?: string
+  /** 角色 1 名字（脚本行首匹配用，同播客节点语义）。 */
+  roleAName: string
+  /** 角色 2 名字。 */
+  roleBName: string
+  /** 逐行拆分后的生成条目（点「生成」时按当前脚本重建；prompt 随项目持久化）。 */
+  items?: StoryboardItem[]
+  /** 是否有批量生成在跑（瞬时态，载入复位）。 */
+  running?: boolean
+}
+
 /** 图像生成节点的数据：具名模型 + 可调选项 + 运行状态与结果。 */
 export type ImageNodeData = {
   label: string
@@ -209,6 +277,8 @@ export type VideoNode = Node<GenerationNodeData, 'video'>
 export type PodcastNode = Node<PodcastNodeData, 'podcast'>
 export type AssetNode = Node<AssetNodeData, 'asset'>
 export type GroupNode = Node<GroupNodeData, 'group'>
+export type SplitterNode = Node<SplitterNodeData, 'splitter'>
+export type StoryboardNode = Node<StoryboardNodeData, 'storyboard'>
 export type FlowNode =
   | PromptNode
   | ImageNode
@@ -216,6 +286,8 @@ export type FlowNode =
   | PodcastNode
   | AssetNode
   | GroupNode
+  | SplitterNode
+  | StoryboardNode
 
 /** 一个项目 = 一块画布。 */
 export type Project = {

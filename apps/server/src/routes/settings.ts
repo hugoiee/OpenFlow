@@ -31,6 +31,12 @@ settings.put('/', async (c) => {
   if (typeof body.aigcHistoryEndpoint === 'string')
     patch.aigcHistoryEndpoint = body.aigcHistoryEndpoint.trim()
   if (typeof body.agentEndpoint === 'string') patch.agentEndpoint = body.agentEndpoint.trim()
+  // 接口协议：只认两个合法值，空串=清空回退默认；其余脏值（旧客户端/手改库）也归一成空串，
+  // 不为一个可枚举字段整次 400——用户在别的字段上的修改不该被它连坐
+  if (typeof body.agentApiStyle === 'string') {
+    const style = body.agentApiStyle.trim().toLowerCase()
+    patch.agentApiStyle = style === 'responses' || style === 'chat' ? style : ''
+  }
   if (typeof body.agentApiKey === 'string') patch.agentApiKey = body.agentApiKey.trim()
   if (typeof body.agentModel === 'string') patch.agentModel = body.agentModel.trim()
   if (typeof body.volcTtsApiKey === 'string') patch.volcTtsApiKey = body.volcTtsApiKey.trim()

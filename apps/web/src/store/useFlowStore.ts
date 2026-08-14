@@ -25,11 +25,15 @@ import {
   PODCAST_ROLE_A_DEFAULT,
   PODCAST_ROLE_B_DEFAULT,
   PODCAST_SPEECH_RATE_DEFAULT,
+  SPLITTER_NODE_META,
+  STORYBOARD_CHARS_PER_SECOND,
+  STORYBOARD_NODE_META,
   VIDEO_VARIANT_DEFAULT,
   videoDefaultVersion,
   videoModelSpec,
   type VideoVariant,
 } from '@/lib/nodeCatalog'
+import { STORYBOARD_TEMPLATE_DEFAULT } from '@/lib/storyboardTemplate'
 import {
   ARRANGE_GAP,
   GROUP_PADDING,
@@ -38,10 +42,22 @@ import {
   detachChildren,
   nodeSize,
 } from '@/lib/layout'
-import { RES_INPUT_HANDLE, normalizeResourceEdges } from '@/lib/graph'
+import {
+  RES_INPUT_HANDLE,
+  STORYBOARD_SEGMENTS_HANDLE,
+  normalizeResourceEdges,
+  storyboardRoleAudioHandleId,
+  storyboardRoleImageHandleId,
+} from '@/lib/graph'
 import { isValidTypedConnection } from '@/lib/handleTypes'
 import { collectMultiConnectEdges, collectSelectedResourceEdges } from '@/lib/multiConnect'
-import { type FlowNode, type FlowNodeType, type Project } from '@/lib/types'
+import { normalizeShotPrompt } from '@/lib/storyboard'
+import {
+  type FlowNode,
+  type FlowNodeType,
+  type Project,
+  type StoryboardItem,
+} from '@/lib/types'
 
 /** 已下线的 Any LLM 节点类型名：只用于载入时识别并清掉旧数据（FlowNodeType 里已没有它）。 */
 const LEGACY_LLM_TYPE = 'llm'
@@ -122,6 +138,45 @@ type FlowState = {
     model: string
     title?: string
   }) => { promptNodeId: string; imageNodeId: string } | null
+  /** 脚本分镜：整表重建逐行条目并设 running（点「生成」时用；显式 projectId 防切画布丢写）。 */
+  setStoryboardItems: (
+    projectId: string,
+    nodeId: string,
+    items: StoryboardItem[],
+    running: boolean,
+  ) => void
+  /**
+   * 脚本分镜：单行 patch。并发 worker 各自完成时回写，必须在 set 时刻读最新 items 改一格——
+   * 组件里整表回写会让并发请求各持过期闭包互相覆盖（丢更新）。
+   */
+  patchStoryboardItem: (
+    projectId: string,
+    nodeId: string,
+    index: number,
+    patch: Partial<StoryboardItem>,
+  ) => void
+  /**
+   * 脚本分镜「落成节点」：在现有内容下方为每个分镜建一组「Prompt（写入该行 prompt）→
+   * Seedance 视频（reference 变体，不自动运行）」并连线；按行首说话人把分镜节点角色端点上
+   * 已连的参考图素材连到视频节点 res（该角色未连图则跳过）。一次写入落全部节点与边。
+   * 返回创建组数（无激活项目返回 0）。
+   */
+  addStoryboardShots: (input: {
+    storyboardNodeId: string
+    shots: { line: string; roleIndex: number; prompt: string; duration?: number }[]
+    model?: string
+  }) => number
+  /**
+   * 脚本切割节点「切割」：把切好的分镜表写进下游已连线的分镜节点（同步角色名、整表重建，
+   * 已生成的 D 列 prompt 清空）；没有下游分镜节点则在切割节点右侧新建一个并连线。
+   * 返回目标分镜节点 id 与是否新建（无激活项目/切割节点不存在返回 null）。
+   */
+  splitScriptToStoryboard: (input: {
+    splitterNodeId: string
+    roleAName: string
+    roleBName: string
+    items: StoryboardItem[]
+  }) => { storyboardNodeId: string; created: boolean } | null
   /**
    * 从某个节点的 handle 拉线松开在空白处后新建一个节点并与源节点连线。
    * from.handleType='source'（从输出端拉出）→ 新节点作下游 target（源→新）；
@@ -196,6 +251,38 @@ function createNode(
       },
     }
   }
+  if (type === 'splitter') {
+    // 脚本切割节点：原文 + 双角色名（角色名默认与播客/分镜一致）
+    return {
+      id: newId('n_'),
+      type: 'splitter',
+      position,
+      data: {
+        label: SPLITTER_NODE_META.label,
+        script: '',
+        roleAName: PODCAST_ROLE_A_DEFAULT,
+        roleBName: PODCAST_ROLE_B_DEFAULT,
+        charsPerSecond: STORYBOARD_CHARS_PER_SECOND,
+      },
+    }
+  }
+  if (type === 'storyboard') {
+    // 脚本分镜节点：整篇脚本 + prompt 模板（内置默认模板开箱可用）+ 双角色名（同播客默认）。
+    return {
+      id: newId('n_'),
+      type: 'storyboard',
+      position,
+      data: {
+        label: STORYBOARD_NODE_META.label,
+        script: '',
+        template: STORYBOARD_TEMPLATE_DEFAULT,
+        roleAName: PODCAST_ROLE_A_DEFAULT,
+        roleBName: PODCAST_ROLE_B_DEFAULT,
+        items: [],
+        running: false,
+      },
+    }
+  }
   if (type === 'image') {
     // 图像生成节点：带具名模型 + 可调选项默认值；运行状态/结果初始为空。
     // 统一带上 Image 2 与 Nano Banana 两套字段默认值，后端按 model 取舍。
@@ -250,6 +337,8 @@ const AGENT_PLACE_FALLBACK_HEIGHT: Record<string, number> = {
   video: 400,
   podcast: 320,
   asset: 220,
+  splitter: 360,
+  storyboard: 420,
 }
 
 // 画布高频编辑 → 防抖把激活项目整体 PUT 回后端
@@ -323,6 +412,27 @@ export const useFlowStore = create<FlowState>()((set, get) => {
           }
           if (node.type === 'podcast') {
             return { ...node, data: { ...node.data, running: false, error: undefined } }
+          }
+          // 分镜节点：running 与逐段 pending/running 是纯前端请求瞬时态，载入复位为 idle
+          // （done 的 prompt 是持久成果、error 提示用户重试，均保留）；
+          // 早期 items 存的是含角色名前缀的 line 字段 → 迁移为无前缀的 text（表格 B 列）
+          if (node.type === 'storyboard') {
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                running: false,
+                items: node.data.items?.map((raw) => {
+                  const legacyLine = (raw as { line?: string }).line
+                  const text = raw.text ?? legacyLine?.replace(/^[^:：]{1,20}[:：]\s*/, '') ?? ''
+                  const it: StoryboardItem = { ...raw, text }
+                  delete (it as { line?: string }).line
+                  return it.status === 'pending' || it.status === 'running'
+                    ? { ...it, status: 'idle' as const }
+                    : it
+                }),
+              },
+            }
           }
           // 素材节点：uploading 是瞬时态，载入时复位，避免刷新后卡在「上传中…」
           if (node.type === 'asset') {
@@ -569,14 +679,203 @@ export const useFlowStore = create<FlowState>()((set, get) => {
       return { promptNodeId: promptNode.id, imageNodeId: imageNode.id }
     },
 
+    setStoryboardItems: (projectId, nodeId, items, running) =>
+      set((state) => {
+        const projects = state.projects.map((p) =>
+          p.id === projectId
+            ? {
+                ...p,
+                nodes: p.nodes.map((n) =>
+                  n.id === nodeId && n.type === 'storyboard'
+                    ? { ...n, data: { ...n.data, items, running } }
+                    : n,
+                ),
+              }
+            : p,
+        )
+        const target = projects.find((p) => p.id === projectId)
+        if (target) scheduleSave(target)
+        return { projects }
+      }),
+
+    patchStoryboardItem: (projectId, nodeId, index, patch) =>
+      set((state) => {
+        const projects = state.projects.map((p) =>
+          p.id === projectId
+            ? {
+                ...p,
+                nodes: p.nodes.map((n) =>
+                  n.id === nodeId && n.type === 'storyboard'
+                    ? {
+                        ...n,
+                        data: {
+                          ...n.data,
+                          items: (n.data.items ?? []).map((it, i) =>
+                            i === index ? { ...it, ...patch } : it,
+                          ),
+                        },
+                      }
+                    : n,
+                ),
+              }
+            : p,
+        )
+        const target = projects.find((p) => p.id === projectId)
+        if (target) scheduleSave(target)
+        return { projects }
+      }),
+
+    addStoryboardShots: ({ storyboardNodeId, shots, model }) => {
+      const { activeProjectId, projects } = get()
+      const project = projects.find((p) => p.id === activeProjectId)
+      if (!project || shots.length === 0) return 0
+      const videoModel = model ?? 'Seedance'
+      // 角色 → 已连参考图/音色参考：从分镜节点的角色端点反查素材节点 id（未连则该项跳过）
+      const roleImageSource: (string | undefined)[] = [0, 1].map(
+        (roleIndex) =>
+          project.edges.find(
+            (e) =>
+              e.target === storyboardNodeId &&
+              e.targetHandle === storyboardRoleImageHandleId(roleIndex),
+          )?.source,
+      )
+      const roleAudioSource: (string | undefined)[] = [0, 1].map(
+        (roleIndex) =>
+          project.edges.find(
+            (e) =>
+              e.target === storyboardNodeId &&
+              e.targetHandle === storyboardRoleAudioHandleId(roleIndex),
+          )?.source,
+      )
+      // 摆到现有内容下方，成对横排逐行向下（找底逻辑同 addAgentGeneration）
+      const bottom = project.nodes.reduce((max, n) => {
+        const height =
+          n.measured?.height ?? AGENT_PLACE_FALLBACK_HEIGHT[n.type ?? 'prompt'] ?? 220
+        return Math.max(max, n.position.y + height)
+      }, 0)
+      const y0 = project.nodes.length > 0 ? bottom + 60 : 80
+      // 行高 = 视频节点兜底高 + 间距（Prompt 更矮不顶行），保证纵向不重叠
+      const rowH = (AGENT_PLACE_FALLBACK_HEIGHT.video ?? 400) + 60
+      const newNodes: FlowNode[] = []
+      const newEdges: Edge[] = []
+      shots.forEach((shot, i) => {
+        const y = y0 + i * rowH
+        // 标题带台词前缀便于在 40 组节点里辨认是哪一句
+        const title = `分镜${i + 1} · ${shot.line.replaceAll('\n', ' ').slice(0, 12)}`
+        const promptNode: FlowNode = {
+          id: newId('n_'),
+          type: 'prompt',
+          position: { x: 80, y },
+          // @ImageN/@AudioN 字面引用归一成画布实发占位符 <<<kind_N>>>
+          data: { label: title, text: normalizeShotPrompt(shot.prompt) },
+        }
+        const videoNode = createNode(
+          'video',
+          project.nodes.length + newNodes.length,
+          videoModel,
+          { x: 420, y },
+          'reference',
+        )
+        videoNode.data.label = title
+        // 切段时按语速估算的该段时长（已夹到 4~15s）直接作为 Seedance 时长参数；
+        // 实发前仍会过 normalizeVideoDuration 按所选 version 的能力表夹取
+        if (typeof shot.duration === 'number' && videoNode.type === 'video') {
+          videoNode.data.duration = shot.duration
+        }
+        newNodes.push(promptNode, videoNode)
+        // Prompt → 视频默认文本端点（空 handle）
+        newEdges.push({
+          id: newId('e_'),
+          source: promptNode.id,
+          target: videoNode.id,
+          type: 'default',
+        })
+        // 说话人参考图/音色参考 → 视频统一资源端点 res（每节点各仅 1 条，
+        // prompt 里的 <<<image_1>>>/<<<audio_1>>> 序号必对——图与音在实发时是两张独立列表）
+        const imageSource = roleImageSource[shot.roleIndex]
+        if (imageSource) {
+          newEdges.push({
+            id: newId('e_'),
+            source: imageSource,
+            target: videoNode.id,
+            targetHandle: RES_INPUT_HANDLE,
+            type: 'default',
+          })
+        }
+        const audioSource = roleAudioSource[shot.roleIndex]
+        if (audioSource) {
+          newEdges.push({
+            id: newId('e_'),
+            source: audioSource,
+            target: videoNode.id,
+            targetHandle: RES_INPUT_HANDLE,
+            type: 'default',
+          })
+        }
+      })
+      patchActive((p) => ({
+        ...p,
+        nodes: [...p.nodes, ...newNodes],
+        edges: [...p.edges, ...newEdges],
+      }))
+      return shots.length
+    },
+
+    splitScriptToStoryboard: ({ splitterNodeId, roleAName, roleBName, items }) => {
+      const { activeProjectId, projects } = get()
+      const project = projects.find((p) => p.id === activeProjectId)
+      const splitterNode = project?.nodes.find((n) => n.id === splitterNodeId)
+      if (!project || splitterNode?.type !== 'splitter') return null
+      // 下游已连的分镜节点：切割节点出边里找 target 为 storyboard 的（重切=更新它，不堆节点）
+      const existing = project.edges
+        .map((e) => (e.source === splitterNodeId ? project.nodes.find((n) => n.id === e.target) : undefined))
+        .find((n) => n?.type === 'storyboard')
+      const rolePatch = { roleAName, roleBName, items, running: false }
+      if (existing) {
+        patchActive((p) => ({
+          ...p,
+          nodes: p.nodes.map((n) =>
+            n.id === existing.id && n.type === 'storyboard'
+              ? { ...n, data: { ...n.data, ...rolePatch } }
+              : n,
+          ),
+        }))
+        return { storyboardNodeId: existing.id, created: false }
+      }
+      // 新建：摆在切割节点正右侧（让开整宽 + 间距），角色名随切割节点、表格即切割结果
+      const { w } = nodeSize(splitterNode)
+      const storyboardNode = createNode('storyboard', project.nodes.length, '', {
+        x: splitterNode.position.x + w + ARRANGE_GAP,
+        y: splitterNode.position.y,
+      })
+      if (storyboardNode.type === 'storyboard') {
+        storyboardNode.data = { ...storyboardNode.data, ...rolePatch }
+      }
+      const edge: Edge = {
+        id: newId('e_'),
+        source: splitterNodeId,
+        target: storyboardNode.id,
+        targetHandle: STORYBOARD_SEGMENTS_HANDLE,
+        type: 'default',
+      }
+      patchActive((p) => ({
+        ...p,
+        nodes: [...p.nodes, storyboardNode],
+        edges: [...p.edges, edge],
+      }))
+      return { storyboardNodeId: storyboardNode.id, created: true }
+    },
+
     addConnectedNode: ({ type, model, position, from, videoVariant }) =>
       patchActive((p) => {
         const node = createNode(type, p.nodes.length, model, position, videoVariant)
         const fromNode = p.nodes.find((n) => n.id === from.nodeId)
-        // asset（纯源，只出不进）无输入 handle，podcast（终端节点）无任何 handle；
+        // asset/splitter（纯源，只出不进）无输入默认口，podcast（终端节点）无任何 handle，
+        // storyboard 只有专用端点（角色素材/分镜表，无默认口/无输出）；
         // 拉线选了这类节点时无处可连 → 只建节点不连线，避免生成一条挂空的坏边。
-        const canBeTarget = type !== 'asset' && type !== 'podcast'
-        const canBeSource = type !== 'podcast'
+        const canBeTarget =
+          type !== 'asset' && type !== 'podcast' && type !== 'storyboard' && type !== 'splitter'
+        const canBeSource = type !== 'podcast' && type !== 'storyboard'
         let edge: Edge | null = null
         if (from.handleType === 'source') {
           // 从输出端拉出：源=既有节点，目标=新节点。先试默认输入口（文本），不匹配再试
