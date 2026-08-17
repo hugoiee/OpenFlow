@@ -43,6 +43,7 @@ import { type StoryboardItem, type StoryboardNode as StoryboardNodeType } from '
 import { useFlowStore } from '@/store/useFlowStore'
 import { useSettingsStore } from '@/store/useSettingsStore'
 import { markCardClass } from '@/lib/nodeMark'
+import { NodeActions } from './NodeActions'
 
 // 节点默认/最小尺寸：六列表格需要宽卡片（prompt 列要能读）
 const DEFAULT_WIDTH = 760
@@ -657,6 +658,8 @@ export function StoryboardNode({
             </span>
           )}
           <div className="ml-auto flex items-center gap-1.5">
+            {/* spacer=false：本行的右推靠外层 ml-auto，不需要再加弹性占位 */}
+            <NodeActions id={id} selected={selected} spacer={false} />
             {/* 扩写模型：原生 select（Radix 下拉在 React Flow 节点内打不开，见 MentionMenu 注释）。
                 候选空时也保留控件，「跟随全局设置」始终可选，不会出现无从选择的死角 */}
             <select

@@ -15,6 +15,7 @@ import { buildImageRequest } from '@/lib/requestBody'
 import { type ImageNode as ImageNodeType } from '@/lib/types'
 import { useFlowStore } from '@/store/useFlowStore'
 import { markCardClass } from '@/lib/nodeMark'
+import { NodeActions } from './NodeActions'
 
 /**
  * 图像生成节点：卡片只展示生成结果（运行态 / 结果图 / 空占位）。
@@ -150,7 +151,6 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
         id={id}
         icon={data.model === 'Nano Banana' ? Banana : ImageIcon}
         title={data.label}
-        subtitle={data.model}
         selected={selected}
         mark={data.mark}
       />
@@ -198,8 +198,10 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
           )}
         </div>
 
+        {/* 底部动作行：模型名 + 复制 / 删除 + 生成（都挪到这里，头部只留可改名的节点名） */}
         <div className="flex items-center gap-2">
-          <Button size="sm" onClick={handleRun} disabled={running} className="nodrag ml-auto h-8">
+          <NodeActions id={id} subtitle={data.model} selected={selected} />
+          <Button size="sm" onClick={handleRun} disabled={running} className="nodrag h-8">
             {running ? '生成中…' : '生成'}
           </Button>
         </div>

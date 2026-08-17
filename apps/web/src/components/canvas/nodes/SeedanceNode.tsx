@@ -16,6 +16,7 @@ import { buildVideoRequest } from '@/lib/requestBody'
 import { type VideoNode as VideoNodeType } from '@/lib/types'
 import { useFlowStore } from '@/store/useFlowStore'
 import { markCardClass } from '@/lib/nodeMark'
+import { NodeActions } from './NodeActions'
 
 /**
  * Seedance 视频生成节点：卡片只展示生成结果（运行态 / 结果视频 / 空占位）。
@@ -179,7 +180,6 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
         id={id}
         icon={Video}
         title={data.label}
-        subtitle={`${data.model} · ${videoVariantLabel(data.model, variant)}`}
         selected={selected}
         mark={data.mark}
       />
@@ -220,8 +220,14 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
           )}
         </div>
 
+        {/* 底部动作行：模型名+变体 + 复制 / 删除 + 生成（都挪到这里，头部只留可改名的节点名） */}
         <div className="flex items-center gap-2">
-          <Button size="sm" onClick={handleRun} disabled={running} className="nodrag ml-auto h-8">
+          <NodeActions
+            id={id}
+            subtitle={`${data.model} · ${videoVariantLabel(data.model, variant)}`}
+            selected={selected}
+          />
+          <Button size="sm" onClick={handleRun} disabled={running} className="nodrag h-8">
             {running ? '生成中…' : '生成'}
           </Button>
         </div>

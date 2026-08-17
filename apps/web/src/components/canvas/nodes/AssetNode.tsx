@@ -3,6 +3,7 @@ import { Image as ImageIcon, Music, Video } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { NodeHeader } from './NodeHeader'
+import { NodeActions } from './NodeActions'
 import { NodeHandle } from './NodeHandle'
 import { ASSET_NODE_META } from '@/lib/nodeCatalog'
 import { type AssetNode as AssetNodeType } from '@/lib/types'
@@ -28,7 +29,6 @@ export function AssetNode({ id, data, selected }: NodeProps<AssetNodeType>) {
         id={id}
         icon={kind === 'image' ? ImageIcon : kind === 'video' ? Video : Music}
         title={data.label || meta.label}
-        subtitle={data.fileName}
         selected={selected}
         markable={false}
       />
@@ -72,6 +72,11 @@ export function AssetNode({ id, data, selected }: NodeProps<AssetNodeType>) {
             {data.error}
           </p>
         )}
+
+        {/* 底部动作行：文件名 + 复制 / 删除（本节点没有主操作按钮，这一行是专为它们加的） */}
+        <div className="flex items-center gap-2">
+          <NodeActions id={id} subtitle={data.fileName} selected={selected} />
+        </div>
       </CardContent>
       {/* 输出：图像素材=Image(绿) / 音频素材=Audio(蓝) / 视频素材=Video(玫红) */}
       <NodeHandle

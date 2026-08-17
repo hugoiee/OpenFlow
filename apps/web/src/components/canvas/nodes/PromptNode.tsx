@@ -26,6 +26,7 @@ import { useFlowStore } from '@/store/useFlowStore'
 import { usePromptPresetStore } from '@/store/usePromptPresetStore'
 import type { PromptNode as PromptNodeType } from '@/lib/types'
 import { markCardClass } from '@/lib/nodeMark'
+import { NodeActions } from './NodeActions'
 
 /** 从 prompt 正文派生一个默认标题：取首个非空行，截断到 24 字。 */
 function defaultTitle(text: string): string {
@@ -247,7 +248,7 @@ export function PromptNode({ id, data, selected, width, height }: NodeProps<Prom
           )}
         </div>
 
-        {/* 预设工具条：选用预设 / 存为预设 */}
+        {/* 底部动作行：预设按钮 + 复制 / 删除（头部只留可改名的节点名） */}
         <div className="flex shrink-0 items-center gap-1">
           <Button
             size="sm"
@@ -270,6 +271,8 @@ export function PromptNode({ id, data, selected, width, height }: NodeProps<Prom
             <BookmarkPlus className="size-3.5" />
             存为预设
           </Button>
+          {/* spacer=false：本行已有「选用预设」占着 flex-1，再来一个会把它压扁 */}
+          <NodeActions id={id} selected={selected} spacer={false} />
         </div>
       </CardContent>
 

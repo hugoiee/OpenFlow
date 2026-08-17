@@ -18,6 +18,7 @@ import { buildItems } from '@/lib/storyboard'
 import { type SplitterNode as SplitterNodeType } from '@/lib/types'
 import { useFlowStore } from '@/store/useFlowStore'
 import { markCardClass } from '@/lib/nodeMark'
+import { NodeActions } from './NodeActions'
 
 const DEFAULT_WIDTH = 340
 const DEFAULT_HEIGHT = 360
@@ -115,6 +116,8 @@ export function SplitterNode({ id, data, selected, width, height }: NodeProps<Sp
           <span className="min-w-0 flex-1 truncate text-[10px] text-muted-foreground">
             {feedback || `切成 ${STORYBOARD_SEG_MIN_SECONDS}~${STORYBOARD_SEG_MAX_SECONDS}s 的段`}
           </span>
+          {/* spacer=false：本行已有反馈文字占着 flex-1 */}
+          <NodeActions id={id} selected={selected} spacer={false} />
           <Button size="sm" onClick={handleSplit} className="nodrag h-8 shrink-0">
             切割
           </Button>
