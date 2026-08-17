@@ -43,6 +43,16 @@ import {
   nodeSize,
 } from '@/lib/layout'
 import {
+  alignNodes,
+  distributeNodes,
+  flowLayout,
+  straightenLayout,
+  tidyUpLayout,
+  type ArrangeOp,
+  type HandleOffsetResolver,
+  type NodeLayout,
+} from '@/lib/arrange'
+import {
   RES_INPUT_HANDLE,
   STORYBOARD_SEGMENTS_HANDLE,
   normalizeResourceEdges,
@@ -211,8 +221,12 @@ type FlowState = {
   groupSelectedNodes: () => void
   /** 取消分组：释放该 group 容器的子节点（坐标转绝对、清 parentId）并移除容器。 */
   ungroupNode: (groupId: string) => void
-  /** 整理：把当前选中的（未分组的非容器）节点排成等间距网格；<2 个则不动。 */
-  arrangeSelectedNodes: () => void
+  /**
+   * 排列当前选中的（未分组的非容器）节点：对齐 / 分布 / 网格 / 紧凑 / 按连线布局 / 拉直连线。
+   * 各排法自带下限（对齐≥2、分布≥3、拉直需选中项之间有连线），不满足时返回空布局即原样不动。
+   * `handleOffset` 只有 straighten 用得上（端点竖向偏移得从 React Flow 运行时读，故由调用方注入）。
+   */
+  arrangeSelectedNodes: (op: ArrangeOp, handleOffset?: HandleOffsetResolver) => void
 }
 
 function createNode(
@@ -970,15 +984,44 @@ export const useFlowStore = create<FlowState>()((set, get) => {
         return { ...p, nodes: detached.filter((n) => n.id !== groupId) }
       }),
 
-    arrangeSelectedNodes: () =>
+    arrangeSelectedNodes: (op, handleOffset) =>
       patchActive((p) => {
         const selected = p.nodes.filter(
           (n) => n.selected && n.type !== 'group' && !n.parentId,
         )
         if (selected.length < 2) return p
-        const posById = new Map(
-          computeGridLayout(selected).map((l) => [l.id, l.position] as const),
-        )
+        let layout: NodeLayout[]
+        switch (op.kind) {
+          case 'align':
+            layout = alignNodes(selected, op.mode)
+            break
+          case 'distribute':
+            layout = distributeNodes(selected, op.axis)
+            break
+          case 'grid':
+            layout = computeGridLayout(selected)
+            break
+          case 'tidy':
+            layout = tidyUpLayout(selected)
+            break
+          case 'flow':
+            layout = flowLayout(selected, p.edges)
+            break
+          case 'straighten':
+            // 拿不到端点偏移时退化为「对齐节点竖向中心」，至少不会把图挪乱
+            layout = straightenLayout(
+              selected,
+              p.edges,
+              handleOffset ??
+                ((id) => {
+                  const n = selected.find((s) => s.id === id)
+                  return n ? nodeSize(n).h / 2 : 0
+                }),
+            )
+            break
+        }
+        if (layout.length === 0) return p
+        const posById = new Map(layout.map((l) => [l.id, l.position] as const))
         return {
           ...p,
           nodes: p.nodes.map((n) =>

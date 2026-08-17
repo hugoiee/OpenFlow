@@ -22,6 +22,7 @@ import { SelectionContextMenu } from './SelectionContextMenu'
 import { MultiConnectHandle } from './MultiConnectHandle'
 import { useSpacePanGuard } from '@/hooks/useSpacePanGuard'
 import { uploadFilesApi } from '@/lib/api'
+import type { ArrangeOp, HandleOffsetResolver } from '@/lib/arrange'
 import { edgeColorForSource, isValidTypedConnection } from '@/lib/handleTypes'
 import { type FlowNode } from '@/lib/types'
 import { useActiveProject, useFlowStore } from '@/store/useFlowStore'
@@ -73,7 +74,7 @@ export function FlowCanvas() {
   const arrangeSelectedNodes = useFlowStore((s) => s.arrangeSelectedNodes)
   // 实际生效的明暗（system 已解析）：让画布底纹 / 控制按钮 / 缩略图 / 连线跟随主题
   const colorMode = useThemeStore((s) => s.resolved)
-  const { screenToFlowPosition } = useReactFlow()
+  const { screenToFlowPosition, getInternalNode } = useReactFlow()
 
   // 节点吸附（snap-to-grid）：偏好存 localStorage，首次默认开启；由 ZoomSlider 磁吸按钮切换
   const [snapToGrid, setSnapToGrid] = useState(
@@ -117,12 +118,14 @@ export function FlowCanvas() {
     connectSelected?: boolean
   } | null>(null)
 
-  // 选中节点的右键菜单（分组 / 整理 / 取消分组）：右键点在节点或框选区上触发。
+  // 选中节点的右键菜单（分组 / 排列 / 取消分组）：右键点在节点或框选区上触发。
   const [actionMenu, setActionMenu] = useState<{
     top: number
     left: number
     canGroup: boolean
     canArrange: boolean
+    canDistribute: boolean
+    canStraighten: boolean
     canUngroup: boolean
     /** 取消分组要释放的容器 id（选中的容器 + 右键点中的容器）。 */
     groupIds: string[]
@@ -174,15 +177,33 @@ export function FlowCanvas() {
     if (node?.type === 'group') groupIds.add(node.id)
     const canGroup = groupable.length >= 2
     const canArrange = groupable.length >= 2
+    // 分布要有可挪的中间项：两个节点之间没有「间隙」可分
+    const canDistribute = groupable.length >= 3
+    // 拉直连线要选中项之间真的连着（否则这项点了什么也不会发生）
+    const selIds = new Set(groupable.map((n) => n.id))
+    const canStraighten =
+      canArrange &&
+      proj.edges.some(
+        (e) => e.source !== e.target && selIds.has(e.source) && selIds.has(e.target),
+      )
     const canUngroup = groupIds.size > 0
     if (!canGroup && !canArrange && !canUngroup) return
     event.preventDefault()
     const rect = wrapperRef.current?.getBoundingClientRect()
     if (!rect) return
     const left = Math.max(0, Math.min(event.clientX - rect.left, rect.width - 180))
-    const top = Math.max(0, Math.min(event.clientY - rect.top, rect.height - 140))
+    const top = Math.max(0, Math.min(event.clientY - rect.top, rect.height - 220))
     setMenu(null) // 与加节点菜单互斥
-    setActionMenu({ top, left, canGroup, canArrange, canUngroup, groupIds: [...groupIds] })
+    setActionMenu({
+      top,
+      left,
+      canGroup,
+      canArrange,
+      canDistribute,
+      canStraighten,
+      canUngroup,
+      groupIds: [...groupIds],
+    })
   }, [])
 
   // ⚡ 必须是稳定引用：NodeRenderer 会把 onNodeContextMenu 原样传给每一个 memo 化的 NodeWrapper，
@@ -201,6 +222,30 @@ export function FlowCanvas() {
     setMenu(null)
     setActionMenu(null)
   }, [])
+
+  /**
+   * 「拉直连线」要知道端点在节点内的竖向位置——本项目端点是从标题下方起的竖排槽位（handleTop），
+   * 不是 React Flow 默认的垂直居中，直接对齐节点顶边 / 中心会歪。故从 React Flow 实测的
+   * handleBounds 读真实偏移；还没测到（节点刚建未渲染）才回退节点竖向中心。
+   */
+  const handleOffset = useCallback<HandleOffsetResolver>(
+    (nodeId, handleId, type) => {
+      const internal = getInternalNode(nodeId)
+      const bounds = internal?.internals.handleBounds?.[type]
+      const hit = (handleId ? bounds?.find((b) => b.id === handleId) : undefined) ?? bounds?.[0]
+      if (hit) return hit.y + hit.height / 2
+      return (internal?.measured.height ?? 0) / 2
+    },
+    [getInternalNode],
+  )
+
+  const runArrange = useCallback(
+    (op: ArrangeOp) => {
+      arrangeSelectedNodes(op, handleOffset)
+      setActionMenu(null)
+    },
+    [arrangeSelectedNodes, handleOffset],
+  )
 
   /*
    * 交互期（平移 / 缩放 / 拖节点 / 框选）给容器打 .canvas-interacting，让 CSS 关掉画布内的
@@ -528,15 +573,14 @@ export function FlowCanvas() {
           left={actionMenu.left}
           canGroup={actionMenu.canGroup}
           canArrange={actionMenu.canArrange}
+          canDistribute={actionMenu.canDistribute}
+          canStraighten={actionMenu.canStraighten}
           canUngroup={actionMenu.canUngroup}
           onGroup={() => {
             groupSelectedNodes()
             setActionMenu(null)
           }}
-          onArrange={() => {
-            arrangeSelectedNodes()
-            setActionMenu(null)
-          }}
+          onArrange={runArrange}
           onUngroup={() => {
             actionMenu.groupIds.forEach((id) => ungroupNode(id))
             setActionMenu(null)
