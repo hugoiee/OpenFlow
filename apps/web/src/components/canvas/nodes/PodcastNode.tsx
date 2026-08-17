@@ -13,6 +13,8 @@ import { PODCAST_SCRIPT_PLACEHOLDER } from '@/lib/nodeCatalog'
 import { buildPodcastRequest } from '@/lib/requestBody'
 import { type PodcastNode as PodcastNodeType } from '@/lib/types'
 import { useFlowStore } from '@/store/useFlowStore'
+import { markCardClass } from '@/lib/nodeMark'
+import { NodeActions } from './NodeActions'
 
 // 节点默认/最小尺寸：脚本编辑区需要比普通节点更大的空间（理由同 PromptNode 的显式像素尺寸）
 const DEFAULT_WIDTH = 320
@@ -111,9 +113,7 @@ export function PodcastNode({ id, data, selected, width, height }: NodeProps<Pod
   return (
     <Card
       style={{ width: width || DEFAULT_WIDTH, height: height || DEFAULT_HEIGHT }}
-      className={`group/node flex flex-col gap-2 py-3 shadow-sm transition-shadow ${
-        selected ? 'ring-2 ring-primary' : ''
-      }`}
+      className={`group/node flex flex-col gap-2 py-3 shadow-sm transition-shadow ${markCardClass(data.mark, selected)}`}
     >
       <NodeResizer
         isVisible={selected}
@@ -122,7 +122,7 @@ export function PodcastNode({ id, data, selected, width, height }: NodeProps<Pod
         lineClassName="!border-primary/60"
         handleClassName="!size-2.5 !rounded-sm !border-2 !border-background !bg-primary"
       />
-      <NodeHeader id={id} icon={Podcast} title={data.label} selected={selected} />
+      <NodeHeader id={id} icon={Podcast} title={data.label} selected={selected} mark={data.mark} />
       <CardContent className="flex min-h-0 flex-1 flex-col gap-2 px-3">
         {/* 对话脚本编辑区：吃掉剩余高度 */}
         <Textarea
@@ -169,8 +169,10 @@ export function PodcastNode({ id, data, selected, width, height }: NodeProps<Pod
           </div>
         ) : null}
 
-        <div className="flex shrink-0 items-center">
-          <Button size="sm" onClick={handleRun} disabled={running} className="nodrag ml-auto h-8">
+        {/* 底部动作行：复制 / 删除 + 生成（头部只留可改名的节点名） */}
+        <div className="flex shrink-0 items-center gap-2">
+          <NodeActions id={id} selected={selected} />
+          <Button size="sm" onClick={handleRun} disabled={running} className="nodrag h-8">
             {running ? '生成中…' : '生成播客'}
           </Button>
         </div>
