@@ -25,6 +25,8 @@ import { NodeHandle } from './NodeHandle'
 import { useFlowStore } from '@/store/useFlowStore'
 import { usePromptPresetStore } from '@/store/usePromptPresetStore'
 import type { PromptNode as PromptNodeType } from '@/lib/types'
+import { markCardClass } from '@/lib/nodeMark'
+import { NodeActions } from './NodeActions'
 
 /** 从 prompt 正文派生一个默认标题：取首个非空行，截断到 24 字。 */
 function defaultTitle(text: string): string {
@@ -177,9 +179,7 @@ export function PromptNode({ id, data, selected, width, height }: NodeProps<Prom
       // ?? 不拦 0 → Card 塌成 0 宽度、整个节点不可见。|| 让 0/NaN 也回退默认，
       // 渲染出默认尺寸后 React Flow 会重新测量并把尺寸写正（自愈）。
       style={{ width: width || DEFAULT_WIDTH, height: height || DEFAULT_HEIGHT }}
-      className={`group/node flex flex-col gap-2 py-3 shadow-sm transition-shadow ${
-        selected ? 'ring-2 ring-primary' : ''
-      }`}
+      className={`group/node flex flex-col gap-2 py-3 shadow-sm transition-shadow ${markCardClass(data.mark, selected)}`}
     >
       {/* 节点整体可调节大小：拖角/边 → 写入节点 width/height（随项目持久化，重开不丢） */}
       <NodeResizer
@@ -189,7 +189,7 @@ export function PromptNode({ id, data, selected, width, height }: NodeProps<Prom
         lineClassName="!border-primary/60"
         handleClassName="!size-2.5 !rounded-sm !border-2 !border-background !bg-primary"
       />
-      <NodeHeader id={id} icon={Type} title={data.label} selected={selected} />
+      <NodeHeader id={id} icon={Type} title={data.label} selected={selected} mark={data.mark} />
       {/* flex-1 + min-h-0：内容区吃掉除页头/工具条外的剩余高度，输入框随之填满 */}
       <CardContent className="flex min-h-0 flex-1 flex-col gap-2 px-3">
         {/* relative 容器：@ 引用菜单锚在 Textarea 正下方；@ tag 高亮层垫在 Textarea 后面 */}
@@ -248,7 +248,7 @@ export function PromptNode({ id, data, selected, width, height }: NodeProps<Prom
           )}
         </div>
 
-        {/* 预设工具条：选用预设 / 存为预设 */}
+        {/* 底部动作行：预设按钮 + 复制 / 删除（头部只留可改名的节点名） */}
         <div className="flex shrink-0 items-center gap-1">
           <Button
             size="sm"
@@ -271,6 +271,8 @@ export function PromptNode({ id, data, selected, width, height }: NodeProps<Prom
             <BookmarkPlus className="size-3.5" />
             存为预设
           </Button>
+          {/* spacer=false：本行已有「选用预设」占着 flex-1，再来一个会把它压扁 */}
+          <NodeActions id={id} selected={selected} spacer={false} />
         </div>
       </CardContent>
 
