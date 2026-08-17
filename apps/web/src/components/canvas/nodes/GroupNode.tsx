@@ -1,5 +1,6 @@
 import { type NodeProps } from '@xyflow/react'
 import { GROUP_PADDING } from '@/lib/layout'
+import { NODE_MARK_META } from '@/lib/nodeMark'
 import { type GroupNode as GroupNodeType } from '@/lib/types'
 import { useFlowStore } from '@/store/useFlowStore'
 import { useCompositionField } from '@/hooks/useCompositionField'
@@ -18,16 +19,17 @@ import { useCompositionField } from '@/hooks/useCompositionField'
 export function GroupNode({ id, data, selected, width, height }: NodeProps<GroupNodeType>) {
   const updateNodeData = useFlowStore((s) => s.updateNodeData)
   const labelField = useCompositionField(data.label, (v) => updateNodeData(id, { label: v }))
+  const mark = data.mark
 
   return (
     <div
       // 用 || 兜 0/NaN（同 PromptNode：React Flow 测量竞态可能写 0）
       style={{ width: width || GROUP_PADDING * 4, height: height || GROUP_PADDING * 3 }}
       className={`relative rounded-xl border-2 border-dashed transition-colors ${
-        selected
-          ? 'border-primary/70 bg-primary/15'
-          : 'border-muted-foreground/60 bg-muted-foreground/15'
-      }`}
+        // 有标记时描边恒为标记色（分组没有 NodeHeader 的色点，描边是它唯一的标记出口，
+        // 不能被选中态吃掉），选中与否改用填充深浅来区分
+        mark ? NODE_MARK_META[mark].border : selected ? 'border-primary/70' : 'border-muted-foreground/60'
+      } ${selected ? 'bg-primary/15' : 'bg-muted-foreground/15'}`}
     >
       {/* 分组名：显示在分组框外左上角，可点击改名（nodrag，避免误触发拖拽/编辑） */}
       <input

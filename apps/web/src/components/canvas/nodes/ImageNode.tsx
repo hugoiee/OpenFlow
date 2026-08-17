@@ -14,6 +14,7 @@ import { RES_INPUT_HANDLE } from '@/lib/graph'
 import { buildImageRequest } from '@/lib/requestBody'
 import { type ImageNode as ImageNodeType } from '@/lib/types'
 import { useFlowStore } from '@/store/useFlowStore'
+import { markCardClass } from '@/lib/nodeMark'
 
 /**
  * 图像生成节点：卡片只展示生成结果（运行态 / 结果图 / 空占位）。
@@ -132,9 +133,7 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
 
   return (
     <Card
-      className={`group/node w-72 gap-2 py-3 shadow-sm transition-shadow ${
-        selected ? 'ring-2 ring-primary' : ''
-      }`}
+      className={`group/node w-72 gap-2 py-3 shadow-sm transition-shadow ${markCardClass(data.mark, selected)}`}
     >
       {/* 左侧输入端点：Prompt（粉，index 0）+ 统一资源端点（绿，接任意数量输入图；
           用哪张由上游 Prompt 里 @ 引用指定，没 @ 则全发） */}
@@ -153,6 +152,7 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
         title={data.label}
         subtitle={data.model}
         selected={selected}
+        mark={data.mark}
       />
       <CardContent className="flex flex-col gap-2 px-3">
         {/* 结果展示区（node-media：滑出视口时跳过渲染，见 index.css） */}

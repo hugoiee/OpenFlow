@@ -27,12 +27,21 @@ export type PromptMentionRef = {
   resultIndex?: number
 }
 
+/**
+ * 节点颜色标记：**人工**打的三档「这条产出能不能用」标记（绿=可用 / 黄=待定 / 红=废弃），
+ * 缺省（undefined）= 无标记。刻意不按任务状态自动推断——「跑成功了」和「画面能用」是两回事，
+ * 只有人能判断。素材节点（asset）是纯上传源、无所谓可用与否，不参与标记。
+ */
+export type NodeMark = 'ok' | 'todo' | 'reject'
+
 /** 纯文字 prompt 节点的数据。 */
 export type PromptNodeData = {
   label: string
   text: string
   /** 文本中 @ 引用的身份映射表（旧数据无此字段，兜底空）。 */
   mentions?: PromptMentionRef[]
+  /** 人工颜色标记（可用/待定/废弃），缺省为无标记。 */
+  mark?: NodeMark
 }
 
 /**
@@ -105,6 +114,8 @@ export type GenerationNodeData = {
   errorRecoverable?: boolean
   /** 进行中的异步任务 id：随节点存库，刷新后凭它重连轮询（关页面不丢结果）。 */
   taskId?: string
+  /** 人工颜色标记（可用/待定/废弃），缺省为无标记。 */
+  mark?: NodeMark
 }
 
 /**
@@ -165,6 +176,8 @@ export type PodcastNodeData = {
   error?: string
   /** 进行中的异步任务 id：随节点存库，刷新后凭它重连轮询（关页面不丢结果）。 */
   taskId?: string
+  /** 人工颜色标记（可用/待定/废弃），缺省为无标记。 */
+  mark?: NodeMark
 }
 
 /** 脚本分镜单行的运行状态（pending/running 为纯前端请求瞬时态，载入时复位为 idle）。 */
@@ -203,6 +216,8 @@ export type SplitterNodeData = {
    * 旧数据缺失 → 按默认 6 字/秒（见 nodeCatalog.normalizeSplitSpeed）。
    */
   charsPerSecond?: number
+  /** 人工颜色标记（可用/待定/废弃），缺省为无标记。 */
+  mark?: NodeMark
 }
 
 /**
@@ -226,6 +241,8 @@ export type StoryboardNodeData = {
   items?: StoryboardItem[]
   /** 是否有批量生成在跑（瞬时态，载入复位）。 */
   running?: boolean
+  /** 人工颜色标记（可用/待定/废弃），缺省为无标记。 */
+  mark?: NodeMark
 }
 
 /** 图像生成节点的数据：具名模型 + 可调选项 + 运行状态与结果。 */
@@ -260,6 +277,8 @@ export type ImageNodeData = {
   errorRecoverable?: boolean
   /** 进行中的异步任务 id：随节点存库，刷新后凭它重连轮询（关页面不丢结果）。 */
   taskId?: string
+  /** 人工颜色标记（可用/待定/废弃），缺省为无标记。 */
+  mark?: NodeMark
 }
 
 /**
@@ -268,6 +287,8 @@ export type ImageNodeData = {
  */
 export type GroupNodeData = {
   label: string
+  /** 人工颜色标记（可用/待定/废弃），缺省为无标记。 */
+  mark?: NodeMark
 }
 
 /** React Flow 节点类型（带上各自的 data）。 */

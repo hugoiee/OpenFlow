@@ -15,6 +15,7 @@ import { VIDEO_VARIANT_DEFAULT, videoVariantLabel } from '@/lib/nodeCatalog'
 import { buildVideoRequest } from '@/lib/requestBody'
 import { type VideoNode as VideoNodeType } from '@/lib/types'
 import { useFlowStore } from '@/store/useFlowStore'
+import { markCardClass } from '@/lib/nodeMark'
 
 /**
  * Seedance 视频生成节点：卡片只展示生成结果（运行态 / 结果视频 / 空占位）。
@@ -154,9 +155,7 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
 
   return (
     <Card
-      className={`group/node w-72 gap-2 py-3 shadow-sm transition-shadow ${
-        selected ? 'ring-2 ring-primary' : ''
-      }`}
+      className={`group/node w-72 gap-2 py-3 shadow-sm transition-shadow ${markCardClass(data.mark, selected)}`}
     >
       {/* 左侧输入端点：Prompt（必填，粉实心）+（首尾帧变体：First/Last 专用图像端点）+
           统一资源端点（接图/音/视任意源；用哪个由上游 Prompt 里 @ 引用指定，没 @ 则全发；
@@ -182,6 +181,7 @@ export function SeedanceNode({ id, data, selected }: NodeProps<VideoNodeType>) {
         title={data.label}
         subtitle={`${data.model} · ${videoVariantLabel(data.model, variant)}`}
         selected={selected}
+        mark={data.mark}
       />
       <CardContent className="flex flex-col gap-2 px-3">
         {/* 结果展示区（node-media：滑出视口时跳过渲染，见 index.css） */}

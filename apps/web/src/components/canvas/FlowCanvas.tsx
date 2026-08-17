@@ -23,6 +23,7 @@ import { MultiConnectHandle } from './MultiConnectHandle'
 import { useSpacePanGuard } from '@/hooks/useSpacePanGuard'
 import { uploadFilesApi } from '@/lib/api'
 import type { ArrangeOp, HandleOffsetResolver } from '@/lib/arrange'
+import { isMarkableType } from '@/lib/nodeMark'
 import { edgeColorForSource, isValidTypedConnection } from '@/lib/handleTypes'
 import { type FlowNode } from '@/lib/types'
 import { useActiveProject, useFlowStore } from '@/store/useFlowStore'
@@ -72,6 +73,7 @@ export function FlowCanvas() {
   const groupSelectedNodes = useFlowStore((s) => s.groupSelectedNodes)
   const ungroupNode = useFlowStore((s) => s.ungroupNode)
   const arrangeSelectedNodes = useFlowStore((s) => s.arrangeSelectedNodes)
+  const markNodes = useFlowStore((s) => s.markNodes)
   // 实际生效的明暗（system 已解析）：让画布底纹 / 控制按钮 / 缩略图 / 连线跟随主题
   const colorMode = useThemeStore((s) => s.resolved)
   const { screenToFlowPosition, getInternalNode } = useReactFlow()
@@ -127,6 +129,8 @@ export function FlowCanvas() {
     canDistribute: boolean
     canStraighten: boolean
     canUngroup: boolean
+    /** 可打标记的节点 id（选中的非素材节点；一个都没选中时退化为右键点中的那个）。 */
+    markIds: string[]
     /** 取消分组要释放的容器 id（选中的容器 + 右键点中的容器）。 */
     groupIds: string[]
   } | null>(null)
@@ -187,7 +191,10 @@ export function FlowCanvas() {
         (e) => e.source !== e.target && selIds.has(e.source) && selIds.has(e.target),
       )
     const canUngroup = groupIds.size > 0
-    if (!canGroup && !canArrange && !canUngroup) return
+    // 标记的作用对象：选中的非素材节点；一个都没选中时（右键单个节点不会选中它）就标右键点中的那个
+    const markIds = selected.filter((n) => isMarkableType(n.type)).map((n) => n.id)
+    if (markIds.length === 0 && node && isMarkableType(node.type)) markIds.push(node.id)
+    if (!canGroup && !canArrange && !canUngroup && markIds.length === 0) return
     event.preventDefault()
     const rect = wrapperRef.current?.getBoundingClientRect()
     if (!rect) return
@@ -202,6 +209,7 @@ export function FlowCanvas() {
       canDistribute,
       canStraighten,
       canUngroup,
+      markIds,
       groupIds: [...groupIds],
     })
   }, [])
@@ -576,11 +584,16 @@ export function FlowCanvas() {
           canDistribute={actionMenu.canDistribute}
           canStraighten={actionMenu.canStraighten}
           canUngroup={actionMenu.canUngroup}
+          canMark={actionMenu.markIds.length > 0}
           onGroup={() => {
             groupSelectedNodes()
             setActionMenu(null)
           }}
           onArrange={runArrange}
+          onMark={(mark) => {
+            markNodes(actionMenu.markIds, mark)
+            setActionMenu(null)
+          }}
           onUngroup={() => {
             actionMenu.groupIds.forEach((id) => ungroupNode(id))
             setActionMenu(null)

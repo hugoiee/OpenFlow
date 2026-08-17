@@ -66,8 +66,10 @@ import {
   type FlowNode,
   type FlowNodeType,
   type Project,
+  type NodeMark,
   type StoryboardItem,
 } from '@/lib/types'
+import { isMarkableType } from '@/lib/nodeMark'
 
 /** 已下线的 Any LLM 节点类型名：只用于载入时识别并清掉旧数据（FlowNodeType 里已没有它）。 */
 const LEGACY_LLM_TYPE = 'llm'
@@ -227,6 +229,12 @@ type FlowState = {
    * `handleOffset` 只有 straighten 用得上（端点竖向偏移得从 React Flow 运行时读，故由调用方注入）。
    */
   arrangeSelectedNodes: (op: ArrangeOp, handleOffset?: HandleOffsetResolver) => void
+  /**
+   * 给指定的一批节点打颜色标记（素材节点自动跳过）；mark=null 表示清除标记。
+   * **收显式 id 而不是「作用于选中项」**：右键单个节点时 React Flow 并不会把它选中
+   * （右键不触发 d3-drag 的选中逻辑），只认 selected 的话最常见的「右键这一个 → 标个色」会打空。
+   */
+  markNodes: (ids: string[], mark: NodeMark | null) => void
 }
 
 function createNode(
@@ -1027,6 +1035,28 @@ export const useFlowStore = create<FlowState>()((set, get) => {
           nodes: p.nodes.map((n) =>
             posById.has(n.id) ? { ...n, position: posById.get(n.id)! } : n,
           ),
+        }
+      }),
+
+    markNodes: (nodeIds, mark) =>
+      patchActive((p) => {
+        const wanted = new Set(nodeIds)
+        const targets = p.nodes.filter((n) => wanted.has(n.id) && isMarkableType(n.type))
+        if (targets.length === 0) return p
+        const ids = new Set(targets.map((n) => n.id))
+        return {
+          ...p,
+          nodes: p.nodes.map((n) => {
+            if (!ids.has(n.id)) return n
+            // 清除标记时把字段删掉而不是存 undefined：JSON 序列化会把 undefined 整个丢掉，
+            // 留着只会让「有 mark 键但值为空」和「没这个键」两种形态在库里并存
+            const { mark: _old, ...rest } = n.data as { mark?: NodeMark }
+            void _old
+            return {
+              ...n,
+              data: mark ? { ...n.data, mark } : rest,
+            } as FlowNode
+          }),
         }
       }),
   }

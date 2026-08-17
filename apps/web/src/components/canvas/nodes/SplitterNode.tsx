@@ -17,6 +17,7 @@ import {
 import { buildItems } from '@/lib/storyboard'
 import { type SplitterNode as SplitterNodeType } from '@/lib/types'
 import { useFlowStore } from '@/store/useFlowStore'
+import { markCardClass } from '@/lib/nodeMark'
 
 const DEFAULT_WIDTH = 340
 const DEFAULT_HEIGHT = 360
@@ -63,9 +64,7 @@ export function SplitterNode({ id, data, selected, width, height }: NodeProps<Sp
   return (
     <Card
       style={{ width: width || DEFAULT_WIDTH, height: height || DEFAULT_HEIGHT }}
-      className={`group/node flex flex-col gap-2 py-3 shadow-sm transition-shadow ${
-        selected ? 'ring-2 ring-primary' : ''
-      }`}
+      className={`group/node flex flex-col gap-2 py-3 shadow-sm transition-shadow ${markCardClass(data.mark, selected)}`}
     >
       <NodeResizer
         isVisible={selected}
@@ -74,7 +73,7 @@ export function SplitterNode({ id, data, selected, width, height }: NodeProps<Sp
         lineClassName="!border-primary/60"
         handleClassName="!size-2.5 !rounded-sm !border-2 !border-background !bg-primary"
       />
-      <NodeHeader id={id} icon={Scissors} title={data.label} selected={selected} />
+      <NodeHeader id={id} icon={Scissors} title={data.label} selected={selected} mark={data.mark} />
       {/* 右侧输出：连脚本分镜节点的「分镜表」端点（数据由「切割」动作直接写入，连线用于标识归属） */}
       <NodeHandle type="source" index={0} tone="prompt" label="分镜表" />
       <CardContent className="flex min-h-0 flex-1 flex-col gap-2 px-3">
