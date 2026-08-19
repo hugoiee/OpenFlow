@@ -1,5 +1,6 @@
 import type { Edge, Node } from '@xyflow/react'
-import type { VideoShot } from '@openflow/shared'
+import type { ProjectType, VideoShot } from '@openflow/shared'
+import type { EvaluationTable } from './evaluation'
 import type { VideoTask, VideoVariant } from './nodeCatalog'
 
 /** 节点种类：文本 prompt / 图像生成 / 视频生成 / 播客音频 / 桌面拖入的媒体素材 / 脚本切割 / 脚本分镜。 */
@@ -310,12 +311,19 @@ export type FlowNode =
   | SplitterNode
   | StoryboardNode
 
-/** 一个项目 = 一块画布。 */
+/**
+ * 一个项目 = 一块画布（type='canvas'）或一张评估表（type='evaluation'）。
+ * 两种形态的数据字段互不相通：画布用 nodes/edges，评估表用 table；对方的字段恒为空。
+ */
 export type Project = {
   id: string
   name: string
+  /** 项目形态；建后不可变（后端 PUT 不接受该字段）。 */
+  type: ProjectType
   nodes: FlowNode[]
   edges: Edge[]
+  /** 评估项目的表格数据（画布项目为 undefined）。 */
+  table?: EvaluationTable
   /** 是否置顶：首页把置顶项目单独成区排在最前。 */
   pinned: boolean
 }
