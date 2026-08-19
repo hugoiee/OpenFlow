@@ -1,11 +1,23 @@
 // 前后端共享的纯数据契约（不依赖 React / React Flow）。
 
-/** 项目 DTO：nodes/edges 在后端按不透明 JSON 存取（前端自行强类型化）。 */
+/**
+ * 项目形态：
+ * 'canvas'     = 节点式画布（nodes/edges 有内容，data 为空对象）；
+ * 'evaluation' = 评估项目（Excel 式表格，表格存 data，nodes/edges 恒空）。
+ * 建项目时定死、之后不可改（PUT 不接受该字段）——两种形态的数据字段互不相通，中途换型只会留下半张空表。
+ */
+export type ProjectType = 'canvas' | 'evaluation'
+
+/** 项目 DTO：nodes/edges/data 在后端按不透明 JSON 存取（前端自行强类型化）。 */
 export type ProjectDTO = {
   id: string
   name: string
+  /** 项目形态；旧数据无此字段时前端按 'canvas' 兜底。 */
+  type: ProjectType
   nodes: unknown[]
   edges: unknown[]
+  /** 评估项目的表格数据（EvaluationTable，前端定义）；画布项目恒为 {}。 */
+  data: unknown
   /** 是否置顶：首页把置顶项目单独成区排在最前。 */
   pinned: boolean
 }
@@ -381,6 +393,23 @@ export type AgentExpandBody = {
 /** POST /api/agent/expand 成功响应：LLM 输出的视频 prompt 纯文本。失败走非 2xx + { error }。 */
 export type AgentExpandResponse = {
   prompt: string
+}
+
+/**
+ * POST /api/agent/evaluate 请求体：评估项目的 LLM 评估列逐行调用。
+ * 与 /agent/expand 的分工：expand 的模板占位符由后端替换（{{line}} 是分镜专属语义），
+ * 评估列的 {{列名}} 引用哪些列只有前端知道，故**占位符全部在前端替换完**，这里发的就是最终 prompt。
+ */
+export type AgentEvaluateBody = {
+  /** 已完成占位符替换的完整提示词，作为唯一 user message 发给 LLM。 */
+  prompt: string
+  /** 本列覆盖的模型名；省略/空则回退设置里的 agentModel。端点/密钥/协议仍统一走全局设置。 */
+  model?: string
+}
+
+/** POST /api/agent/evaluate 成功响应：LLM 输出的评估结果纯文本。失败走非 2xx + { error }。 */
+export type AgentEvaluateResponse = {
+  text: string
 }
 
 /**
