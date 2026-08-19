@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Pin } from 'lucide-react'
+import { Pin, Table2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import {
@@ -57,6 +57,12 @@ export function ProjectCard({ project, view }: ProjectCardProps) {
     />
   ) : null
 
+  // 评估项目才标类型图标（画布项目是默认形态，不加图标少点噪音）
+  const typeIcon =
+    project.type === 'evaluation' ? (
+      <Table2 className="size-3.5 shrink-0 text-muted-foreground" aria-label="评估项目" />
+    ) : null
+
   const menu = (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -94,6 +100,7 @@ export function ProjectCard({ project, view }: ProjectCardProps) {
         {project.pinned && !editing && (
           <Pin className="size-3.5 shrink-0 text-muted-foreground" aria-label="已置顶" />
         )}
+        {!editing && typeIcon}
         {editing ? (
           <div className="flex-1">{nameField}</div>
         ) : (
@@ -117,11 +124,14 @@ export function ProjectCard({ project, view }: ProjectCardProps) {
       className="group relative flex h-28 cursor-pointer items-center justify-center p-4 text-center transition-colors hover:bg-accent/50"
       onClick={open}
     >
-      {project.pinned && (
-        <Pin
-          className="absolute left-2 top-2 size-3.5 text-muted-foreground"
-          aria-label="已置顶"
-        />
+      {/* 置顶标与类型标同排左上角：分别绝对定位会叠在一起 */}
+      {(project.pinned || typeIcon) && (
+        <div className="absolute top-2 left-2 flex items-center gap-1">
+          {project.pinned && (
+            <Pin className="size-3.5 text-muted-foreground" aria-label="已置顶" />
+          )}
+          {typeIcon}
+        </div>
       )}
       <div className="absolute right-2 top-2">{menu}</div>
       {editing ? (

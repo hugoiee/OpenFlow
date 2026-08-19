@@ -9,12 +9,19 @@ import {
   type NodeChange,
 } from '@xyflow/react'
 import { create } from 'zustand'
+import type { ProjectType } from '@openflow/shared'
 import {
   createProjectApi,
   deleteProjectApi,
   listProjects,
   updateProjectApi,
 } from '@/lib/api'
+import {
+  createDefaultTable,
+  normalizeEvaluationTable,
+  type EvaluationCell,
+  type EvaluationTable,
+} from '@/lib/evaluation'
 import { newId } from '@/lib/id'
 import {
   NANO_ASPECT_DEFAULT,
@@ -106,7 +113,8 @@ type FlowState = {
   loadProjects: () => Promise<void>
 
   // 项目管理
-  addProject: (name?: string) => Promise<string>
+  /** 新建项目：type 决定形态（画布 / 评估表），建后不可改；评估项目自带初始表格。 */
+  addProject: (name?: string, type?: ProjectType) => Promise<string>
   renameProject: (id: string, name: string) => void
   /** 置顶 / 取消置顶：首页把置顶项目单独成区排在最前（状态持久化到后端）。 */
   setProjectPinned: (id: string, pinned: boolean) => void
@@ -189,6 +197,28 @@ type FlowState = {
     roleBName: string
     items: StoryboardItem[]
   }) => { storyboardNodeId: string; created: boolean } | null
+  // 评估项目（Excel 式表格）操作：三个 action 都显式收 projectId，
+  // 因为跑整列时请求在飞，用户可能已切走项目——按「当前激活项目」写会写错地方。
+  /** 评估表整表重建（xlsx 导入 / 从 Excel 粘贴）。 */
+  setEvaluationTable: (projectId: string, table: EvaluationTable) => void
+  /**
+   * 评估表结构变更（增删行列、改列名、改 LLM 列配置）：updater 在 set 时刻拿到最新表。
+   * 具体的行列操作以纯函数形式由调用方传入，避免 store 里堆出七八个近似 action。
+   */
+  updateEvaluationTable: (
+    projectId: string,
+    updater: (table: EvaluationTable) => EvaluationTable,
+  ) => void
+  /**
+   * 评估表单元格 patch：并发 worker 完成时回写的必经之路。
+   * 按 rowId/columnId 定位而非下标——跑列期间用户删行/加行不会让回写错位（同 patchStoryboardItem 的丢更新教训）。
+   */
+  patchEvaluationCell: (
+    projectId: string,
+    rowId: string,
+    columnId: string,
+    patch: Partial<EvaluationCell>,
+  ) => void
   /**
    * 从某个节点的 handle 拉线松开在空白处后新建一个节点并与源节点连线。
    * from.handleType='source'（从输出端拉出）→ 新节点作下游 target（源→新）；
@@ -363,16 +393,21 @@ const AGENT_PLACE_FALLBACK_HEIGHT: Record<string, number> = {
   storyboard: 420,
 }
 
-// 画布高频编辑 → 防抖把激活项目整体 PUT 回后端
+// 画布/表格高频编辑 → 防抖把激活项目整体 PUT 回后端
 const saveTimers: Record<string, ReturnType<typeof setTimeout>> = {}
 function scheduleSave(project: Project) {
   clearTimeout(saveTimers[project.id])
   saveTimers[project.id] = setTimeout(() => {
-    updateProjectApi(project.id, {
-      name: project.name,
-      nodes: project.nodes,
-      edges: project.edges,
-    }).catch((e) => console.error('[openflow] 保存项目失败', e))
+    // 两种形态各存各的字段：评估项目只发 data，画布项目只发 nodes/edges。
+    // 刻意**省略**对方的字段而不是发空值——后端「传什么改什么」，省略即保留原值，
+    // 万一形态判断出错也只是不写，而不是把另一形态的数据清空。
+    const patch =
+      project.type === 'evaluation'
+        ? { name: project.name, data: project.table ?? {} }
+        : { name: project.name, nodes: project.nodes, edges: project.edges }
+    updateProjectApi(project.id, patch).catch((e) =>
+      console.error('[openflow] 保存项目失败', e),
+    )
   }, 500)
 }
 
@@ -404,6 +439,19 @@ export const useFlowStore = create<FlowState>()((set, get) => {
     loadProjects: async () => {
       const dtos = await listProjects()
       const projects: Project[] = dtos.map((d) => {
+        // 评估项目在画布清洗之前分流：它的 nodes/edges 恒空，下面那套节点清洗对它毫无意义。
+        if ((d.type ?? 'canvas') === 'evaluation') {
+          return {
+            id: d.id,
+            name: d.name,
+            type: 'evaluation' as const,
+            nodes: [],
+            edges: [],
+            // 载入时复位单元格的 pending/running（刷新后没有在飞的请求了），done 结果保留
+            table: normalizeEvaluationTable(d.data),
+            pinned: d.pinned ?? false,
+          }
+        }
         // Any LLM 节点已下线：旧项目里残留的 llm 节点及其连线在载入时一并丢弃
         // （下次防抖存盘即把库里的也清干净），免得画布上留下渲染不出来的空节点与悬空连线。
         const dropped = new Set(
@@ -465,6 +513,7 @@ export const useFlowStore = create<FlowState>()((set, get) => {
         return {
           id: d.id,
           name: d.name,
+          type: 'canvas' as const,
           nodes,
           // 旧编号端点连线归并到统一资源端点 res（首尾帧 First/Last 保留；保持旧采集次序）
           edges: normalizeResourceEdges(
@@ -477,13 +526,17 @@ export const useFlowStore = create<FlowState>()((set, get) => {
       set({ projects, loaded: true })
     },
 
-    addProject: async (name) => {
-      const dto = await createProjectApi(name?.trim() || '未命名项目')
+    addProject: async (name, type = 'canvas') => {
+      // 评估项目建库时就带上初始表格，省得进工作区还要补一次 PUT
+      const initialTable = type === 'evaluation' ? createDefaultTable() : undefined
+      const dto = await createProjectApi(name?.trim() || '未命名项目', type, initialTable)
       const project: Project = {
         id: dto.id,
         name: dto.name,
+        type: dto.type ?? 'canvas',
         nodes: dto.nodes as FlowNode[],
         edges: dto.edges as Edge[],
+        table: initialTable,
         pinned: dto.pinned ?? false,
       }
       set((state) => ({
@@ -742,6 +795,50 @@ export const useFlowStore = create<FlowState>()((set, get) => {
               }
             : p,
         )
+        const target = projects.find((p) => p.id === projectId)
+        if (target) scheduleSave(target)
+        return { projects }
+      }),
+
+    setEvaluationTable: (projectId, table) =>
+      set((state) => {
+        const projects = state.projects.map((p) =>
+          p.id === projectId && p.type === 'evaluation' ? { ...p, table } : p,
+        )
+        const target = projects.find((p) => p.id === projectId)
+        if (target) scheduleSave(target)
+        return { projects }
+      }),
+
+    updateEvaluationTable: (projectId, updater) =>
+      set((state) => {
+        const projects = state.projects.map((p) =>
+          p.id === projectId && p.type === 'evaluation' && p.table
+            ? { ...p, table: updater(p.table) }
+            : p,
+        )
+        const target = projects.find((p) => p.id === projectId)
+        if (target) scheduleSave(target)
+        return { projects }
+      }),
+
+    patchEvaluationCell: (projectId, rowId, columnId, patch) =>
+      set((state) => {
+        const projects = state.projects.map((p) => {
+          if (p.id !== projectId || p.type !== 'evaluation' || !p.table) return p
+          return {
+            ...p,
+            table: {
+              ...p.table,
+              rows: p.table.rows.map((row) => {
+                if (row.id !== rowId) return row
+                // 单元格可能还不存在（空格子不占键），补一个空值再合并 patch
+                const current: EvaluationCell = row.cells[columnId] ?? { value: '' }
+                return { ...row, cells: { ...row.cells, [columnId]: { ...current, ...patch } } }
+              }),
+            },
+          }
+        })
         const target = projects.find((p) => p.id === projectId)
         if (target) scheduleSave(target)
         return { projects }

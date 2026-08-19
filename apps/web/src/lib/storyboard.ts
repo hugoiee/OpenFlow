@@ -7,6 +7,7 @@ import {
   STORYBOARD_SEG_MAX_SECONDS,
   STORYBOARD_SEG_MIN_SECONDS,
 } from './nodeCatalog'
+import { escapeTsvField, parseTsvTable } from './tsv'
 import type { StoryboardItem } from './types'
 
 /** 拆出的一个说话人回合：整段台词（不含角色名前缀）+ 说话人下标。 */
@@ -177,11 +178,7 @@ export function buildItems(
 }
 
 // ---- Excel（TSV）双向互通 ----
-
-/** TSV 字段转义：含制表符/换行/引号的字段用双引号包裹（Excel 粘贴时能还原多行单元格）。 */
-function escapeTsvField(v: string): string {
-  return /[\t\n\r"]/.test(v) ? `"${v.replaceAll('"', '""')}"` : v
-}
+// 转义/解析的通用原语在 lib/tsv.ts（评估项目表格共用），这里只放分镜表的列语义。
 
 /** 分镜表 → TSV（含表头：序号/发言人/脚本/时长(秒)/prompt），供「复制表格」粘进 Excel。 */
 export function itemsToTsv(items: StoryboardItem[], roleNames: [string, string]): string {
@@ -196,40 +193,6 @@ export function itemsToTsv(items: StoryboardItem[], roleNames: [string, string])
     ].join('\t'),
   )
   return ['序号\t发言人\t脚本\t时长(秒)\tprompt', ...rows].join('\n')
-}
-
-/** 解析 TSV 文本为单元格矩阵：支持双引号包裹的字段（内含换行/制表符/"" 转义），\r\n 兼容。 */
-function parseTsvTable(text: string): string[][] {
-  const rows: string[][] = []
-  let cells: string[] = []
-  let cell = ''
-  let inQuotes = false
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i]
-    if (inQuotes) {
-      if (ch === '"') {
-        if (text[i + 1] === '"') {
-          cell += '"'
-          i++
-        } else inQuotes = false
-      } else cell += ch
-      continue
-    }
-    if (ch === '"' && cell === '') inQuotes = true
-    else if (ch === '\t') {
-      cells.push(cell)
-      cell = ''
-    } else if (ch === '\n' || ch === '\r') {
-      if (ch === '\r' && text[i + 1] === '\n') i++
-      cells.push(cell)
-      rows.push(cells)
-      cells = []
-      cell = ''
-    } else cell += ch
-  }
-  cells.push(cell)
-  rows.push(cells)
-  return rows.filter((r) => r.some((c) => c.trim()))
 }
 
 /**

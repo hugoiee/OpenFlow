@@ -1,6 +1,8 @@
 import type {
   AgentChatBody,
   AgentChatResponse,
+  AgentEvaluateBody,
+  AgentEvaluateResponse,
   AgentExpandBody,
   AgentExpandResponse,
   AgentModelsBody,
@@ -12,6 +14,7 @@ import type {
   GenPodcastBody,
   GenVideoBody,
   ProjectDTO,
+  ProjectType,
   PromptPresetDTO,
   SavePromptPresetBody,
   SaveSettingsBody,
@@ -47,16 +50,21 @@ export function listProjects(): Promise<ProjectDTO[]> {
   return request<ProjectDTO[]>('/projects')
 }
 
-export function createProjectApi(name?: string): Promise<ProjectDTO> {
+/** 新建项目：type 只在建的时候定（后端不接受改），评估项目顺带把初始表格一并写进去。 */
+export function createProjectApi(
+  name?: string,
+  type?: ProjectType,
+  data?: unknown,
+): Promise<ProjectDTO> {
   return request<ProjectDTO>('/projects', {
     method: 'POST',
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ name, type, data }),
   })
 }
 
 export function updateProjectApi(
   id: string,
-  patch: Partial<Pick<ProjectDTO, 'name' | 'nodes' | 'edges' | 'pinned'>>,
+  patch: Partial<Pick<ProjectDTO, 'name' | 'nodes' | 'edges' | 'data' | 'pinned'>>,
 ): Promise<ProjectDTO> {
   return request<ProjectDTO>(`/projects/${id}`, {
     method: 'PUT',
@@ -151,6 +159,21 @@ export async function agentExpandApi(body: AgentExpandBody, signal?: AbortSignal
     signal,
   })
   return prompt
+}
+
+// ---- 评估项目的 LLM 评估列 ----
+// 同步接口：prompt 已在前端替换完 {{列名}} 占位符，后端直接发给 Agent LLM 返回评估结果纯文本。
+// signal 供工作区卸载/切项目时取消整列进行中的请求。
+export async function agentEvaluateApi(
+  body: AgentEvaluateBody,
+  signal?: AbortSignal,
+): Promise<string> {
+  const { text } = await request<AgentEvaluateResponse>('/agent/evaluate', {
+    method: 'POST',
+    body: JSON.stringify(body),
+    signal,
+  })
+  return text
 }
 
 // ---- Agent 连接测试（最小用量）----
