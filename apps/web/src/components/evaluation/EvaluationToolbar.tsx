@@ -1,8 +1,18 @@
 import { useRef, useState } from 'react'
-import { ClipboardPaste, Copy, Download, Plus, Sparkles, Upload } from 'lucide-react'
+import {
+  ClipboardPaste,
+  Copy,
+  Download,
+  Plus,
+  Rows3,
+  Sparkles,
+  Upload,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import {
+  clampRowHeight,
+  EVALUATION_MIN_ROW_HEIGHT,
   exportTableToXlsx,
   readXlsxFile,
   type EvaluationTable,
@@ -22,6 +32,8 @@ type Props = {
   onAddLlmColumn: () => void
   /** 整表替换（导入/粘贴）；覆盖确认由调用方处理。 */
   onReplaceTable: (table: EvaluationTable, note: string) => void
+  /** 全局默认行高（px）。 */
+  onChangeRowHeight: (height: number) => void
 }
 
 /** 评估表工具栏：Excel 互通（导入/导出/复制/粘贴）+ 加行加列。 */
@@ -34,7 +46,9 @@ export function EvaluationToolbar({
   onAddDataColumn,
   onAddLlmColumn,
   onReplaceTable,
+  onChangeRowHeight,
 }: Props) {
+  const rowHeight = clampRowHeight(table.rowHeight)
   const [pasteOpen, setPasteOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -131,6 +145,27 @@ export function EvaluationToolbar({
         <Button variant="ghost" size="sm" onClick={() => setPasteOpen((v) => !v)}>
           <ClipboardPaste className="size-3.5" />从 Excel 粘贴
         </Button>
+
+        <div className="mx-1 h-5 w-px bg-border" />
+
+        {/* 全局默认行高：只作用于「没单独拖过」的行，拖过的行保留自己的高度 */}
+        <label
+          className="flex items-center gap-1.5 text-xs text-muted-foreground"
+          title="所有未单独调整过的行的高度；单独拖过的行保持自己的高度不变"
+        >
+          <Rows3 className="size-3.5" />
+          行高
+          <input
+            type="range"
+            min={EVALUATION_MIN_ROW_HEIGHT}
+            max={240}
+            step={4}
+            value={rowHeight}
+            onChange={(e) => onChangeRowHeight(Number(e.target.value))}
+            className="w-28 accent-primary"
+          />
+          <span className="w-9 tabular-nums">{rowHeight}px</span>
+        </label>
 
         {feedback && (
           <span className="ml-1 text-xs text-muted-foreground">{feedback}</span>

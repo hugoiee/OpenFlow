@@ -20,9 +20,67 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useCompositionField } from '@/hooks/useCompositionField'
-import { cellValue, type EvaluationColumn, type EvaluationTable } from '@/lib/evaluation'
+import {
+  cellValue,
+  clampColumnWidth,
+  clampRowHeight,
+  rowHeightOf,
+  EVALUATION_DEFAULT_COL_WIDTH,
+  type EvaluationColumn,
+  type EvaluationRow,
+  type EvaluationTable,
+} from '@/lib/evaluation'
 import { cn } from '@/lib/utils'
 import { useFlowStore } from '@/store/useFlowStore'
+
+/**
+ * 拖拽调尺寸的通用底座（列宽走 x 轴、行高走 y 轴，两处共用）。
+ * 照 useResizableWidth 的做法：pointermove 按 rAF 合帧、拖动中只更新本地预览态，
+ * **松手才提交一次**——每帧写 store 会触发整表重渲染 + 防抖 PUT，拖起来会顿。
+ */
+function beginDrag(
+  e: React.PointerEvent,
+  opts: {
+    axis: 'x' | 'y'
+    start: number
+    clamp: (v: number) => number
+    onPreview: (v: number) => void
+    onEnd: () => void
+    onCommit: (v: number) => void
+  },
+) {
+  e.preventDefault()
+  e.stopPropagation()
+  const origin = opts.axis === 'x' ? e.clientX : e.clientY
+  let next = opts.start
+  let raf = 0
+  const onMove = (ev: PointerEvent) => {
+    const now = opts.axis === 'x' ? ev.clientX : ev.clientY
+    next = opts.clamp(opts.start + (now - origin))
+    if (raf) return
+    raf = requestAnimationFrame(() => {
+      raf = 0
+      opts.onPreview(next)
+    })
+  }
+  const onUp = () => {
+    window.removeEventListener('pointermove', onMove)
+    window.removeEventListener('pointerup', onUp)
+    document.body.style.cursor = ''
+    document.body.style.userSelect = ''
+    if (raf) cancelAnimationFrame(raf)
+    opts.onEnd()
+    if (next !== opts.start) opts.onCommit(next)
+  }
+  window.addEventListener('pointermove', onMove)
+  window.addEventListener('pointerup', onUp)
+  document.body.style.cursor = opts.axis === 'x' ? 'col-resize' : 'row-resize'
+  document.body.style.userSelect = 'none'
+}
+
+/** 行号列与行操作列的固定宽度（px）：原来是 w-12 / w-10，改 colgroup 后要具体数值。 */
+const ROW_NUM_WIDTH = 48
+const ROW_ACT_WIDTH = 40
 
 type GridProps = {
   projectId: string
@@ -32,6 +90,10 @@ type GridProps = {
   onAddRow: () => void
   onDeleteRow: (rowId: string) => void
   onRenameColumn: (columnId: string, name: string) => void
+  /** 列宽提交；width=undefined 表示重置回默认宽。 */
+  onResizeColumn: (columnId: string, width: number | undefined) => void
+  /** 行高提交；height=undefined 表示清除本行覆盖、回落表级行高。 */
+  onResizeRow: (rowId: string, height: number | undefined) => void
   onDeleteColumn: (columnId: string) => void
   onEditLlmColumn: (column: EvaluationColumn) => void
   onRunColumn: (columnId: string) => void
@@ -86,7 +148,8 @@ function EvaluationCellField({
   const busy = status === 'pending' || status === 'running'
 
   return (
-    <div className="relative flex min-h-9 items-stretch">
+    // 高度由 <tr> 的行高决定，这里撑满：内容超出就在格内滚动，不再把整行顶高
+    <div className="relative flex h-full items-stretch">
       <textarea
         {...field}
         // 运行中禁止编辑：结果马上要被 worker 覆盖，让用户白输
@@ -94,7 +157,7 @@ function EvaluationCellField({
         rows={1}
         title={error || undefined}
         className={cn(
-          'field-sizing-content max-h-40 w-full resize-none bg-transparent px-2 py-1.5 text-xs outline-none',
+          'h-full w-full resize-none overflow-auto bg-transparent px-2 py-1.5 text-xs outline-none',
           'focus:bg-accent/40 disabled:opacity-60',
           isLlm && 'pr-6',
           status === 'error' && 'text-destructive',
@@ -243,25 +306,54 @@ export function EvaluationGrid({
   onAddRow,
   onDeleteRow,
   onRenameColumn,
+  onResizeColumn,
+  onResizeRow,
   onDeleteColumn,
   onEditLlmColumn,
   onRunColumn,
   onRunCell,
 }: GridProps) {
   const { columns, rows } = table
+  // 拖拽中的临时尺寸：只在本组件内实时反馈，松手才写 store（见 beginDrag 的注释）
+  const [dragCol, setDragCol] = useState<{ id: string; width: number } | null>(null)
+  const [dragRow, setDragRow] = useState<{ id: string; height: number } | null>(null)
+
+  const widthOf = (col: EvaluationColumn) => {
+    if (dragCol?.id === col.id) return dragCol.width
+    return col.width === undefined
+      ? EVALUATION_DEFAULT_COL_WIDTH
+      : clampColumnWidth(col.width)
+  }
+  const heightOf = (row: EvaluationRow) =>
+    dragRow?.id === row.id ? dragRow.height : rowHeightOf(table, row)
+  // 表宽 = 行号列 + 各列 + 删除列。min-w-full 让窄表仍铺满容器，
+  // 多出来的空间由末尾那根没定宽的 filler 列吃掉（table-layout:fixed 下未定宽的列分摊剩余）。
+  const totalWidth =
+    ROW_NUM_WIDTH + columns.reduce((sum, c) => sum + widthOf(c), 0) + ROW_ACT_WIDTH
 
   return (
     <div className="min-h-0 flex-1 overflow-auto">
-      <table className="w-max min-w-full border-collapse text-xs">
+      <table
+        className="min-w-full table-fixed border-collapse text-xs"
+        style={{ width: totalWidth }}
+      >
+        <colgroup>
+          <col style={{ width: ROW_NUM_WIDTH }} />
+          {columns.map((col) => (
+            <col key={col.id} style={{ width: widthOf(col) }} />
+          ))}
+          <col style={{ width: ROW_ACT_WIDTH }} />
+          <col />
+        </colgroup>
         <thead className="sticky top-0 z-10 bg-muted">
           <tr>
-            <th className="w-12 border-r border-b px-2 py-1.5 text-center font-normal text-muted-foreground">
+            <th className="border-r border-b px-2 py-1.5 text-center font-normal text-muted-foreground">
               #
             </th>
             {columns.map((col) => (
               <th
                 key={col.id}
-                className="min-w-48 max-w-96 border-r border-b p-0 text-left font-normal"
+                className="relative border-r border-b p-0 text-left font-normal"
               >
                 <ColumnHeader
                   column={col}
@@ -271,42 +363,92 @@ export function EvaluationGrid({
                   onEdit={() => onEditLlmColumn(col)}
                   onRun={() => onRunColumn(col.id)}
                 />
+                {/* 列宽手柄：贴在列头右边界，双击重置回默认宽 */}
+                <div
+                  onPointerDown={(e) =>
+                    beginDrag(e, {
+                      axis: 'x',
+                      start: widthOf(col),
+                      clamp: clampColumnWidth,
+                      onPreview: (w) => setDragCol({ id: col.id, width: w }),
+                      onEnd: () => setDragCol(null),
+                      onCommit: (w) => onResizeColumn(col.id, w),
+                    })
+                  }
+                  onDoubleClick={() => onResizeColumn(col.id, undefined)}
+                  title="拖动调整列宽（双击恢复默认）"
+                  className="absolute top-0 -right-1 z-20 h-full w-2 cursor-col-resize hover:bg-primary/40"
+                />
               </th>
             ))}
-            <th className="w-10 border-b" />
+            <th className="border-b" />
+            <th className="border-b" />
           </tr>
         </thead>
         <tbody>
-          {rows.map((row, i) => (
-            <tr key={row.id} className="group/row hover:bg-accent/20">
-              <td className="border-r border-b text-center align-middle text-muted-foreground">
-                {i + 1}
-              </td>
-              {columns.map((col) => (
-                <td key={col.id} className="border-r border-b p-0 align-top">
-                  <EvaluationCellField
-                    projectId={projectId}
-                    rowId={row.id}
-                    column={col}
-                    value={cellValue(row, col.id)}
-                    status={row.cells[col.id]?.status}
-                    error={row.cells[col.id]?.error}
-                    onRunCell={onRunCell}
+          {rows.map((row, i) => {
+            const h = heightOf(row)
+            return (
+              <tr
+                key={row.id}
+                className="group/row hover:bg-accent/20"
+                style={{ height: h }}
+              >
+                <td
+                  className="relative border-r border-b text-center align-middle text-muted-foreground"
+                  style={{ height: h }}
+                >
+                  {i + 1}
+                  {/* 行高手柄：贴在行号格下边界，双击清除本行覆盖回落表级行高 */}
+                  <div
+                    onPointerDown={(e) =>
+                      beginDrag(e, {
+                        axis: 'y',
+                        start: h,
+                        clamp: (v) => clampRowHeight(v),
+                        onPreview: (v) => setDragRow({ id: row.id, height: v }),
+                        onEnd: () => setDragRow(null),
+                        onCommit: (v) => onResizeRow(row.id, v),
+                      })
+                    }
+                    onDoubleClick={() => onResizeRow(row.id, undefined)}
+                    title="拖动调整行高（双击恢复默认）"
+                    className="absolute -bottom-1 left-0 z-20 h-2 w-full cursor-row-resize hover:bg-primary/40"
                   />
                 </td>
-              ))}
-              <td className="border-b text-center align-middle">
-                <button
-                  type="button"
-                  onClick={() => onDeleteRow(row.id)}
-                  title="删除本行"
-                  className="hidden rounded p-1 text-muted-foreground hover:bg-accent hover:text-destructive group-hover/row:block"
-                >
-                  <Trash2 className="size-3" />
-                </button>
-              </td>
-            </tr>
-          ))}
+                {columns.map((col) => (
+                  // 高度必须落在 <td> 上：只写在 <tr> 的话，格内那层 h-full 的百分比
+                  // 没有参照物会塌成内容高度（行拉高了却只显示一小条）
+                  <td
+                    key={col.id}
+                    className="border-r border-b p-0 align-top"
+                    style={{ height: h }}
+                  >
+                    <EvaluationCellField
+                      projectId={projectId}
+                      rowId={row.id}
+                      column={col}
+                      value={cellValue(row, col.id)}
+                      status={row.cells[col.id]?.status}
+                      error={row.cells[col.id]?.error}
+                      onRunCell={onRunCell}
+                    />
+                  </td>
+                ))}
+                <td className="border-b text-center align-middle">
+                  <button
+                    type="button"
+                    onClick={() => onDeleteRow(row.id)}
+                    title="删除本行"
+                    className="hidden rounded p-1 text-muted-foreground hover:bg-accent hover:text-destructive group-hover/row:block"
+                  >
+                    <Trash2 className="size-3" />
+                  </button>
+                </td>
+                <td className="border-b" />
+              </tr>
+            )
+          })}
         </tbody>
       </table>
       <div className="p-2">

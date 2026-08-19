@@ -4,6 +4,7 @@ import {
   EVALUATION_CONCURRENCY,
   buildRowPrompt,
   cellValue,
+  clampRowHeight,
   createColumn,
   createRow,
   renameColumnInPrompts,
@@ -207,6 +208,56 @@ export function EvaluationWorkspace({ projectId }: { projectId: string }) {
     [projectId, updateEvaluationTable],
   )
 
+  /** 列宽拖拽提交（width=undefined 表示双击重置回默认宽）。 */
+  const handleResizeColumn = useCallback(
+    (columnId: string, width: number | undefined) => {
+      updateEvaluationTable(projectId, (t) => ({
+        ...t,
+        columns: t.columns.map((c) => {
+          if (c.id !== columnId) return c
+          if (width === undefined) {
+            // 重置就把字段删掉而不是写默认值：没调过的列不落字段，表 JSON 保持干净
+            const next = { ...c }
+            delete next.width
+            return next
+          }
+          return { ...c, width }
+        }),
+      }))
+    },
+    [projectId, updateEvaluationTable],
+  )
+
+  /** 行高拖拽提交（height=undefined 表示双击清除本行覆盖、回落表级行高）。 */
+  const handleResizeRow = useCallback(
+    (rowId: string, height: number | undefined) => {
+      updateEvaluationTable(projectId, (t) => ({
+        ...t,
+        rows: t.rows.map((r) => {
+          if (r.id !== rowId) return r
+          if (height === undefined) {
+            const next = { ...r }
+            delete next.height
+            return next
+          }
+          return { ...r, height }
+        }),
+      }))
+    },
+    [projectId, updateEvaluationTable],
+  )
+
+  /** 全局默认行高：只改表级字段，单独拖过的行带着自己的 height 不受影响。 */
+  const handleChangeRowHeight = useCallback(
+    (height: number) => {
+      updateEvaluationTable(projectId, (t) => ({
+        ...t,
+        rowHeight: clampRowHeight(height),
+      }))
+    },
+    [projectId, updateEvaluationTable],
+  )
+
   const handleDeleteColumn = useCallback(
     (columnId: string) => {
       const column = columns.find((c) => c.id === columnId)
@@ -290,6 +341,7 @@ export function EvaluationWorkspace({ projectId }: { projectId: string }) {
         onAddRow={handleAddRow}
         onAddDataColumn={handleAddDataColumn}
         onAddLlmColumn={() => setEditing({ mode: 'new' })}
+        onChangeRowHeight={handleChangeRowHeight}
         onReplaceTable={handleReplaceTable}
       />
       <EvaluationGrid
@@ -299,6 +351,8 @@ export function EvaluationWorkspace({ projectId }: { projectId: string }) {
         onAddRow={handleAddRow}
         onDeleteRow={handleDeleteRow}
         onRenameColumn={handleRenameColumn}
+        onResizeColumn={handleResizeColumn}
+        onResizeRow={handleResizeRow}
         onDeleteColumn={handleDeleteColumn}
         onEditLlmColumn={(column) => setEditing({ mode: 'edit', column })}
         onRunColumn={handleRunColumn}

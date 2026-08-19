@@ -100,7 +100,8 @@ function LlmColumnForm({ column, columns, onSubmit, onClose }: Omit<Props, 'open
         </DialogDescription>
       </DialogHeader>
 
-      <div className="flex flex-col gap-4">
+      {/* 表单区独占中间那一行并自己滚动：撑高的内容不能把 DialogFooter 的按钮顶出视口 */}
+      <div className="flex min-h-0 flex-col gap-4 overflow-y-auto">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="evalColumnName">列名</Label>
           <Input
@@ -122,7 +123,10 @@ function LlmColumnForm({ column, columns, onSubmit, onClose }: Omit<Props, 'open
               '如：请判断下面这段回答的质量，只输出 1-5 的分数。\n回答：{{回答}}'
             }
             rows={7}
-            className="font-mono text-xs"
+            // shadcn 的 Textarea 基础类带 field-sizing-content（随内容自动增高），rows 只是初始高度、
+            // 拦不住长 prompt；不封顶的话它能长到上千 px 把整个对话框撑爆，故这里补一个上限，
+            // 超过就在文本域内部滚动。
+            className="max-h-[45vh] font-mono text-xs"
           />
           {referable.length > 0 && (
             <div className="flex flex-wrap items-center gap-1.5">
@@ -183,7 +187,12 @@ function LlmColumnForm({ column, columns, onSubmit, onClose }: Omit<Props, 'open
 export function LlmColumnDialog({ open, column, columns, onSubmit, onClose }: Props) {
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="sm:max-w-xl">
+      {/*
+        max-h + grid-rows 是成对的：DialogContent 是 grid 且 top-1/2 -translate-y-1/2 垂直居中，
+        一旦内容高过视口就会**同时溢出上下两端**（标题和保存按钮一起看不见）。
+        限高之后再把中间那行设成 1fr（表单区自己滚动），头尾两行 auto 始终留在框内。
+      */}
+      <DialogContent className="grid-rows-[auto_1fr_auto] max-h-[85vh] sm:max-w-xl">
         {open && (
           <LlmColumnForm
             key={column?.id ?? 'new'}
