@@ -113,7 +113,9 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState('')
   // 连接测试：testing 进行中；testResult 为最近一次结果（改动配置输入即清空以免误导）
   const [testing, setTesting] = useState(false)
-  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null)
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(
+    null,
+  )
 
   const handleOpenChange = (next: boolean) => {
     if (next) {
@@ -161,13 +163,22 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
 
   // 用表单当前 endpoint/key 拉取端点可用模型（fetch-before-save：不必先保存即可获取）
   const handleFetchModels = () => {
-    void loadAgentModels({ endpoint: agentUrl.trim(), apiKey: agentKey.trim() || undefined })
+    void loadAgentModels({
+      endpoint: agentUrl.trim(),
+      apiKey: agentKey.trim() || undefined,
+    })
   }
 
   // 进入「API 接入」分区且已填端点、尚未获取过时，自动拉一次模型列表；
   // 编辑 endpoint/key 后由「获取模型列表」按钮手动重取（故不把表单值放进依赖，避免逐字重拉）。
   useEffect(() => {
-    if (open && section === 'api' && agentUrl.trim() && !agentModelsLoaded && !agentModelsLoading) {
+    if (
+      open &&
+      section === 'api' &&
+      agentUrl.trim() &&
+      !agentModelsLoaded &&
+      !agentModelsLoading
+    ) {
       handleFetchModels()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -215,12 +226,17 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>{children}</DialogTrigger>
-      <DialogContent className="gap-0 p-0 sm:max-w-2xl">
+      {/*
+        限高 + grid-rows 成对出现：DialogContent 是 grid 且垂直居中（top-1/2 -translate-y-1/2），
+        内容一高过视口就同时溢出上下两端、把标题和底部按钮一起顶出屏幕
+        （模型列表那种多行 textarea 很容易触发）。中间那行 1fr 自己滚动，头尾始终留在框内。
+      */}
+      <DialogContent className="grid-rows-[auto_1fr_auto] max-h-[85vh] gap-0 p-0 sm:max-w-2xl">
         <DialogHeader className="border-b px-6 py-4">
           <DialogTitle>设置</DialogTitle>
         </DialogHeader>
 
-        <div className="flex min-h-[360px]">
+        <div className="flex min-h-[360px] overflow-hidden">
           {/* 左侧导航 */}
           <nav className="flex w-44 shrink-0 flex-col gap-1 border-r bg-muted/30 p-3">
             {SECTIONS.map((s) => {
@@ -245,8 +261,8 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
             })}
           </nav>
 
-          {/* 右侧内容 */}
-          <div className="flex-1 px-6 py-5">
+          {/* 右侧内容（分区内容可能很长，自己滚动，别把底部按钮顶出去） */}
+          <div className="min-w-0 flex-1 overflow-y-auto px-6 py-5">
             <p className="mb-5 text-sm text-muted-foreground">{active.desc}</p>
 
             <div className="flex flex-col gap-4">
@@ -315,7 +331,9 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
                         setTestResult(null)
                       }}
                       placeholder={
-                        hasAgentApiKey ? '已保存（输入新值可更换，留空保持不变）' : '无鉴权网关可留空'
+                        hasAgentApiKey
+                          ? '已保存（输入新值可更换，留空保持不变）'
+                          : '无鉴权网关可留空'
                       }
                     />
                   </div>
@@ -352,7 +370,9 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
                       <SelectTrigger id="agentModel" className="w-full">
                         <SelectValue
                           placeholder={
-                            hasModels ? '选择模型' : '先在下方「模型列表」添加或点「获取模型列表」'
+                            hasModels
+                              ? '选择模型'
+                              : '先在下方「模型列表」添加或点「获取模型列表」'
                           }
                         />
                       </SelectTrigger>
@@ -382,7 +402,9 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
                       onChange={(e) => setModelListText(e.target.value)}
                       placeholder={'每行一个模型名，如\ngpt-4o\nqwen2.5-72b'}
                       rows={4}
-                      className="text-sm"
+                      // Textarea 基础类带 field-sizing-content（随内容自动增高），rows 只是初始高度：
+                      // 模型多的时候它会一直长，故封个上限、超出在文本域内滚动
+                      className="max-h-60 text-sm"
                     />
                     <span className="text-xs text-muted-foreground">
                       上面的下拉从这份列表 + 端点获取到的模型中选；不支持 /models
@@ -432,7 +454,9 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
 
                   {/* 火山语音（播客 TTS）：独立于 Agent 的鉴权体系，写入-only 同 Agent Key */}
                   <div className="mt-1 flex flex-col gap-1.5 border-t pt-3">
-                    <Label htmlFor="volcTtsApiKey">火山语音 API Key（播客 TTS 节点用）</Label>
+                    <Label htmlFor="volcTtsApiKey">
+                      火山语音 API Key（播客 TTS 节点用）
+                    </Label>
                     <Input
                       id="volcTtsApiKey"
                       type="password"
@@ -445,7 +469,8 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
                       }
                     />
                     <span className="text-xs text-muted-foreground">
-                      用于「播客 TTS（火山）」节点调豆包语音合成 2.0；音色 ID 在节点右侧面板填写。
+                      用于「播客 TTS（火山）」节点调豆包语音合成 2.0；音色 ID
+                      在节点右侧面板填写。
                     </span>
                   </div>
                 </>
@@ -492,7 +517,8 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
                       placeholder="留空则不启用，如 http://host:port/api/task-history"
                     />
                     <span className="text-xs text-muted-foreground">
-                      生成接口偶尔会返回不带结果 URL 的响应（长连接被掐断等），但内容其实已经生成。
+                      生成接口偶尔会返回不带结果 URL
+                      的响应（长连接被掐断等），但内容其实已经生成。
                       填上后，遇到这种情况会自动去历史记录里把结果找回来，服务重启也能续查。
                     </span>
                   </div>
@@ -510,7 +536,9 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
               关于
             </div>
             <div className="flex items-center gap-3">
-              <span className="text-xs text-muted-foreground">当前版本 v{update.current}</span>
+              <span className="text-xs text-muted-foreground">
+                当前版本 v{update.current}
+              </span>
               <Button
                 size="sm"
                 variant="outline"
@@ -518,7 +546,9 @@ export function SettingsDialog({ children }: { children: React.ReactNode }) {
                 onClick={update.check}
                 disabled={update.checking}
               >
-                <RefreshCw className={`size-3.5 ${update.checking ? 'animate-spin' : ''}`} />
+                <RefreshCw
+                  className={`size-3.5 ${update.checking ? 'animate-spin' : ''}`}
+                />
                 {update.checking ? '检查中…' : '检查更新'}
               </Button>
               {update.hasUpdate ? (
