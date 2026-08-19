@@ -20,6 +20,8 @@ export type EvaluationColumn = {
   prompt?: string
   /** LLM 列覆盖的模型名；空=跟随全局设置（同分镜节点 data.model 语义）。 */
   model?: string
+  /** 列宽（px）；缺省=EVALUATION_DEFAULT_COL_WIDTH。 */
+  width?: number
 }
 
 export type EvaluationCell = {
@@ -33,15 +35,54 @@ export type EvaluationCell = {
 export type EvaluationRow = {
   id: string
   cells: Record<string, EvaluationCell>
+  /** 本行单独调过的行高（px）；缺省=跟随表级 rowHeight。 */
+  height?: number
 }
 
 export type EvaluationTable = {
   columns: EvaluationColumn[]
   rows: EvaluationRow[]
+  /** 全局默认行高（px）；未单独调过的行都用它。缺省=EVALUATION_DEFAULT_ROW_HEIGHT。 */
+  rowHeight?: number
 }
 
 /** 跑整列时的并发上限（与分镜扩写同档，别把网关打爆）。 */
 export const EVALUATION_CONCURRENCY = 3
+
+// ---- 行高列宽（px）----
+// 默认值刻意对齐改造前的观感：列宽 192 = 原 min-w-48，行高 36 = 原 min-h-9，
+// 这样老项目升级后打开表格是原样，不会因为「加了可调节」就先跳一下。
+export const EVALUATION_DEFAULT_COL_WIDTH = 192
+export const EVALUATION_MIN_COL_WIDTH = 80
+export const EVALUATION_MAX_COL_WIDTH = 960
+export const EVALUATION_DEFAULT_ROW_HEIGHT = 36
+export const EVALUATION_MIN_ROW_HEIGHT = 28
+export const EVALUATION_MAX_ROW_HEIGHT = 480
+
+/** 列宽夹取；非数字（旧数据/手改坏的 JSON）回退默认宽。 */
+export function clampColumnWidth(w: unknown): number {
+  if (typeof w !== 'number' || !Number.isFinite(w)) return EVALUATION_DEFAULT_COL_WIDTH
+  return Math.round(
+    Math.min(EVALUATION_MAX_COL_WIDTH, Math.max(EVALUATION_MIN_COL_WIDTH, w)),
+  )
+}
+
+/** 行高夹取；非数字回退 fallback（表级行高，再缺省才是默认值）。 */
+export function clampRowHeight(
+  h: unknown,
+  fallback = EVALUATION_DEFAULT_ROW_HEIGHT,
+): number {
+  if (typeof h !== 'number' || !Number.isFinite(h)) return fallback
+  return Math.round(
+    Math.min(EVALUATION_MAX_ROW_HEIGHT, Math.max(EVALUATION_MIN_ROW_HEIGHT, h)),
+  )
+}
+
+/** 某一行的实际行高：本行单独调过就用它，否则跟随表级行高。 */
+export function rowHeightOf(table: EvaluationTable, row: EvaluationRow): number {
+  const base = clampRowHeight(table.rowHeight)
+  return row.height === undefined ? base : clampRowHeight(row.height, base)
+}
 
 const DEFAULT_COLUMN_COUNT = 3
 const DEFAULT_ROW_COUNT = 5
@@ -115,6 +156,8 @@ export function normalizeEvaluationTable(raw: unknown): EvaluationTable {
       column.prompt = typeof col.prompt === 'string' ? col.prompt : ''
       column.model = typeof col.model === 'string' ? col.model : ''
     }
+    // 列宽：只在存过的时候写回（没调过的列不落字段，保持表 JSON 干净）
+    if (col.width !== undefined) column.width = clampColumnWidth(col.width)
     columns.push(column)
   }
 
@@ -142,12 +185,17 @@ export function normalizeEvaluationTable(raw: unknown): EvaluationTable {
         }
       }
     }
-    rows.push({ id, cells })
+    const normalizedRow: EvaluationRow = { id, cells }
+    // 行高同理：只有单独调过的行才带 height，其余跟随表级行高
+    if (row.height !== undefined) normalizedRow.height = clampRowHeight(row.height)
+    rows.push(normalizedRow)
   }
 
   // 全空的表没法操作（连加列按钮的落点都没有），退回默认表
   if (columns.length === 0 && rows.length === 0) return createDefaultTable()
-  return { columns, rows }
+  const table: EvaluationTable = { columns, rows }
+  if (source.rowHeight !== undefined) table.rowHeight = clampRowHeight(source.rowHeight)
+  return table
 }
 
 /** 占位符：{{列名}}，列名里不允许再出现花括号与换行。 */
