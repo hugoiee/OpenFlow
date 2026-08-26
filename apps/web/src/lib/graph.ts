@@ -146,7 +146,7 @@ export type UpstreamRef = {
 
 /**
  * 收集所有指向 nodeId 的上游图像引用（作为下游输入图）。
- * 来源：上游 image 生成节点的结果图 + 上游图像素材节点的 URL。
+ * 来源：上游 image / angle（多角度）生成节点的结果图 + 上游图像素材节点的 URL。
  * 按「图像输入端点编号」排序（image-0、image-1…），旧的空 handle 连线排最前（兼容）；
  * 同一端点内按连线顺序展平；为空的来源不贡献。video 输出不作为图像输入。
  */
@@ -156,7 +156,7 @@ export function collectUpstreamImageRefs(project: Project, nodeId: string): Upst
     if (e.target !== nodeId) return
     const src = project.nodes.find((n) => n.id === e.source)
     const slot = handleSlot(e.targetHandle, IMAGE_INPUT_HANDLE_PREFIX)
-    if (src?.type === 'image') {
+    if (src?.type === 'image' || src?.type === 'angle') {
       ;(src.data.result ?? []).forEach((url, i) => {
         if (!url) return // 跳过空串但保留原始下标，"结果N" 序号不漂移
         entries.push({
@@ -357,7 +357,10 @@ export function findMentionResource(
       fileName: node.data.fileName,
     }
   }
-  if ((node.type === 'image' && ref.kind === 'image') || (node.type === 'video' && ref.kind === 'video')) {
+  if (
+    ((node.type === 'image' || node.type === 'angle') && ref.kind === 'image') ||
+    (node.type === 'video' && ref.kind === 'video')
+  ) {
     const url = (node.data.result ?? [])[ref.resultIndex ?? 0]
     if (!url) return null
     return { url, kind: ref.kind, label: node.data.label, resultIndex: ref.resultIndex }
@@ -374,8 +377,8 @@ function mentionBaseName(ref: UpstreamRef): string {
 /**
  * 从 promptNodeId 出发沿下游收集可 @ 的资源候选：
  * 沿 source === 当前节点 的边找下游；下游是 prompt → 递归（prompt 链，visited 防环）；
- * 下游是 image 生成节点 → 并入其上游图像引用；下游是 video 生成节点 → 并入其图/音/视三类引用；
- * podcast 等其他类型跳过（@ 仅对图像/视频生成请求生效）。
+ * 下游是 image / angle（多角度）生成节点 → 并入其上游图像引用；下游是 video 生成节点 →
+ * 并入其图/音/视三类引用；podcast 等其他类型跳过（@ 仅对图像/多角度/视频生成请求生效）。
  * 多下游取并集（按身份键去重）；不含手填 imagesText/audiosText（无节点身份可引用）。
  */
 export function collectMentionCandidates(project: Project, promptNodeId: string): MentionCandidate[] {
@@ -395,7 +398,7 @@ export function collectMentionCandidates(project: Project, promptNodeId: string)
       const target = project.nodes.find((n) => n.id === e.target)
       if (target?.type === 'prompt') {
         walk(target.id)
-      } else if (target?.type === 'image') {
+      } else if (target?.type === 'image' || target?.type === 'angle') {
         addRefs(collectUpstreamImageRefs(project, target.id))
       } else if (target?.type === 'video') {
         addRefs(collectUpstreamImageRefs(project, target.id))

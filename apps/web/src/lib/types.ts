@@ -1,12 +1,14 @@
 import type { Edge, Node } from '@xyflow/react'
 import type { ProjectType, VideoShot } from '@openflow/shared'
+import type { AngleZoom } from './angle'
 import type { EvaluationTable } from './evaluation'
 import type { VideoTask, VideoVariant } from './nodeCatalog'
 
-/** 节点种类：文本 prompt / 图像生成 / 视频生成 / 播客音频 / 桌面拖入的媒体素材 / 脚本切割 / 脚本分镜。 */
+/** 节点种类：文本 prompt / 图像生成 / 多角度生成 / 视频生成 / 播客音频 / 桌面拖入的媒体素材 / 脚本切割 / 脚本分镜。 */
 export type FlowNodeType =
   | 'prompt'
   | 'image'
+  | 'angle'
   | 'video'
   | 'podcast'
   | 'asset'
@@ -283,6 +285,48 @@ export type ImageNodeData = {
 }
 
 /**
+ * 多角度节点：输入一张图（res 端点，多连只用第一张，可在上游 Prompt 里 @ 指定），
+ * 在 Inspector 用摄像头轨道控件调 旋转/倾斜/缩放，运行时把角度合成为相机指令 prompt
+ * （lib/angle.ts composeAngleInstruction），连同源图走现有图像生成链路（/api/aigc，kind='image'）。
+ * 图像参数字段与 ImageNodeData 同名（供 ImageParams 复用）；刻意不带 imagesText（无旧手填兼容负担）。
+ */
+export type AngleNodeData = {
+  label: string
+  /** 具名模型展示名（默认 Nano Banana，可切 Image 2）。 */
+  model: string
+  /** 旋转（方位角，°）：负=向左、正=向右；缺省 0（见 lib/angle.ts clampRotation）。 */
+  rotation?: number
+  /** 倾斜（俯仰角，°）：正=相机升高俯视、负=降低仰视；缺省 0。 */
+  tilt?: number
+  /** 缩放（相机距离）三档；缺省中景。 */
+  zoom?: AngleZoom
+  /** 出图尺寸（Image 2 用）。 */
+  size?: string
+  /** 出图张数（Image 2 用）。 */
+  n?: number
+  /** 出图质量（Image 2 用）。 */
+  quality?: string
+  /** version：gemini-3-pro-image-preview 等（Nano Banana 用）。 */
+  version?: string
+  /** config.aspect_ratio，如 16:9（Nano Banana 用）。 */
+  aspectRatio?: string
+  /** config.image_size，1K / 2K / 4K（Nano Banana 用）。 */
+  imageSize?: string
+  /** 是否正在生成。 */
+  running?: boolean
+  /** 生成结果的图片 URL 列表，未运行时为空。 */
+  result?: string[]
+  /** 上次运行的错误信息（成功则清空）。 */
+  error?: string
+  /** 上次失败是否值得去 AIGC 历史里重拉（上游 2xx 没带 URL / 请求被掐断时为 true）。 */
+  errorRecoverable?: boolean
+  /** 进行中的异步任务 id：随节点存库，刷新后凭它重连轮询（关页面不丢结果）。 */
+  taskId?: string
+  /** 人工颜色标记（可用/待定/废弃），缺省为无标记。 */
+  mark?: NodeMark
+}
+
+/**
  * 分组容器节点：包住若干子节点（子节点 parentId 指向它），拖动容器时子节点跟随。
  * 由「选中多个节点 → 右键分组」创建，不走侧栏/createNode（同 asset 例外）。
  */
@@ -295,6 +339,7 @@ export type GroupNodeData = {
 /** React Flow 节点类型（带上各自的 data）。 */
 export type PromptNode = Node<PromptNodeData, 'prompt'>
 export type ImageNode = Node<ImageNodeData, 'image'>
+export type AngleNode = Node<AngleNodeData, 'angle'>
 export type VideoNode = Node<GenerationNodeData, 'video'>
 export type PodcastNode = Node<PodcastNodeData, 'podcast'>
 export type AssetNode = Node<AssetNodeData, 'asset'>
@@ -304,6 +349,7 @@ export type StoryboardNode = Node<StoryboardNodeData, 'storyboard'>
 export type FlowNode =
   | PromptNode
   | ImageNode
+  | AngleNode
   | VideoNode
   | PodcastNode
   | AssetNode

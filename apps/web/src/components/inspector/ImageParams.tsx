@@ -22,8 +22,15 @@ import {
 import { type ImageNodeData } from '@/lib/types'
 import { useFlowStore } from '@/store/useFlowStore'
 
-/** 图像节点参数控件（右侧 Inspector 用）：按模型分两套可调项。 */
-export function ImageParams({ id, data }: { id: string; data: ImageNodeData }) {
+/**
+ * ImageParams 接受的最小数据面：图像节点与多角度节点共用这份参数控件，
+ * 各字段缺省时组件内给默认值兜底（ImageNodeData 的必填字段协变进可选子集，调用方零改动）。
+ */
+export type ImageParamsData = Pick<ImageNodeData, 'model'> &
+  Partial<Pick<ImageNodeData, 'size' | 'n' | 'quality' | 'version' | 'aspectRatio' | 'imageSize'>>
+
+/** 图像/多角度节点参数控件（右侧 Inspector 用）：按模型分两套可调项。 */
+export function ImageParams({ id, data }: { id: string; data: ImageParamsData }) {
   const updateNodeData = useFlowStore((s) => s.updateNodeData)
 
   // 按模型区分两套可调项：nano-banana 走 version/aspect_ratio/image_size，其它走 size/quality/n

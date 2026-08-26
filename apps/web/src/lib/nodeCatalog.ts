@@ -628,6 +628,12 @@ export const STORYBOARD_SCRIPT_PLACEHOLDER = `每行「角色名: 台词」，�
 主持人: 狂揽 130 亿美金！2026 世界杯成为最赚钱的一届赛事。
 嘉宾: 这个数字确实夸张，我们拆开看看钱从哪来。`
 
+/** 多角度节点的展示元信息（默认模型展示名须与 IMAGE_API_MODEL 的 key 对齐）。 */
+export const ANGLE_NODE_META = {
+  label: '多角度',
+  modelDefault: 'Nano Banana',
+} as const
+
 /** 生成类节点（image/video）的展示元信息（连接点配色）。 */
 export const GEN_NODE_META: Record<'image' | 'video', { label: string; handle: string }> = {
   image: {

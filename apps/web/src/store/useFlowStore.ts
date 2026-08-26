@@ -23,7 +23,9 @@ import {
   type EvaluationTable,
 } from '@/lib/evaluation'
 import { newId } from '@/lib/id'
+import { ANGLE_ZOOM_DEFAULT } from '@/lib/angle'
 import {
+  ANGLE_NODE_META,
   NANO_ASPECT_DEFAULT,
   NANO_IMAGE_SIZE_DEFAULT,
   NANO_VERSION_DEFAULT,
@@ -363,6 +365,30 @@ function createNode(
       },
     }
   }
+  if (type === 'angle') {
+    // 多角度节点：源图经连线输入，三角度参数走默认（正面视角/中景）；
+    // 同 image 一次带上两套模型参数默认值，构造请求时按 model 取舍。
+    return {
+      id: newId('n_'),
+      type: 'angle',
+      position,
+      data: {
+        label: ANGLE_NODE_META.label,
+        model: model || ANGLE_NODE_META.modelDefault,
+        rotation: 0,
+        tilt: 0,
+        zoom: ANGLE_ZOOM_DEFAULT,
+        size: IMAGE_SIZE_DEFAULT,
+        n: 1,
+        quality: 'auto',
+        version: NANO_VERSION_DEFAULT,
+        aspectRatio: NANO_ASPECT_DEFAULT,
+        imageSize: NANO_IMAGE_SIZE_DEFAULT,
+        running: false,
+        result: [],
+      },
+    }
+  }
   // 视频生成节点：变体（首尾帧/参考图）+ 具名模型 + 可调选项默认值；运行/结果初始为空。
   // 默认值取自该模型的能力表——三家的分辨率/比例/时长范围各不相同，写死一套会一建出来就越界。
   const version = videoDefaultVersion(model)
@@ -392,6 +418,7 @@ function createNode(
 const AGENT_PLACE_FALLBACK_HEIGHT: Record<string, number> = {
   prompt: 190,
   image: 380,
+  angle: 380,
   video: 400,
   podcast: 320,
   asset: 220,
@@ -491,6 +518,9 @@ export const useFlowStore = create<FlowState>()((set, get) => {
               delete node.measured
             }
             if (node.type === 'image') {
+              return { ...node, data: { ...node.data, running: false, error: undefined } }
+            }
+            if (node.type === 'angle') {
               return { ...node, data: { ...node.data, running: false, error: undefined } }
             }
             if (node.type === 'video') {
