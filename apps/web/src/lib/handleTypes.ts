@@ -43,6 +43,7 @@ export function sourceKind(node: FlowNode | undefined): SourceKind {
   if (!node) return 'other'
   if (node.type === 'prompt') return 'text'
   if (node.type === 'image') return 'image'
+  if (node.type === 'angle') return 'image' // 多角度节点产出新视角图，输出作图像源
   if (node.type === 'video') return 'video' // Seedance 视频生成节点的输出作视频源
   if (node.type === 'splitter') return 'text' // 脚本切割节点的输出是切好段的脚本（文本粉）
   if (node.type === 'asset') {
@@ -67,10 +68,11 @@ export function targetAccepts(
   targetHandle: string | null | undefined,
 ): readonly SourceKind[] | null {
   if (targetHandle === RES_INPUT_HANDLE) {
-    // 统一资源端点：视频节点图/音/视都收；图像节点只吃图（音/视频对生图无意义）；
+    // 统一资源端点：视频节点图/音/视都收；图像/多角度节点只吃图（音/视频对生图无意义）；
     // 其余节点类型压根没有 res 端点 → 一律不收（批量连线按钮会拿 res 试连任意落点节点）
     if (targetNode?.type === 'video') return ['image', 'audio', 'video'] as const
-    return targetNode?.type === 'image' ? (['image'] as const) : ([] as const)
+    if (targetNode?.type === 'image' || targetNode?.type === 'angle') return ['image'] as const
+    return [] as const
   }
   if (
     typeof targetHandle === 'string' &&
@@ -96,10 +98,13 @@ export function targetAccepts(
   if (typeof targetHandle === 'string' && targetHandle.startsWith(VIDEO_INPUT_HANDLE_PREFIX)) {
     return ['video'] // 视频输入端点只接视频
   }
-  // 默认（空 handle）端点：Prompt/图像/视频 节点的默认口都是 Prompt（只接文本）
+  // 默认（空 handle）端点：Prompt/图像/多角度/视频 节点的默认口都是 Prompt（只接文本）
   if (
     targetNode &&
-    (targetNode.type === 'prompt' || targetNode.type === 'image' || targetNode.type === 'video')
+    (targetNode.type === 'prompt' ||
+      targetNode.type === 'image' ||
+      targetNode.type === 'angle' ||
+      targetNode.type === 'video')
   ) {
     return ['text']
   }

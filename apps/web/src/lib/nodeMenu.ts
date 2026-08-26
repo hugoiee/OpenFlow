@@ -1,5 +1,5 @@
-import { Type, Image as ImageIcon, Banana, Clapperboard, Images, ListVideo, Podcast, Scissors, type LucideIcon } from 'lucide-react'
-import { IMAGE_MODELS, VIDEO_MODELS, videoVariantLabel, type VideoVariant } from '@/lib/nodeCatalog'
+import { Type, Image as ImageIcon, Banana, Clapperboard, Images, ListVideo, Orbit, Podcast, Scissors, type LucideIcon } from 'lucide-react'
+import { ANGLE_NODE_META, IMAGE_MODELS, VIDEO_MODELS, videoVariantLabel, type VideoVariant } from '@/lib/nodeCatalog'
 import { type FlowNodeType } from '@/lib/types'
 
 // 可添加节点的清单项：类型 + 展示名 + 图标（+ 图像/视频类的预置模型 + 视频变体）。
@@ -29,12 +29,16 @@ export const NODE_GROUPS: { label: string; items: NodeMenuItem[] }[] = [
   },
   {
     label: '图像模型',
-    items: IMAGE_MODELS.map((m) => ({
-      type: 'image' as const,
-      label: m,
-      icon: IMAGE_ICONS[m] ?? ImageIcon,
-      model: m,
-    })),
+    items: [
+      ...IMAGE_MODELS.map((m) => ({
+        type: 'image' as const,
+        label: m,
+        icon: IMAGE_ICONS[m] ?? ImageIcon,
+        model: m,
+      })),
+      // 多角度：源图 + 相机角度 → 新视角图（不带 model，走 createNode 的默认 Nano Banana）
+      { type: 'angle' as const, label: ANGLE_NODE_META.label, icon: Orbit },
+    ],
   },
   {
     label: '视频模型',

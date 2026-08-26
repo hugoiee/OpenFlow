@@ -10,6 +10,7 @@
 // viewOnly 判定（见 useFlowStore.ts）。
 
 import type { GenImageBody, GenPodcastBody, GenVideoBody, VideoShot } from '@openflow/shared'
+import { clampRotation, clampTilt, composeAngleInstruction, normalizeZoom } from './angle'
 import {
   IMAGE_INPUT_HANDLE_PREFIX,
   collectUpstreamAudioRefs,
@@ -49,8 +50,10 @@ import {
   videoModelSpec,
 } from './nodeCatalog'
 import type {
+  AngleNode,
   GenerationNodeData,
   ImageNode,
+  ImageNodeData,
   PodcastNode,
   Project,
   PromptMentionRef,
@@ -71,6 +74,32 @@ function pickRefs(mentioned: UpstreamRef[], all: UpstreamRef[]): string[] {
   return (mentioned.length ? mentioned : all).map((r) => r.url)
 }
 
+/**
+ * 按模型两套的请求体尾部字段（图像与多角度节点共用）：
+ * nano-banana 走 version/aspectRatio/imageSize（另一套填空占位）、其余（Image 2）走 size/n/quality。
+ */
+function imageModelTail(
+  model: string,
+  d: Partial<Pick<ImageNodeData, 'size' | 'n' | 'quality' | 'version' | 'aspectRatio' | 'imageSize'>>,
+): Pick<GenImageBody, 'size' | 'n' | 'quality' | 'version' | 'aspectRatio' | 'imageSize'> {
+  if (model === 'nano-banana') {
+    return {
+      version: d.version ?? NANO_VERSION_DEFAULT,
+      aspectRatio: d.aspectRatio ?? NANO_ASPECT_DEFAULT,
+      imageSize: d.imageSize ?? NANO_IMAGE_SIZE_DEFAULT,
+      size: '',
+      n: 1,
+      quality: '',
+    }
+  }
+  // 旧数据可能存了已不再支持的尺寸（如 1024x1024），回退到默认受支持尺寸
+  const storedSize = d.size ?? IMAGE_SIZE_DEFAULT
+  const size = (IMAGE_SIZE_OPTIONS as readonly string[]).includes(storedSize)
+    ? storedSize
+    : IMAGE_SIZE_DEFAULT
+  return { size, n: d.n ?? 1, quality: d.quality ?? 'auto' }
+}
+
 export function buildImageRequest(project: Project, node: ImageNode): GenImageBody {
   const id = node.id
   const d = node.data
@@ -81,29 +110,50 @@ export function buildImageRequest(project: Project, node: ImageNode): GenImageBo
   // 手动填/传的旧 URL（无身份，不可被 @）始终追加在后。
   const mentioned = collectMentionedRefs(rawPrompt, mentions, imageRefs)
   const images = [...pickRefs(mentioned.image, imageRefs), ...linesToUrls(d.imagesText)]
-  const base = {
+  return {
     projectId: project.id,
     nodeId: id,
     model: imageApiModel(d.model),
     prompt: applyMentions(rawPrompt, mentions, imageRefs, { image: images, audio: [], video: [] }),
     images,
+    ...imageModelTail(imageApiModel(d.model), d),
   }
-  if (imageApiModel(d.model) === 'nano-banana') {
-    return {
-      ...base,
-      version: d.version ?? NANO_VERSION_DEFAULT,
-      aspectRatio: d.aspectRatio ?? NANO_ASPECT_DEFAULT,
-      imageSize: d.imageSize ?? NANO_IMAGE_SIZE_DEFAULT,
-      size: '',
-      n: 1,
-      quality: '',
-    }
+}
+
+/**
+ * 多角度节点：POST /api/aigc 的请求体（复用图像生成链路，kind='image'、GenImageBody 零新字段）。
+ * 源图恒单张：上游 Prompt 里 @ 到图像 → 用被 @ 的第一张；没 @ → 用连线第一张（连线序）。
+ * prompt = 角度合成的相机指令（恒非空，后端 prompt 校验天然通过）+ 可选上游 Prompt 作附加要求。
+ */
+export function buildAngleRequest(project: Project, node: AngleNode): GenImageBody {
+  const id = node.id
+  const d = node.data
+  const imageRefs = collectUpstreamImageRefs(project, id)
+  const mentions: PromptMentionRef[] = []
+  const rawPrompt = collectUpstreamPrompt(project, id, { handle: 'user', mentionsOut: mentions })
+  const mentioned = collectMentionedRefs(rawPrompt, mentions, imageRefs)
+  const source = mentioned.image[0] ?? imageRefs[0]
+  const images = source ? [source.url] : []
+  const instruction = composeAngleInstruction(
+    clampRotation(d.rotation),
+    clampTilt(d.tilt),
+    normalizeZoom(d.zoom),
+  )
+  // @ token 替换为占位符（源图被 @ 时 → <<<image_1>>>；其余悬空原样保留，沿用既有语义），
+  // 不过一遍 applyMentions 的话，画布上的 @[名] 会原样发给模型成噪声。
+  const userText = applyMentions(rawPrompt, mentions, imageRefs, {
+    image: images,
+    audio: [],
+    video: [],
+  }).trim()
+  return {
+    projectId: project.id,
+    nodeId: id,
+    model: imageApiModel(d.model),
+    prompt: userText ? `${instruction}\n\n附加要求：${userText}` : instruction,
+    images,
+    ...imageModelTail(imageApiModel(d.model), d),
   }
-  const storedSize = d.size ?? IMAGE_SIZE_DEFAULT
-  const size = (IMAGE_SIZE_OPTIONS as readonly string[]).includes(storedSize)
-    ? storedSize
-    : IMAGE_SIZE_DEFAULT
-  return { ...base, size, n: d.n ?? 1, quality: d.quality ?? 'auto' }
 }
 
 /**
@@ -234,9 +284,8 @@ export function buildPodcastRequest(project: Project, node: PodcastNode): GenPod
 //     字段为 req_from / model_name / version / config…，req_from 由全局署名注入）；
 // 复用上面的 build*Request 收集上游输入，故预览与实发链路同源、不漂移；改后端构造逻辑时同步这里。
 
-/** 图像：内网 AIGC 网关的 POST body（镜像 provider.ts runImageGen）。 */
-export function buildImageUpstream(project: Project, node: ImageNode, reqFrom: string) {
-  const body = buildImageRequest(project, node)
+/** GenImageBody → 内网 AIGC 网关的 POST body（镜像 provider.ts buildImagePayload；图像与多角度共用）。 */
+function imageUpstreamOf(body: GenImageBody, reqFrom: string) {
   const isNano = body.model === 'nano-banana'
   return {
     req_from: reqFrom,
@@ -250,6 +299,16 @@ export function buildImageUpstream(project: Project, node: ImageNode, reqFrom: s
       ? { aspect_ratio: body.aspectRatio, image_size: body.imageSize }
       : { size: body.size, n: body.n, quality: body.quality },
   }
+}
+
+/** 图像：内网 AIGC 网关的 POST body（镜像 provider.ts runImageGen）。 */
+export function buildImageUpstream(project: Project, node: ImageNode, reqFrom: string) {
+  return imageUpstreamOf(buildImageRequest(project, node), reqFrom)
+}
+
+/** 多角度：同图像走 AIGC 图像生成接口，仅请求体构造不同（buildAngleRequest）。 */
+export function buildAngleUpstream(project: Project, node: AngleNode, reqFrom: string) {
+  return imageUpstreamOf(buildAngleRequest(project, node), reqFrom)
 }
 
 /**
