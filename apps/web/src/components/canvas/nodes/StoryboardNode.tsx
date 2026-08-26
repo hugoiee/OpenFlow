@@ -39,7 +39,10 @@ import {
   itemsToTsv,
   parseItemsTsv,
 } from '@/lib/storyboard'
-import { type StoryboardItem, type StoryboardNode as StoryboardNodeType } from '@/lib/types'
+import {
+  type StoryboardItem,
+  type StoryboardNode as StoryboardNodeType,
+} from '@/lib/types'
 import { useFlowStore } from '@/store/useFlowStore'
 import { useSettingsStore } from '@/store/useSettingsStore'
 import { markCardClass } from '@/lib/nodeMark'
@@ -59,8 +62,10 @@ const SLOT_ROLE_AUDIO = [2, 5] as const
 
 /** 单段状态图标：排队沙漏 / 生成中转圈 / 完成绿勾 / 失败红叉 / 未跑空位。 */
 function ItemStatusIcon({ status }: { status: StoryboardItem['status'] }) {
-  if (status === 'pending') return <Clock className="size-3 shrink-0 text-muted-foreground" />
-  if (status === 'running') return <Loader2 className="size-3 shrink-0 animate-spin text-primary" />
+  if (status === 'pending')
+    return <Clock className="size-3 shrink-0 text-muted-foreground" />
+  if (status === 'running')
+    return <Loader2 className="size-3 shrink-0 animate-spin text-primary" />
   if (status === 'done') return <Check className="size-3 shrink-0 text-emerald-500" />
   if (status === 'error') return <X className="size-3 shrink-0 text-destructive" />
   return <span className="size-3 shrink-0" />
@@ -105,7 +110,10 @@ function StoryboardRow({
   const commitDuration = () => {
     const n = Number(durationLocal)
     const clamped = Number.isFinite(n)
-      ? Math.min(STORYBOARD_SEG_MAX_SECONDS, Math.max(STORYBOARD_SEG_MIN_SECONDS, Math.round(n)))
+      ? Math.min(
+          STORYBOARD_SEG_MAX_SECONDS,
+          Math.max(STORYBOARD_SEG_MIN_SECONDS, Math.round(n)),
+        )
       : (item.duration ?? STORYBOARD_SEG_MIN_SECONDS)
     setDurationLocal(String(clamped))
     if (clamped !== item.duration) onPatch(index, { duration: clamped })
@@ -183,7 +191,11 @@ function StoryboardRow({
               size="icon"
               variant="ghost"
               className="size-5"
-              title={item.status === 'done' || item.status === 'error' ? '重新生成本段' : '生成本段'}
+              title={
+                item.status === 'done' || item.status === 'error'
+                  ? '重新生成本段'
+                  : '生成本段'
+              }
               onClick={() => onRun(index)}
             >
               {item.status === 'done' || item.status === 'error' ? (
@@ -227,7 +239,9 @@ export function StoryboardNode({
   height,
 }: NodeProps<StoryboardNodeType>) {
   const updateNodeData = useFlowStore((s) => s.updateNodeData)
-  const scriptField = useCompositionField(data.script ?? '', (v) => updateNodeData(id, { script: v }))
+  const scriptField = useCompositionField(data.script ?? '', (v) =>
+    updateNodeData(id, { script: v }),
+  )
   const templateField = useCompositionField(data.template ?? '', (v) =>
     updateNodeData(id, { template: v }),
   )
@@ -254,7 +268,8 @@ export function StoryboardNode({
   const modelOptions = mergeModelOptions(agentModelList, agentModels, model)
   // 列表尚未取过就拉一次（loaded 成败都置 true，故最多一次）；没配端点时不发请求
   useEffect(() => {
-    if (agentEndpoint.trim() && !agentModelsLoaded && !agentModelsLoading) void loadAgentModels()
+    if (agentEndpoint.trim() && !agentModelsLoaded && !agentModelsLoading)
+      void loadAgentModels()
   }, [agentEndpoint, agentModelsLoaded, agentModelsLoading, loadAgentModels])
 
   const [scriptOpen, setScriptOpen] = useState(false)
@@ -291,7 +306,10 @@ export function StoryboardNode({
     abortRef.current = controller
     const store = () => useFlowStore.getState()
     for (const idx of indices) {
-      store().patchStoryboardItem(projectId, id, idx, { status: 'pending', error: undefined })
+      store().patchStoryboardItem(projectId, id, idx, {
+        status: 'pending',
+        error: undefined,
+      })
     }
     let cursor = 0
     const worker = async () => {
@@ -345,7 +363,9 @@ export function StoryboardNode({
   /** 模板校验（生成前置检查，缺 {{line}} 时 alert 并返回 false）。 */
   const ensureTemplate = (template: string) => {
     if (template.includes('{{line}}')) return true
-    window.alert('prompt 里缺少 {{line}} 占位符（代表台词行），请展开「发送给 LLM 的 prompt」检查')
+    window.alert(
+      'prompt 里缺少 {{line}} 占位符（代表台词行），请展开「发送给 LLM 的 prompt」检查',
+    )
     return false
   }
 
@@ -385,13 +405,19 @@ export function StoryboardNode({
     const projectId = state.activeProjectId
     if (!projectId || !text.trim()) return
     try {
-      const { items: nextItems, roleAName, roleBName } = parseItemsTsv(text, [
-        roleAField.value,
-        roleBField.value,
-      ])
+      const {
+        items: nextItems,
+        roleAName,
+        roleBName,
+      } = parseItemsTsv(text, [roleAField.value, roleBField.value])
       updateNodeData(id, { roleAName, roleBName })
       state.setStoryboardItems(projectId, id, nextItems, false)
-      setFeedback(`已导入 ${nextItems.length} 行（发言人：${roleAName} / ${roleBName}）`)
+      // 带 prompt 的行数单独报一句：不然用户看不出「别处生成的 prompt」到底认出来没有
+      const withPrompt = nextItems.filter((it) => it.prompt?.trim()).length
+      setFeedback(
+        `已导入 ${nextItems.length} 行（发言人：${roleAName} / ${roleBName}）` +
+          (withPrompt ? `，其中 ${withPrompt} 行带 prompt` : ''),
+      )
       setPasteOpen(false)
     } catch (e) {
       window.alert(e instanceof Error ? e.message : String(e))
@@ -406,14 +432,18 @@ export function StoryboardNode({
     const template = templateField.value
     updateNodeData(id, { template })
     if (!ensureTemplate(template)) return
+    // 只补空的：从 Excel 带 prompt 导入的行（或已生成过的）跳过，
+    // 免得一键把辛苦导入/调好的 prompt 全冲掉，也不白烧 LLM 调用。
+    // 想重跑某一行用行内的 ▷ 按钮。
+    const targets = items
+      .map((it, i) => (it.prompt?.trim() ? -1 : i))
+      .filter((i) => i >= 0)
+    if (targets.length === 0) {
+      window.alert('每一段都已经有 prompt 了。想重新生成某一段，用该行的 ▷ 按钮。')
+      return
+    }
     state.updateNodeDataInProject(projectId, id, { running: true })
-    void runIndices(
-      projectId,
-      template,
-      items,
-      items.map((_, i) => i),
-      model,
-    )
+    void runIndices(projectId, template, items, targets, model)
   }
 
   // 单段生成/重跑（非 running 态）
@@ -446,7 +476,8 @@ export function StoryboardNode({
 
   const handlePatchRow = (index: number, patch: Partial<StoryboardItem>) => {
     const state = useFlowStore.getState()
-    if (state.activeProjectId) state.patchStoryboardItem(state.activeProjectId, id, index, patch)
+    if (state.activeProjectId)
+      state.patchStoryboardItem(state.activeProjectId, id, index, patch)
   }
 
   // 改序号=移动行：从 store 取最新表格（防 300ms 防抖窗口内的过期快照）整表重排后写回
@@ -477,7 +508,13 @@ export function StoryboardNode({
         lineClassName="!border-primary/60"
         handleClassName="!size-2.5 !rounded-sm !border-2 !border-background !bg-primary"
       />
-      <NodeHeader id={id} icon={ListVideo} title={data.label} selected={selected} mark={data.mark} />
+      <NodeHeader
+        id={id}
+        icon={ListVideo}
+        title={data.label}
+        selected={selected}
+        mark={data.mark}
+      />
       {/* 左侧端点：分镜表（上游脚本切割节点连入）+ 每个角色一组「参考图 + 音色」（组间空一槽） */}
       <NodeHandle
         type="target"
@@ -540,8 +577,7 @@ export function StoryboardNode({
             className="nodrag h-7 gap-1 px-2 text-xs"
             title="从 Excel 复制行后粘到输入区导入（列：[序号,] 发言人, 脚本 [, 时长]）"
           >
-            <ClipboardPaste className="size-3" />
-            从 Excel 粘贴
+            <ClipboardPaste className="size-3" />从 Excel 粘贴
           </Button>
         </div>
 
@@ -571,7 +607,11 @@ export function StoryboardNode({
             onClick={() => setScriptOpen((v) => !v)}
             className="nodrag flex items-center gap-1 self-start text-[11px] text-muted-foreground hover:text-foreground"
           >
-            {scriptOpen ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+            {scriptOpen ? (
+              <ChevronDown className="size-3" />
+            ) : (
+              <ChevronRight className="size-3" />
+            )}
             粘贴脚本切分（或连上游「脚本切割」节点）
           </button>
           {scriptOpen && (
@@ -602,7 +642,11 @@ export function StoryboardNode({
             onClick={() => setTemplateOpen((v) => !v)}
             className="nodrag flex items-center gap-1 self-start text-[11px] text-muted-foreground hover:text-foreground"
           >
-            {templateOpen ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+            {templateOpen ? (
+              <ChevronDown className="size-3" />
+            ) : (
+              <ChevronRight className="size-3" />
+            )}
             发送给 LLM 的 prompt（{'{{line}}'} 替换为台词行后原样发出）
           </button>
           {templateOpen && (
@@ -620,9 +664,15 @@ export function StoryboardNode({
             <table className="w-full border-collapse text-[11px]">
               <thead className="sticky top-0 z-10 bg-muted">
                 <tr className="text-left text-[10px] text-muted-foreground">
-                  <th className="w-9 border-b border-r px-1.5 py-1 text-right font-medium">序号</th>
-                  <th className="w-14 border-b border-r px-1.5 py-1 font-medium">发言人</th>
-                  <th className="min-w-44 border-b border-r px-1.5 py-1 font-medium">脚本</th>
+                  <th className="w-9 border-b border-r px-1.5 py-1 text-right font-medium">
+                    序号
+                  </th>
+                  <th className="w-14 border-b border-r px-1.5 py-1 font-medium">
+                    发言人
+                  </th>
+                  <th className="min-w-44 border-b border-r px-1.5 py-1 font-medium">
+                    脚本
+                  </th>
                   <th className="w-13 border-b border-r px-1.5 py-1 font-medium">时长</th>
                   <th className="w-13 border-b border-r px-1.5 py-1 font-medium">生成</th>
                   <th className="min-w-44 border-b px-1.5 py-1 font-medium">prompt</th>
@@ -646,7 +696,8 @@ export function StoryboardNode({
           </div>
         ) : (
           <div className="flex min-h-0 flex-1 items-center justify-center rounded-md border border-dashed text-[11px] text-muted-foreground">
-            表格为空：连上游「脚本切割」节点点切割、展开「粘贴脚本切分」、或「从 Excel 粘贴」导入
+            表格为空：连上游「脚本切割」节点点切割、展开「粘贴脚本切分」、或「从 Excel
+            粘贴」导入
           </div>
         )}
 
@@ -671,7 +722,9 @@ export function StoryboardNode({
                 model ? '' : `；当前跟随全局：${agentModel || '未设置'}`
               }`}
             >
-              <option value="">跟随全局设置{agentModel ? `（${agentModel}）` : ''}</option>
+              <option value="">
+                跟随全局设置{agentModel ? `（${agentModel}）` : ''}
+              </option>
               {modelOptions.map((m) => (
                 <option key={m} value={m}>
                   {m}
