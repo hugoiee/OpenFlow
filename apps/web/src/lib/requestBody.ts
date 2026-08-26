@@ -150,7 +150,7 @@ export function buildAngleRequest(project: Project, node: AngleNode): GenImageBo
     projectId: project.id,
     nodeId: id,
     model: imageApiModel(d.model),
-    prompt: userText ? `${instruction}\n\n附加要求：${userText}` : instruction,
+    prompt: userText ? `${instruction}\n\nAdditional requirements: ${userText}` : instruction,
     images,
     ...imageModelTail(imageApiModel(d.model), d),
   }
