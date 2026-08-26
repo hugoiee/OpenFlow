@@ -699,6 +699,8 @@ export const useFlowStore = create<FlowState>()((set, get) => {
         const data = { ...source.data } as Record<string, unknown>
         delete data.taskId
         delete data.error
+        // 颜色标记是对当前节点产出的人工判断，复制内容时不应继承。
+        delete data.mark
         if ('running' in data) data.running = false
         if (Array.isArray(data.result)) data.result = [...data.result]
         const copy = {
