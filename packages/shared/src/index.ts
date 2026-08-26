@@ -427,3 +427,42 @@ export type UpdateCheckResponse = {
   /** 检查失败的原因（前端仅作诊断，不弹窗）。 */
   error?: string
 }
+
+/**
+ * 生成统计的一条明细行：一次「点生成」= 一行（tasks 表里 kind 为 image/video 的任务）。
+ * 由后端读 tasks.params（即当初发出的请求体）扁平化而来，**不新建表也不埋点**——
+ * 任务行本就是每次生成的权威记录，节点删了行还在（钱已经花了，该算）。
+ * 分组聚合刻意留给前端：汇总视图只是明细的 group by，同源才不会对不上账。
+ * 只覆盖图像 / 视频模型；播客 TTS 与 Agent LLM 调用不计入（费用另算）。
+ */
+export type GenStatRow = {
+  /** 任务 id（明细行的唯一键）。 */
+  taskId: string
+  /** 发起生成的节点 id（供回溯是画布上哪个节点）。 */
+  nodeId: string
+  /** 'image' | 'video'（TaskKind 的子集，podcast 不入统计）。 */
+  kind: 'image' | 'video'
+  /** 任务终态/中间态，用于区分「总提交次数」与「成功次数」。 */
+  status: TaskStatus
+  /** AIGC model_name，如 gpt-image-2 / nano-banana / seedance / kling / MiniMax-H3。 */
+  model: string
+  /** 模型版本（Nano Banana 的 version / 视频各家 version）；该模型无此概念则空串。 */
+  version: string
+  /** 出图/出片规格：图像 = size 或 imageSize；视频 = resolution，可灵改用质量档 std/pro。空串=未下发。 */
+  resolution: string
+  /** 宽高比（视频 ratio / Nano Banana aspectRatio）；无则空串。 */
+  ratio: string
+  /** 图像质量档（Image 2 的 quality）；视频恒空串。 */
+  quality: string
+  /** 本次出图张数（Image 2 的 n；无此字段的模型按 1 算）；视频恒 1。 */
+  images: number
+  /** 视频单次时长（秒）；**-1 = 自动时长**（实际秒数上游才知道，不计入总秒数）；图像恒 0。 */
+  duration: number
+  /** 提交时刻（tasks.created_at 毫秒时间戳）。 */
+  createdAt: number
+}
+
+/** GET /api/projects/:id/stats 响应：该画布项目的全部生成明细（新→旧）。 */
+export type ProjectStatsResponse = {
+  rows: GenStatRow[]
+}
