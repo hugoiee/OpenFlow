@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type {
   AgentChatBody,
+  AgentEvaluateBody,
   AgentExpandBody,
   AgentMessage,
   AgentModelsBody,
@@ -8,7 +9,13 @@ import type {
   AgentTestBody,
   AgentTestResponse,
 } from '@openflow/shared'
-import { listAgentModels, runAgentChat, runAgentConnectionTest, runAgentExpand } from '../agent'
+import {
+  listAgentModels,
+  runAgentChat,
+  runAgentConnectionTest,
+  runAgentEvaluate,
+  runAgentExpand,
+} from '../agent'
 import { readSettings } from '../settings-store'
 
 export const agent = new Hono()
@@ -54,6 +61,26 @@ agent.post('/agent/expand', async (c) => {
   }
   try {
     return c.json(await runAgentExpand({ template, line, model }, readSettings()))
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
+    // 配置缺失是用户可自行修复的 400；上游 LLM 调用失败回 502
+    return c.json({ error: message }, message.includes('请在设置中填写') ? 400 : 502)
+  }
+})
+
+// 评估项目的 LLM 评估列：单次调 Agent LLM，返回该行的评估结果纯文本。
+// 与 /agent/expand 分工见 runAgentEvaluate 注释——{{列名}} 占位符已由前端替换完，这里只校验 prompt 非空。
+// 前端逐行并发调用本接口（每格一次请求，单格可重试）；不建任务、不落库。
+agent.post('/agent/evaluate', async (c) => {
+  const body = await c.req.json<AgentEvaluateBody>().catch(() => null)
+  const prompt = typeof body?.prompt === 'string' ? body.prompt : ''
+  // 模型可由评估列各自指定；空/缺省则回退全局设置里的模型
+  const model = typeof body?.model === 'string' ? body.model.trim() : ''
+  if (!prompt.trim()) {
+    return c.json({ error: '缺少提示词' }, 400)
+  }
+  try {
+    return c.json(await runAgentEvaluate({ prompt, model }, readSettings()))
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e)
     // 配置缺失是用户可自行修复的 400；上游 LLM 调用失败回 502

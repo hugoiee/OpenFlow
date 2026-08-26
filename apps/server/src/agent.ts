@@ -1,6 +1,8 @@
 import type {
   AgentApiStyle,
   AgentChatResponse,
+  AgentEvaluateBody,
+  AgentEvaluateResponse,
   AgentExpandBody,
   AgentExpandResponse,
   AgentImageAction,
@@ -185,6 +187,29 @@ export async function runAgentExpand(
   const text = readLlmText(cfg.apiStyle, data)
   if ('error' in text) throw llmTextError('Agent LLM ', text, raw)
   return { prompt: text.text }
+}
+
+/**
+ * 评估项目的 LLM 评估列逐行调用：prompt 已由前端替换完 {{列名}} 占位符，这里直接作为唯一用户输入发出。
+ * 与 runAgentExpand 的差别只在占位符谁来替换——{{line}} 是分镜固定语义故留在后端，
+ * 评估列引用了哪几列只有前端的表结构知道，故一律前端替换、后端只管发。同样不带 SYSTEM_PROMPT、返回纯文本。
+ */
+export async function runAgentEvaluate(
+  body: AgentEvaluateBody,
+  settings: SettingsDTO,
+): Promise<AgentEvaluateResponse> {
+  // 模型可被请求体覆盖（评估列各自选模型）；端点/密钥/协议仍统一取全局设置
+  const cfg = resolveAgentConfig(settings, { model: body.model })
+  const { data, raw } = await requestLlmJson({
+    url: resolveLlmUrl(cfg.endpoint, cfg.apiStyle),
+    apiKey: cfg.apiKey,
+    body: buildExpandRequestBody(cfg.apiStyle, { model: cfg.model, prompt: body.prompt }),
+    timeoutMs: 120_000,
+    label: 'Agent LLM 请求',
+  })
+  const text = readLlmText(cfg.apiStyle, data)
+  if ('error' in text) throw llmTextError('Agent LLM ', text, raw)
+  return { text: text.text }
 }
 
 /**

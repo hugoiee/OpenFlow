@@ -7,6 +7,7 @@ import {
   STORYBOARD_SEG_MAX_SECONDS,
   STORYBOARD_SEG_MIN_SECONDS,
 } from './nodeCatalog'
+import { escapeTsvField, parseTsvTable } from './tsv'
 import type { StoryboardItem } from './types'
 
 /** 拆出的一个说话人回合：整段台词（不含角色名前缀）+ 说话人下标。 */
@@ -25,7 +26,10 @@ const HEADING_MAX_CHARS = 20
  * 文中无前缀的短行（≤20 字）视作小节标题跳过，长行视作续行并入上一句。
  * 整篇没有可识别台词时抛可读错误。
  */
-export function splitScriptTurns(script: string, roleNames: [string, string]): StoryboardTurn[] {
+export function splitScriptTurns(
+  script: string,
+  roleNames: [string, string],
+): StoryboardTurn[] {
   const candidates = roleNames
     .map((name, index) => ({ name: name.trim(), index }))
     .filter((r) => r.name)
@@ -69,9 +73,11 @@ const SENTENCE_RE = /[^。！？；…!?;]*[。！？；…!?;]+|[^。！？；�
 const CLAUSE_RE = /[^，、,]*[，、,]+|[^，、,]+$/g
 
 /** 单段最多可念的字数（15s × 每秒字数）。语速可调故按需现算。 */
-const segMaxChars = (charsPerSecond: number) => STORYBOARD_SEG_MAX_SECONDS * charsPerSecond
+const segMaxChars = (charsPerSecond: number) =>
+  STORYBOARD_SEG_MAX_SECONDS * charsPerSecond
 /** 低于该字数（4s × 每秒字数）的尾段尽量并回前段，避免「台词几个字、视频好几秒」的发呆段。 */
-const segMinChars = (charsPerSecond: number) => STORYBOARD_SEG_MIN_SECONDS * charsPerSecond
+const segMinChars = (charsPerSecond: number) =>
+  STORYBOARD_SEG_MIN_SECONDS * charsPerSecond
 
 /** 把可能超长的片段按逗号（仍超则硬切）切成 ≤SEG_MAX_CHARS 的块。 */
 function splitOversized(piece: string, SEG_MAX_CHARS: number): string[] {
@@ -145,7 +151,10 @@ export function estimateSegmentDuration(
   charsPerSecond: number = STORYBOARD_CHARS_PER_SECOND,
 ): number {
   const seconds = Math.round(countSpokenChars(text) / charsPerSecond)
-  return Math.min(STORYBOARD_SEG_MAX_SECONDS, Math.max(STORYBOARD_SEG_MIN_SECONDS, seconds))
+  return Math.min(
+    STORYBOARD_SEG_MAX_SECONDS,
+    Math.max(STORYBOARD_SEG_MIN_SECONDS, seconds),
+  )
 }
 
 /**
@@ -177,11 +186,7 @@ export function buildItems(
 }
 
 // ---- Excel（TSV）双向互通 ----
-
-/** TSV 字段转义：含制表符/换行/引号的字段用双引号包裹（Excel 粘贴时能还原多行单元格）。 */
-function escapeTsvField(v: string): string {
-  return /[\t\n\r"]/.test(v) ? `"${v.replaceAll('"', '""')}"` : v
-}
+// 转义/解析的通用原语在 lib/tsv.ts（评估项目表格共用），这里只放分镜表的列语义。
 
 /** 分镜表 → TSV（含表头：序号/发言人/脚本/时长(秒)/prompt），供「复制表格」粘进 Excel。 */
 export function itemsToTsv(items: StoryboardItem[], roleNames: [string, string]): string {
@@ -198,67 +203,85 @@ export function itemsToTsv(items: StoryboardItem[], roleNames: [string, string])
   return ['序号\t发言人\t脚本\t时长(秒)\tprompt', ...rows].join('\n')
 }
 
-/** 解析 TSV 文本为单元格矩阵：支持双引号包裹的字段（内含换行/制表符/"" 转义），\r\n 兼容。 */
-function parseTsvTable(text: string): string[][] {
-  const rows: string[][] = []
-  let cells: string[] = []
-  let cell = ''
-  let inQuotes = false
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i]
-    if (inQuotes) {
-      if (ch === '"') {
-        if (text[i + 1] === '"') {
-          cell += '"'
-          i++
-        } else inQuotes = false
-      } else cell += ch
-      continue
-    }
-    if (ch === '"' && cell === '') inQuotes = true
-    else if (ch === '\t') {
-      cells.push(cell)
-      cell = ''
-    } else if (ch === '\n' || ch === '\r') {
-      if (ch === '\r' && text[i + 1] === '\n') i++
-      cells.push(cell)
-      rows.push(cells)
-      cells = []
-      cell = ''
-    } else cell += ch
-  }
-  cells.push(cell)
-  rows.push(cells)
-  return rows.filter((r) => r.some((c) => c.trim()))
-}
-
 /**
  * 从 Excel 粘贴的行导入分镜表。列约定（\t 分隔）：[序号,] 发言人, 脚本 [, 时长]——
  * 首列纯数字视作序号丢弃，表头行（含「发言人/脚本/时长/说话人」字样）自动跳过；
  * 时长缺省按语速估算，超范围夹到 4~15；prompt 列不导入（那是 LLM 的产出）。
  * 发言人去重后最多 2 个：与节点已配角色名对得上则沿用其 A/B 映射，否则按出现序作 A/B。
  */
+/**
+ * 表头列名 → 字段的识别词。**别处生成的表列序往往和本节点的导出格式不一样**，
+ * 故有表头时一律按列名认列；认不出表头才回退到固定列序。
+ */
+const HEADER_ALIASES: {
+  key: 'speaker' | 'text' | 'duration' | 'prompt'
+  words: string[]
+}[] = [
+  { key: 'speaker', words: ['发言人', '说话人', '角色'] },
+  { key: 'text', words: ['脚本', '台词', '文本', '内容'] },
+  { key: 'duration', words: ['时长', '秒数', 'duration'] },
+  { key: 'prompt', words: ['prompt', '提示词', '画面描述', '分镜描述'] },
+]
+
+/** 首行像表头就解析成 字段→列下标 的映射；认不出任何一列则返回 null（按列序走）。 */
+function parseHeaderRow(cells: string[]): Partial<Record<string, number>> | null {
+  const map: Partial<Record<string, number>> = {}
+  cells.forEach((raw, i) => {
+    const cell = raw.trim().toLowerCase()
+    if (!cell) return
+    for (const { key, words } of HEADER_ALIASES) {
+      // 已认过的字段不被后面的列覆盖（表里出现两个「脚本…」时以第一个为准）
+      if (map[key] === undefined && words.some((w) => cell.includes(w))) {
+        map[key] = i
+        return
+      }
+    }
+  })
+  // 发言人与脚本是必需列：认不全就不算表头，回退列序解析
+  return map.speaker !== undefined && map.text !== undefined ? map : null
+}
+
 export function parseItemsTsv(
   text: string,
   currentRoles: [string, string],
 ): { items: StoryboardItem[]; roleAName: string; roleBName: string } {
   let rows = parseTsvTable(text)
   const headerWords = ['发言人', '说话人', '脚本', '时长', '序号', 'prompt']
-  if (rows.length > 0 && rows[0].some((c) => headerWords.some((w) => c.trim().includes(w)))) {
+  let columns: Partial<Record<string, number>> | null = null
+  if (
+    rows.length > 0 &&
+    rows[0].some((c) => headerWords.some((w) => c.trim().includes(w)))
+  ) {
+    columns = parseHeaderRow(rows[0])
     rows = rows.slice(1)
   }
-  const parsed: { speaker: string; text: string; duration?: number }[] = []
+  const parsed: { speaker: string; text: string; duration?: number; prompt?: string }[] =
+    []
   for (const raw of rows) {
     let cells = raw.map((c) => c.trim())
-    // 首列纯数字 = Excel 里的序号列，丢弃
-    if (cells.length >= 3 && /^\d+$/.test(cells[0])) cells = cells.slice(1)
-    const [speaker, segText, durText] = cells
+    let speaker: string | undefined
+    let segText: string | undefined
+    let durText: string | undefined
+    let promptText: string | undefined
+    if (columns) {
+      // 有表头：按列名定位，列序随便排、少一列多一列都不影响
+      speaker = cells[columns.speaker!]
+      segText = cells[columns.text!]
+      durText = columns.duration === undefined ? undefined : cells[columns.duration]
+      promptText = columns.prompt === undefined ? undefined : cells[columns.prompt]
+    } else {
+      // 无表头：沿用固定列序 [序号,] 发言人, 脚本 [, 时长 [, prompt]]
+      // 首列纯数字 = Excel 里的序号列，丢弃
+      if (cells.length >= 3 && /^\d+$/.test(cells[0])) cells = cells.slice(1)
+      ;[speaker, segText, durText, promptText] = cells
+    }
     if (!speaker || !segText?.trim()) continue
     const dur = Number(durText)
     parsed.push({
       speaker,
       text: segText.trim(),
       duration: Number.isFinite(dur) && durText ? dur : undefined,
+      prompt: promptText?.trim() || undefined,
     })
   }
   if (parsed.length === 0) {
@@ -281,12 +304,18 @@ export function parseItemsTsv(
   }
   const roleIndexOf = (s: string) => (s === roleAName ? 0 : 1)
   const clamp = (n: number) =>
-    Math.min(STORYBOARD_SEG_MAX_SECONDS, Math.max(STORYBOARD_SEG_MIN_SECONDS, Math.round(n)))
-  const items = parsed.map((r) => ({
+    Math.min(
+      STORYBOARD_SEG_MAX_SECONDS,
+      Math.max(STORYBOARD_SEG_MIN_SECONDS, Math.round(n)),
+    )
+  const items: StoryboardItem[] = parsed.map((r) => ({
     text: r.text,
     roleIndex: roleIndexOf(r.speaker),
     duration: r.duration != null ? clamp(r.duration) : estimateSegmentDuration(r.text),
-    status: 'idle' as const,
+    // 带着 prompt 进来的行直接算已完成：可以跳过「生成」直接落成节点
+    ...(r.prompt
+      ? { prompt: r.prompt, status: 'done' as const }
+      : { status: 'idle' as const }),
   }))
   return { items, roleAName, roleBName }
 }

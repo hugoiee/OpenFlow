@@ -22,11 +22,15 @@ export const db = new Database(join(dataDir, 'openflow.db'))
 db.pragma('journal_mode = WAL')
 
 db.exec(`
+  -- type: 'canvas'(节点式画布，数据在 nodes/edges) | 'evaluation'(评估项目，表格在 data)
+  -- data: 评估项目的表格 JSON（画布项目恒为 '{}'）；与 nodes/edges 同为不透明 JSON，后端不理解其内容
   CREATE TABLE IF NOT EXISTS projects (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
+    type TEXT NOT NULL DEFAULT 'canvas',
     nodes TEXT NOT NULL DEFAULT '[]',
     edges TEXT NOT NULL DEFAULT '[]',
+    data TEXT NOT NULL DEFAULT '{}',
     pinned INTEGER NOT NULL DEFAULT 0,
     updated_at INTEGER NOT NULL
   );
@@ -77,10 +81,18 @@ db.exec(`
   );
 `)
 
-// 旧库迁移：projects 早期无 pinned 列，补上（已有项目默认不置顶）
+// 旧库迁移：projects 早期无 pinned / type / data 列，补上
+// （已有项目默认不置顶；评估项目是后加的形态，故旧项目一律是画布项目、表格数据为空对象）
 const projectCols = db.prepare('PRAGMA table_info(projects)').all() as { name: string }[]
-if (!projectCols.some((col) => col.name === 'pinned')) {
+const projectColNames = new Set(projectCols.map((col) => col.name))
+if (!projectColNames.has('pinned')) {
   db.exec(`ALTER TABLE projects ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0`)
+}
+if (!projectColNames.has('type')) {
+  db.exec(`ALTER TABLE projects ADD COLUMN type TEXT NOT NULL DEFAULT 'canvas'`)
+}
+if (!projectColNames.has('data')) {
+  db.exec(`ALTER TABLE projects ADD COLUMN data TEXT NOT NULL DEFAULT '{}'`)
 }
 
 // 旧库迁移：settings 表按需补列（早期版本可能缺；旧的供应商列若存在则留存不读）

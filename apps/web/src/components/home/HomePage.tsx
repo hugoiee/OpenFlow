@@ -1,7 +1,14 @@
 import { useMemo, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Pin } from 'lucide-react'
+import { ChevronDown, Pin, Table2, Workflow } from 'lucide-react'
+import type { ProjectType } from '@openflow/shared'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Separator } from '@/components/ui/separator'
 import { SettingsDialog } from '@/components/settings/SettingsDialog'
 import { PromptPresetsDialog } from '@/components/presets/PromptPresetsDialog'
@@ -17,8 +24,8 @@ export function HomePage() {
   const setHomeView = useFlowStore((s) => s.setHomeView)
   const addProject = useFlowStore((s) => s.addProject)
 
-  const createProject = async () => {
-    const id = await addProject()
+  const createProject = async (type: ProjectType) => {
+    const id = await addProject(undefined, type)
     navigate(`/project/${id}`)
   }
 
@@ -88,9 +95,24 @@ export function HomePage() {
               设置
             </Button>
           </SettingsDialog>
-          <Button size="sm" onClick={createProject}>
-            + 新建项目
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm">
+                + 新建项目
+                <ChevronDown className="size-3.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-52">
+              <DropdownMenuItem onSelect={() => void createProject('canvas')}>
+                <Workflow className="size-4" />
+                新建画布项目
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => void createProject('evaluation')}>
+                <Table2 className="size-4" />
+                新建评估项目
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </header>
 
@@ -99,10 +121,19 @@ export function HomePage() {
           <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
             <h2 className="text-xl font-semibold">还没有项目</h2>
             <p className="max-w-sm text-sm text-muted-foreground">
-              每个项目是一块独立画布。新建一个项目，然后在画布上添加 Prompt 节点和 Model
-              节点，用连线把它们连起来。
+              画布项目是一块节点画布，用连线把 Prompt 与生成节点串起来；
+              评估项目是一张 Excel 式表格，可插入 LLM 评估列逐行跑评估。
             </p>
-            <Button onClick={createProject}>+ 新建项目</Button>
+            <div className="flex items-center gap-2">
+              <Button onClick={() => void createProject('canvas')}>
+                <Workflow className="size-4" />
+                新建画布项目
+              </Button>
+              <Button variant="outline" onClick={() => void createProject('evaluation')}>
+                <Table2 className="size-4" />
+                新建评估项目
+              </Button>
+            </div>
           </div>
         ) : pinnedProjects.length === 0 ? (
           // 没有置顶项目时不显示分区标题，布局与未启用置顶时一致

@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { Navigate, useParams } from 'react-router-dom'
 import { AgentChatPanel, AgentChatToggle } from '@/components/agent/AgentChatPanel'
 import { FlowCanvasWithProvider } from '@/components/canvas/FlowCanvas'
+import { EvaluationWorkspace } from '@/components/evaluation/EvaluationWorkspace'
 import { NodeInspector } from '@/components/inspector/NodeInspector'
 import { WorkspaceHeader } from '@/components/workspace/WorkspaceHeader'
 import { useFlowStore } from '@/store/useFlowStore'
@@ -9,7 +10,8 @@ import { useFlowStore } from '@/store/useFlowStore'
 export function ProjectWorkspace() {
   const { id } = useParams<{ id: string }>()
   const loaded = useFlowStore((s) => s.loaded)
-  const exists = useFlowStore((s) => s.projects.some((p) => p.id === id))
+  const projectType = useFlowStore((s) => s.projects.find((p) => p.id === id)?.type)
+  const exists = projectType !== undefined
   const setActiveProject = useFlowStore((s) => s.setActiveProject)
 
   // 把路由参数同步进 store：画布操作（patchActive）依赖 activeProjectId。
@@ -22,6 +24,16 @@ export function ProjectWorkspace() {
 
   // 无效或已删除的项目 id：回首页。
   if (!id || !exists) return <Navigate to="/" replace />
+
+  // 评估项目：整页表格，不挂画布/Inspector/Agent 面板（那三样都是画布专属）。
+  if (projectType === 'evaluation') {
+    return (
+      <div className="flex h-screen min-h-0 flex-col overflow-hidden bg-background text-foreground">
+        <WorkspaceHeader projectId={id} />
+        <EvaluationWorkspace projectId={id} />
+      </div>
+    )
+  }
 
   return (
     // 无侧栏：顶栏通栏置顶；其下 flex-row = 画布区 + Agent 面板，二者顶边均落在 header 之下。

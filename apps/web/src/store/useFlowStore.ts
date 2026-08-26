@@ -9,12 +9,19 @@ import {
   type NodeChange,
 } from '@xyflow/react'
 import { create } from 'zustand'
+import type { ProjectType } from '@openflow/shared'
 import {
   createProjectApi,
   deleteProjectApi,
   listProjects,
   updateProjectApi,
 } from '@/lib/api'
+import {
+  createDefaultTable,
+  normalizeEvaluationTable,
+  type EvaluationCell,
+  type EvaluationTable,
+} from '@/lib/evaluation'
 import { newId } from '@/lib/id'
 import {
   NANO_ASPECT_DEFAULT,
@@ -60,7 +67,10 @@ import {
   storyboardRoleImageHandleId,
 } from '@/lib/graph'
 import { isValidTypedConnection } from '@/lib/handleTypes'
-import { collectMultiConnectEdges, collectSelectedResourceEdges } from '@/lib/multiConnect'
+import {
+  collectMultiConnectEdges,
+  collectSelectedResourceEdges,
+} from '@/lib/multiConnect'
 import { normalizeShotPrompt } from '@/lib/storyboard'
 import {
   type FlowNode,
@@ -106,7 +116,8 @@ type FlowState = {
   loadProjects: () => Promise<void>
 
   // 项目管理
-  addProject: (name?: string) => Promise<string>
+  /** 新建项目：type 决定形态（画布 / 评估表），建后不可改；评估项目自带初始表格。 */
+  addProject: (name?: string, type?: ProjectType) => Promise<string>
   renameProject: (id: string, name: string) => void
   /** 置顶 / 取消置顶：首页把置顶项目单独成区排在最前（状态持久化到后端）。 */
   setProjectPinned: (id: string, pinned: boolean) => void
@@ -127,7 +138,10 @@ type FlowState = {
     videoVariant?: VideoVariant,
   ) => void
   /** 在指定画布坐标新建一个素材节点（上传中态），返回新节点 id。 */
-  addAssetNode: (kind: 'image' | 'audio' | 'video', position: { x: number; y: number }) => string
+  addAssetNode: (
+    kind: 'image' | 'audio' | 'video',
+    position: { x: number; y: number },
+  ) => string
   /** 删除某个节点（如素材上传失败时移除占位节点）。 */
   removeNode: (nodeId: string) => void
   /**
@@ -189,6 +203,28 @@ type FlowState = {
     roleBName: string
     items: StoryboardItem[]
   }) => { storyboardNodeId: string; created: boolean } | null
+  // 评估项目（Excel 式表格）操作：三个 action 都显式收 projectId，
+  // 因为跑整列时请求在飞，用户可能已切走项目——按「当前激活项目」写会写错地方。
+  /** 评估表整表重建（xlsx 导入 / 从 Excel 粘贴）。 */
+  setEvaluationTable: (projectId: string, table: EvaluationTable) => void
+  /**
+   * 评估表结构变更（增删行列、改列名、改 LLM 列配置）：updater 在 set 时刻拿到最新表。
+   * 具体的行列操作以纯函数形式由调用方传入，避免 store 里堆出七八个近似 action。
+   */
+  updateEvaluationTable: (
+    projectId: string,
+    updater: (table: EvaluationTable) => EvaluationTable,
+  ) => void
+  /**
+   * 评估表单元格 patch：并发 worker 完成时回写的必经之路。
+   * 按 rowId/columnId 定位而非下标——跑列期间用户删行/加行不会让回写错位（同 patchStoryboardItem 的丢更新教训）。
+   */
+  patchEvaluationCell: (
+    projectId: string,
+    rowId: string,
+    columnId: string,
+    patch: Partial<EvaluationCell>,
+  ) => void
   /**
    * 从某个节点的 handle 拉线松开在空白处后新建一个节点并与源节点连线。
    * from.handleType='source'（从输出端拉出）→ 新节点作下游 target（源→新）；
@@ -363,16 +399,29 @@ const AGENT_PLACE_FALLBACK_HEIGHT: Record<string, number> = {
   storyboard: 420,
 }
 
-// 画布高频编辑 → 防抖把激活项目整体 PUT 回后端
+// ---- 分镜「落成节点」的网格排布 ----
+// 一组 = Prompt + 视频两个节点：Prompt 在左（宽 264）、视频在右（宽 288）。
+// 列步长要容下整组再留出组间空档，否则相邻两组的卡片会贴在一起看不出分界。
+const SHOTS_PER_ROW = 5
+const SHOT_X_PROMPT = 80
+const SHOT_X_VIDEO = 420
+const SHOT_COL_W = 700
+
+// 画布/表格高频编辑 → 防抖把激活项目整体 PUT 回后端
 const saveTimers: Record<string, ReturnType<typeof setTimeout>> = {}
 function scheduleSave(project: Project) {
   clearTimeout(saveTimers[project.id])
   saveTimers[project.id] = setTimeout(() => {
-    updateProjectApi(project.id, {
-      name: project.name,
-      nodes: project.nodes,
-      edges: project.edges,
-    }).catch((e) => console.error('[openflow] 保存项目失败', e))
+    // 两种形态各存各的字段：评估项目只发 data，画布项目只发 nodes/edges。
+    // 刻意**省略**对方的字段而不是发空值——后端「传什么改什么」，省略即保留原值，
+    // 万一形态判断出错也只是不写，而不是把另一形态的数据清空。
+    const patch =
+      project.type === 'evaluation'
+        ? { name: project.name, data: project.table ?? {} }
+        : { name: project.name, nodes: project.nodes, edges: project.edges }
+    updateProjectApi(project.id, patch).catch((e) =>
+      console.error('[openflow] 保存项目失败', e),
+    )
   }, 500)
 }
 
@@ -404,72 +453,91 @@ export const useFlowStore = create<FlowState>()((set, get) => {
     loadProjects: async () => {
       const dtos = await listProjects()
       const projects: Project[] = dtos.map((d) => {
+        // 评估项目在画布清洗之前分流：它的 nodes/edges 恒空，下面那套节点清洗对它毫无意义。
+        if ((d.type ?? 'canvas') === 'evaluation') {
+          return {
+            id: d.id,
+            name: d.name,
+            type: 'evaluation' as const,
+            nodes: [],
+            edges: [],
+            // 载入时复位单元格的 pending/running（刷新后没有在飞的请求了），done 结果保留
+            table: normalizeEvaluationTable(d.data),
+            pinned: d.pinned ?? false,
+          }
+        }
         // Any LLM 节点已下线：旧项目里残留的 llm 节点及其连线在载入时一并丢弃
         // （下次防抖存盘即把库里的也清干净），免得画布上留下渲染不出来的空节点与悬空连线。
         const dropped = new Set(
-          (d.nodes as FlowNode[]).filter((n) => (n.type as string) === LEGACY_LLM_TYPE).map((n) => n.id),
+          (d.nodes as FlowNode[])
+            .filter((n) => (n.type as string) === LEGACY_LLM_TYPE)
+            .map((n) => n.id),
         )
         // image/video 节点的 running/error 是瞬时态：载入时复位为非运行态，避免卡在「生成中…」。
         // 但保留 taskId（与 result）：若任务仍在飞，节点 mount 时凭 taskId 重连轮询（关页面不丢结果）。
         const nodes = (d.nodes as FlowNode[])
           .filter((n) => !dropped.has(n.id))
           .map((rawNode) => {
-          // 清洗坏尺寸：React Flow 可能把 width/height 持久化成 0（测量竞态）。0 会被当作
-          // 显式尺寸套到节点外层容器 → 节点塌成 0 宽、整体不可见（如 Prompt 节点重开看不到）。
-          // 剔除 ≤0 的 width/height/measured，让 RF 重新测量自适应（渲染出来后尺寸自愈为正值）。
-          let node = rawNode
-          const badW = typeof rawNode.width === 'number' && rawNode.width <= 0
-          const badH = typeof rawNode.height === 'number' && rawNode.height <= 0
-          if (badW || badH) {
-            node = { ...rawNode }
-            delete node.width
-            delete node.height
-            delete node.measured
-          }
-          if (node.type === 'image') {
-            return { ...node, data: { ...node.data, running: false, error: undefined } }
-          }
-          if (node.type === 'video') {
-            return { ...node, data: { ...node.data, running: false, error: undefined } }
-          }
-          if (node.type === 'podcast') {
-            return { ...node, data: { ...node.data, running: false, error: undefined } }
-          }
-          // 分镜节点：running 与逐段 pending/running 是纯前端请求瞬时态，载入复位为 idle
-          // （done 的 prompt 是持久成果、error 提示用户重试，均保留）；
-          // 早期 items 存的是含角色名前缀的 line 字段 → 迁移为无前缀的 text（表格 B 列）
-          if (node.type === 'storyboard') {
-            return {
-              ...node,
-              data: {
-                ...node.data,
-                running: false,
-                items: node.data.items?.map((raw) => {
-                  const legacyLine = (raw as { line?: string }).line
-                  const text = raw.text ?? legacyLine?.replace(/^[^:：]{1,20}[:：]\s*/, '') ?? ''
-                  const it: StoryboardItem = { ...raw, text }
-                  delete (it as { line?: string }).line
-                  return it.status === 'pending' || it.status === 'running'
-                    ? { ...it, status: 'idle' as const }
-                    : it
-                }),
-              },
+            // 清洗坏尺寸：React Flow 可能把 width/height 持久化成 0（测量竞态）。0 会被当作
+            // 显式尺寸套到节点外层容器 → 节点塌成 0 宽、整体不可见（如 Prompt 节点重开看不到）。
+            // 剔除 ≤0 的 width/height/measured，让 RF 重新测量自适应（渲染出来后尺寸自愈为正值）。
+            let node = rawNode
+            const badW = typeof rawNode.width === 'number' && rawNode.width <= 0
+            const badH = typeof rawNode.height === 'number' && rawNode.height <= 0
+            if (badW || badH) {
+              node = { ...rawNode }
+              delete node.width
+              delete node.height
+              delete node.measured
             }
-          }
-          // 素材节点：uploading 是瞬时态，载入时复位，避免刷新后卡在「上传中…」
-          if (node.type === 'asset') {
-            return { ...node, data: { ...node.data, uploading: false } }
-          }
-          return node
-        })
+            if (node.type === 'image') {
+              return { ...node, data: { ...node.data, running: false, error: undefined } }
+            }
+            if (node.type === 'video') {
+              return { ...node, data: { ...node.data, running: false, error: undefined } }
+            }
+            if (node.type === 'podcast') {
+              return { ...node, data: { ...node.data, running: false, error: undefined } }
+            }
+            // 分镜节点：running 与逐段 pending/running 是纯前端请求瞬时态，载入复位为 idle
+            // （done 的 prompt 是持久成果、error 提示用户重试，均保留）；
+            // 早期 items 存的是含角色名前缀的 line 字段 → 迁移为无前缀的 text（表格 B 列）
+            if (node.type === 'storyboard') {
+              return {
+                ...node,
+                data: {
+                  ...node.data,
+                  running: false,
+                  items: node.data.items?.map((raw) => {
+                    const legacyLine = (raw as { line?: string }).line
+                    const text =
+                      raw.text ?? legacyLine?.replace(/^[^:：]{1,20}[:：]\s*/, '') ?? ''
+                    const it: StoryboardItem = { ...raw, text }
+                    delete (it as { line?: string }).line
+                    return it.status === 'pending' || it.status === 'running'
+                      ? { ...it, status: 'idle' as const }
+                      : it
+                  }),
+                },
+              }
+            }
+            // 素材节点：uploading 是瞬时态，载入时复位，避免刷新后卡在「上传中…」
+            if (node.type === 'asset') {
+              return { ...node, data: { ...node.data, uploading: false } }
+            }
+            return node
+          })
         return {
           id: d.id,
           name: d.name,
+          type: 'canvas' as const,
           nodes,
           // 旧编号端点连线归并到统一资源端点 res（首尾帧 First/Last 保留；保持旧采集次序）
           edges: normalizeResourceEdges(
             nodes,
-            (d.edges as Edge[]).filter((e) => !dropped.has(e.source) && !dropped.has(e.target)),
+            (d.edges as Edge[]).filter(
+              (e) => !dropped.has(e.source) && !dropped.has(e.target),
+            ),
           ),
           pinned: d.pinned ?? false,
         }
@@ -477,13 +545,17 @@ export const useFlowStore = create<FlowState>()((set, get) => {
       set({ projects, loaded: true })
     },
 
-    addProject: async (name) => {
-      const dto = await createProjectApi(name?.trim() || '未命名项目')
+    addProject: async (name, type = 'canvas') => {
+      // 评估项目建库时就带上初始表格，省得进工作区还要补一次 PUT
+      const initialTable = type === 'evaluation' ? createDefaultTable() : undefined
+      const dto = await createProjectApi(name?.trim() || '未命名项目', type, initialTable)
       const project: Project = {
         id: dto.id,
         name: dto.name,
+        type: dto.type ?? 'canvas',
         nodes: dto.nodes as FlowNode[],
         edges: dto.edges as Edge[],
+        table: initialTable,
         pinned: dto.pinned ?? false,
       }
       set((state) => ({
@@ -517,9 +589,7 @@ export const useFlowStore = create<FlowState>()((set, get) => {
       set((state) => {
         const projects = state.projects.filter((p) => p.id !== id)
         const activeProjectId =
-          state.activeProjectId === id
-            ? (projects[0]?.id ?? null)
-            : state.activeProjectId
+          state.activeProjectId === id ? (projects[0]?.id ?? null) : state.activeProjectId
         return { projects, activeProjectId }
       })
       deleteProjectApi(id).catch((e) => console.error('[openflow] 删除失败', e))
@@ -551,7 +621,9 @@ export const useFlowStore = create<FlowState>()((set, get) => {
             )
             .map((c) => c.id),
         )
-        const base = removedGroupIds.size ? detachChildren(p.nodes, removedGroupIds) : p.nodes
+        const base = removedGroupIds.size
+          ? detachChildren(p.nodes, removedGroupIds)
+          : p.nodes
         return { ...p, nodes: applyNodeChanges(changes, base) }
       }, viewOnly)
     },
@@ -576,12 +648,18 @@ export const useFlowStore = create<FlowState>()((set, get) => {
       }),
 
     onReconnect: (oldEdge, newConnection) =>
-      patchActive((p) => ({ ...p, edges: reconnectEdge(oldEdge, newConnection, p.edges) })),
+      patchActive((p) => ({
+        ...p,
+        edges: reconnectEdge(oldEdge, newConnection, p.edges),
+      })),
 
     addNode: (type, model, position, videoVariant) =>
       patchActive((p) => ({
         ...p,
-        nodes: [...p.nodes, createNode(type, p.nodes.length, model, position, videoVariant)],
+        nodes: [
+          ...p.nodes,
+          createNode(type, p.nodes.length, model, position, videoVariant),
+        ],
       })),
 
     addAssetNode: (kind, position) => {
@@ -591,7 +669,8 @@ export const useFlowStore = create<FlowState>()((set, get) => {
         type: 'asset',
         position,
         data: {
-          label: kind === 'image' ? '图像素材' : kind === 'video' ? '视频素材' : '音频素材',
+          label:
+            kind === 'image' ? '图像素材' : kind === 'video' ? '视频素材' : '音频素材',
           kind,
           url: '',
           uploading: true,
@@ -657,7 +736,9 @@ export const useFlowStore = create<FlowState>()((set, get) => {
             ? {
                 ...p,
                 nodes: p.nodes.map((n) =>
-                  n.id === nodeId ? ({ ...n, data: { ...n.data, ...data } } as FlowNode) : n,
+                  n.id === nodeId
+                    ? ({ ...n, data: { ...n.data, ...data } } as FlowNode)
+                    : n,
                 ),
               }
             : p,
@@ -747,6 +828,53 @@ export const useFlowStore = create<FlowState>()((set, get) => {
         return { projects }
       }),
 
+    setEvaluationTable: (projectId, table) =>
+      set((state) => {
+        const projects = state.projects.map((p) =>
+          p.id === projectId && p.type === 'evaluation' ? { ...p, table } : p,
+        )
+        const target = projects.find((p) => p.id === projectId)
+        if (target) scheduleSave(target)
+        return { projects }
+      }),
+
+    updateEvaluationTable: (projectId, updater) =>
+      set((state) => {
+        const projects = state.projects.map((p) =>
+          p.id === projectId && p.type === 'evaluation' && p.table
+            ? { ...p, table: updater(p.table) }
+            : p,
+        )
+        const target = projects.find((p) => p.id === projectId)
+        if (target) scheduleSave(target)
+        return { projects }
+      }),
+
+    patchEvaluationCell: (projectId, rowId, columnId, patch) =>
+      set((state) => {
+        const projects = state.projects.map((p) => {
+          if (p.id !== projectId || p.type !== 'evaluation' || !p.table) return p
+          return {
+            ...p,
+            table: {
+              ...p.table,
+              rows: p.table.rows.map((row) => {
+                if (row.id !== rowId) return row
+                // 单元格可能还不存在（空格子不占键），补一个空值再合并 patch
+                const current: EvaluationCell = row.cells[columnId] ?? { value: '' }
+                return {
+                  ...row,
+                  cells: { ...row.cells, [columnId]: { ...current, ...patch } },
+                }
+              }),
+            },
+          }
+        })
+        const target = projects.find((p) => p.id === projectId)
+        if (target) scheduleSave(target)
+        return { projects }
+      }),
+
     addStoryboardShots: ({ storyboardNodeId, shots, model }) => {
       const { activeProjectId, projects } = get()
       const project = projects.find((p) => p.id === activeProjectId)
@@ -769,7 +897,7 @@ export const useFlowStore = create<FlowState>()((set, get) => {
               e.targetHandle === storyboardRoleAudioHandleId(roleIndex),
           )?.source,
       )
-      // 摆到现有内容下方，成对横排逐行向下（找底逻辑同 addAgentGeneration）
+      // 摆到现有内容下方，成组网格排布（找底逻辑同 addAgentGeneration）
       const bottom = project.nodes.reduce((max, n) => {
         const height =
           n.measured?.height ?? AGENT_PLACE_FALLBACK_HEIGHT[n.type ?? 'prompt'] ?? 220
@@ -781,13 +909,18 @@ export const useFlowStore = create<FlowState>()((set, get) => {
       const newNodes: FlowNode[] = []
       const newEdges: Edge[] = []
       shots.forEach((shot, i) => {
-        const y = y0 + i * rowH
+        // 每行 SHOTS_PER_ROW 组，**逐行同向**（都从左往右，下一行回到最左）：
+        // 几十段全排成一列的话得一路往下滚才看得完，横过来一屏能扫掉一整行。
+        const col = i % SHOTS_PER_ROW
+        const row = Math.floor(i / SHOTS_PER_ROW)
+        const x0 = col * SHOT_COL_W
+        const y = y0 + row * rowH
         // 标题带台词前缀便于在 40 组节点里辨认是哪一句
         const title = `分镜${i + 1} · ${shot.line.replaceAll('\n', ' ').slice(0, 12)}`
         const promptNode: FlowNode = {
           id: newId('n_'),
           type: 'prompt',
-          position: { x: 80, y },
+          position: { x: SHOT_X_PROMPT + x0, y },
           // @ImageN/@AudioN 字面引用归一成画布实发占位符 <<<kind_N>>>
           data: { label: title, text: normalizeShotPrompt(shot.prompt) },
         }
@@ -795,7 +928,7 @@ export const useFlowStore = create<FlowState>()((set, get) => {
           'video',
           project.nodes.length + newNodes.length,
           videoModel,
-          { x: 420, y },
+          { x: SHOT_X_VIDEO + x0, y },
           'reference',
         )
         videoNode.data.label = title
@@ -850,7 +983,11 @@ export const useFlowStore = create<FlowState>()((set, get) => {
       if (!project || splitterNode?.type !== 'splitter') return null
       // 下游已连的分镜节点：切割节点出边里找 target 为 storyboard 的（重切=更新它，不堆节点）
       const existing = project.edges
-        .map((e) => (e.source === splitterNodeId ? project.nodes.find((n) => n.id === e.target) : undefined))
+        .map((e) =>
+          e.source === splitterNodeId
+            ? project.nodes.find((n) => n.id === e.target)
+            : undefined,
+        )
         .find((n) => n?.type === 'storyboard')
       const rolePatch = { roleAName, roleBName, items, running: false }
       if (existing) {
@@ -896,14 +1033,21 @@ export const useFlowStore = create<FlowState>()((set, get) => {
         // storyboard 只有专用端点（角色素材/分镜表，无默认口/无输出）；
         // 拉线选了这类节点时无处可连 → 只建节点不连线，避免生成一条挂空的坏边。
         const canBeTarget =
-          type !== 'asset' && type !== 'podcast' && type !== 'storyboard' && type !== 'splitter'
+          type !== 'asset' &&
+          type !== 'podcast' &&
+          type !== 'storyboard' &&
+          type !== 'splitter'
         const canBeSource = type !== 'podcast' && type !== 'storyboard'
         let edge: Edge | null = null
         if (from.handleType === 'source') {
           // 从输出端拉出：源=既有节点，目标=新节点。先试默认输入口（文本），不匹配再试
           // 统一资源端点 res（从素材/生成结果拉出建图像/视频节点）；都不匹配则只建节点
-          const defaultOk = canBeTarget && isValidTypedConnection(fromNode, node, undefined)
-          const resOk = canBeTarget && !defaultOk && isValidTypedConnection(fromNode, node, RES_INPUT_HANDLE)
+          const defaultOk =
+            canBeTarget && isValidTypedConnection(fromNode, node, undefined)
+          const resOk =
+            canBeTarget &&
+            !defaultOk &&
+            isValidTypedConnection(fromNode, node, RES_INPUT_HANDLE)
           if (defaultOk || resOk) {
             edge = {
               id: newId('e_'),
@@ -933,7 +1077,12 @@ export const useFlowStore = create<FlowState>()((set, get) => {
 
     connectSelectedResourcesTo: (targetNodeId, targetHandle) =>
       patchActive((p) => {
-        const added = collectSelectedResourceEdges(p.nodes, p.edges, targetNodeId, targetHandle)
+        const added = collectSelectedResourceEdges(
+          p.nodes,
+          p.edges,
+          targetNodeId,
+          targetHandle,
+        )
         if (added.length === 0) return p
         return { ...p, edges: [...p.edges, ...added] }
       }),
@@ -943,7 +1092,12 @@ export const useFlowStore = create<FlowState>()((set, get) => {
         const node = createNode(type, p.nodes.length, model, position, videoVariant)
         const nodes = [...p.nodes, node]
         // 只有图像/视频节点有统一资源端点 res；其余类型 collectSelectedResourceEdges 会全判不合法 → 只建节点
-        const added = collectSelectedResourceEdges(nodes, p.edges, node.id, RES_INPUT_HANDLE)
+        const added = collectSelectedResourceEdges(
+          nodes,
+          p.edges,
+          node.id,
+          RES_INPUT_HANDLE,
+        )
         return { ...p, nodes, edges: added.length ? [...p.edges, ...added] : p.edges }
       }),
 
