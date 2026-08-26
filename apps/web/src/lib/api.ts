@@ -14,6 +14,7 @@ import type {
   GenPodcastBody,
   GenVideoBody,
   ProjectDTO,
+  ProjectStatsResponse,
   ProjectType,
   PromptPresetDTO,
   SavePromptPresetBody,
@@ -74,6 +75,14 @@ export function updateProjectApi(
 
 export function deleteProjectApi(id: string): Promise<{ ok: true }> {
   return request<{ ok: true }>(`/projects/${id}`, { method: 'DELETE' })
+}
+
+/**
+ * 取某画布项目的生成统计明细（每次「点生成」一行，新→旧）。
+ * 数据源是后端 tasks 表，与画布上节点是否还在无关——任务跑过就该计入开销。
+ */
+export function getProjectStatsApi(id: string): Promise<ProjectStatsResponse> {
+  return request<ProjectStatsResponse>(`/projects/${id}/stats`)
 }
 
 // ---- 设置 ----

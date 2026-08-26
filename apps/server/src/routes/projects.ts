@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
-import type { ProjectDTO, ProjectType } from '@openflow/shared'
+import type { ProjectDTO, ProjectStatsResponse, ProjectType } from '@openflow/shared'
 import { db } from '../db'
+import { listProjectStats } from '../stats-store'
 
 export const projects = new Hono()
 
@@ -69,6 +70,17 @@ projects.post('/', async (c) => {
     Date.now(),
   )
   return c.json(project, 201)
+})
+
+// 生成统计（画布项目的开销明细）：读 tasks 表里属于本项目的图像/视频任务，
+// 每次「点生成」一行。**必须放在 PUT/DELETE 的 /:id 之前**不受影响（方法不同不冲突），
+// 但要早于任何 get('/:id') 通配路由——目前没有，故位置只需在文件内可读即可。
+projects.get('/:id/stats', (c) => {
+  const id = c.req.param('id')
+  const exists = db.prepare('SELECT id FROM projects WHERE id = ?').get(id)
+  if (!exists) return c.json({ error: '项目不存在' }, 404)
+  const res: ProjectStatsResponse = { rows: listProjectStats(id) }
+  return c.json(res)
 })
 
 // 更新（name / nodes / edges / data / pinned，传什么改什么；**type 不可改**故不从 body 读）
