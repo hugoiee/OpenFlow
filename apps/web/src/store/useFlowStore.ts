@@ -726,11 +726,10 @@ export const useFlowStore = create<FlowState>()((set, get) => {
         const { w } = nodeSize(source)
         // 复制 data：清运行态与 taskId（副本不重连轮询，避免与原节点串写），
         // result 数组另建一份避免共享引用（结果作静态快照保留）。
-        // 颜色标记不随复制——mark 是人对「这个节点这次产出」的判断，副本通常是要改参数
-        // 重跑的新起点，其产出尚未被判断过，带着原判断只会造成误读。
         const data = { ...source.data } as Record<string, unknown>
         delete data.taskId
         delete data.error
+        // 颜色标记是对当前节点产出的人工判断，复制内容时不应继承。
         delete data.mark
         if ('running' in data) data.running = false
         if (Array.isArray(data.result)) data.result = [...data.result]
