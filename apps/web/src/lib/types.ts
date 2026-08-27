@@ -186,15 +186,24 @@ export type PodcastNodeData = {
 /** 脚本分镜单行的运行状态（pending/running 为纯前端请求瞬时态，载入时复位为 idle）。 */
 export type StoryboardItemStatus = 'idle' | 'pending' | 'running' | 'done' | 'error'
 
-/** 脚本分镜表格的一行：A 说话人(roleIndex) / B 分割后脚本(text) / C 时长(duration) / D LLM 产出(prompt)。 */
+/**
+ * 脚本分镜表格的一行：镜头号(shot) / 说话人(roleIndex) / 分割后脚本(text) /
+ * 时长(duration) / LLM 产出(prompt)。
+ */
 export type StoryboardItem = {
-  /** B 列：分割后的台词段文本（**不含**角色名前缀；可在表格里编辑）。 */
+  /**
+   * 镜头号：剪辑口径的人工编号，常见形如 `seg1` / `seg1-特` / `seg2-近`。
+   * 切割时自动填 `seg{序号}`，可在表格里改，也可从 Excel 粘贴带入；
+   * **落成节点时用作两个节点的名字**（为空才退回「分镜N · 台词前缀」）。
+   */
+  shot?: string
+  /** 分割后的台词段文本（**不含**角色名前缀；可在表格里编辑）。 */
   text: string
-  /** A 列：说话人下标 0=角色A / 1=角色B（落成节点时按它连对应角色的参考图/音色）。 */
+  /** 说话人下标 0=角色A / 1=角色B（落成节点时按它连对应角色的参考图/音色）。 */
   roleIndex: number
-  /** C 列：估算视频时长（秒，= 念出字数/语速，夹到 4~15，可在表格里改）；落成时写进该段 Seedance 节点。 */
+  /** 估算视频时长（秒，= 念出字数/语速，夹到 4~15，可在表格里改）；落成时写进该段 Seedance 节点。 */
   duration?: number
-  /** D 列：LLM 生成的完整视频 prompt（done 时非空）。 */
+  /** LLM 生成的完整视频 prompt（done 时非空）。 */
   prompt?: string
   status: StoryboardItemStatus
   /** 该段生成失败的错误信息（status=error 时展示，可单段重试）。 */

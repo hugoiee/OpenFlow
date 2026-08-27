@@ -191,7 +191,14 @@ type FlowState = {
    */
   addStoryboardShots: (input: {
     storyboardNodeId: string
-    shots: { line: string; roleIndex: number; prompt: string; duration?: number }[]
+    shots: {
+      line: string
+      roleIndex: number
+      prompt: string
+      duration?: number
+      /** 镜头号（如 seg1-特）：非空时即两个新节点的名字，空则退回「分镜N · 台词前缀」。 */
+      shot?: string
+    }[]
     model?: string
   }) => number
   /**
@@ -947,8 +954,11 @@ export const useFlowStore = create<FlowState>()((set, get) => {
         const row = Math.floor(i / SHOTS_PER_ROW)
         const x0 = col * SHOT_COL_W
         const y = y0 + row * rowH
-        // 标题带台词前缀便于在 40 组节点里辨认是哪一句
-        const title = `分镜${i + 1} · ${shot.line.replaceAll('\n', ' ').slice(0, 12)}`
+        // 节点名优先用分镜表里的镜头号（seg1-特 之类，剪辑口径的身份，跨表/跨软件对得上）；
+        // 没填镜头号才退回「分镜N · 台词前缀」——总得有个能在 40 组节点里认人的名字
+        const title =
+          shot.shot?.trim() ||
+          `分镜${i + 1} · ${shot.line.replaceAll('\n', ' ').slice(0, 12)}`
         const promptNode: FlowNode = {
           id: newId('n_'),
           type: 'prompt',
