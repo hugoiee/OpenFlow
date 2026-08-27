@@ -48,8 +48,8 @@ import { useSettingsStore } from '@/store/useSettingsStore'
 import { markCardClass } from '@/lib/nodeMark'
 import { NodeActions } from './NodeActions'
 
-// 节点默认/最小尺寸：六列表格需要宽卡片（prompt 列要能读）
-const DEFAULT_WIDTH = 760
+// 节点默认/最小尺寸：七列表格需要宽卡片（脚本与 prompt 两列都要能读）
+const DEFAULT_WIDTH = 820
 const DEFAULT_HEIGHT = 520
 
 /**
@@ -72,9 +72,10 @@ function ItemStatusIcon({ status }: { status: StoryboardItem['status'] }) {
 }
 
 /**
- * 表格一行 <tr>：序号（可编辑，改序号=把本行挪到该位置）/ 发言人（下拉切角色）/
- * 脚本（可编辑，改完自动重估时长）/ 时长（可编辑）/ 生成（状态 + 单段运行）/
- * prompt（只读可滚动，可直接选中复制）。独立组件——脚本列的 IME 防抖 hook 不能在父组件循环里创建。
+ * 表格一行 <tr>：序号（可编辑，改序号=把本行挪到该位置）/ 镜头号（可编辑，落成节点的名字）/
+ * 发言人（下拉切角色）/ 脚本（可编辑，改完自动重估时长）/ 时长（可编辑）/
+ * 生成（状态 + 单段运行）/ prompt（只读可滚动，可直接选中复制）。
+ * 独立组件——脚本/镜头号列的 IME 防抖 hook 不能在父组件循环里创建。
  */
 function StoryboardRow({
   item,
@@ -98,6 +99,11 @@ function StoryboardRow({
   // 脚本列：改完文本自动按语速重估时长（之后仍可手动改时长覆盖）
   const textField = useCompositionField(item.text ?? '', (v) =>
     onPatch(index, { text: v, duration: estimateSegmentDuration(v) }),
+  )
+  // 镜头号列：纯人工标识（seg1 / seg1-特 …），原样存不做格式校验——
+  // 各家剪辑的编号习惯不一样，替用户规定格式只会挡路
+  const shotField = useCompositionField(item.shot ?? '', (v) =>
+    onPatch(index, { shot: v }),
   )
   // 时长列：本地承接输入，失焦/回车时夹到 4~15 提交；外部值变化（如改脚本重估）时
   // 用「渲染期对比上次 prop」的官方派生模式同步回本地（effect 里 setState 会被 lint 拦）
@@ -151,6 +157,14 @@ function StoryboardRow({
           inputMode="numeric"
           className="nodrag h-6 w-9 px-1 text-right text-[11px] tabular-nums"
           title="序号：改成几就把本行挪到第几行（生成中不可改）"
+        />
+      </td>
+      <td className="border-r px-1 py-1">
+        <Input
+          {...shotField}
+          placeholder="seg1"
+          className="nodrag h-6 w-16 px-1 text-[11px]"
+          title="镜头号（如 seg1 / seg1-特 / seg2-近）：落成节点后即节点名字"
         />
       </td>
       <td className="border-r px-1 py-1">
@@ -225,7 +239,7 @@ function StoryboardRow({
 }
 
 /**
- * 脚本分镜节点（Excel 式表格）：表头 序号/发言人/脚本/时长/生成/prompt。
+ * 脚本分镜节点（Excel 式表格）：表头 序号/镜头号/发言人/脚本/时长/生成/prompt。
  * 表格来源三入口——上游脚本切割节点写入、本节点「粘贴脚本切分」、「从 Excel 粘贴」（TSV 导入）；
  * 「复制表格」把整表（含表头与 prompt）以 TSV 写入剪贴板，可直接粘进 Excel。
  * 「生成」逐段并发调 Agent LLM（单段可重跑），「落成节点」批量建
@@ -467,6 +481,7 @@ export function StoryboardNode({
         roleIndex: it.roleIndex,
         prompt: it.prompt!,
         duration: it.duration,
+        shot: it.shot,
       }))
     const n = addStoryboardShots({ storyboardNodeId: id, shots })
     if (n > 0) {
@@ -575,7 +590,7 @@ export function StoryboardNode({
             variant="outline"
             onClick={() => setPasteOpen((v) => !v)}
             className="nodrag h-7 gap-1 px-2 text-xs"
-            title="从 Excel 复制行后粘到输入区导入（列：[序号,] 发言人, 脚本 [, 时长]）"
+            title="从 Excel 复制行后粘到输入区导入（有表头按列名认列：镜头号/发言人/脚本/时长/prompt）"
           >
             <ClipboardPaste className="size-3" />从 Excel 粘贴
           </Button>
@@ -586,7 +601,7 @@ export function StoryboardNode({
           <div className="flex shrink-0 flex-col gap-1 rounded-md border border-dashed p-2">
             <Textarea
               placeholder={
-                '在 Excel 里复制行后，在此按 Ctrl/Cmd+V 直接导入。\n列约定（Tab 分隔）：[序号,] 发言人, 脚本 [, 时长]；表头行自动跳过。'
+                '在 Excel 里复制行后，在此按 Ctrl/Cmd+V 直接导入。\n有表头则按列名认列（镜头号/发言人/脚本/时长/prompt，列序随便排）；\n无表头按固定列序 [序号,] 发言人, 脚本 [, 时长 [, prompt]]。'
               }
               rows={3}
               onPaste={(e) => {
@@ -658,7 +673,7 @@ export function StoryboardNode({
           )}
         </div>
 
-        {/* 分镜表格：序号 / 发言人 / 脚本（可编辑）/ 时长（可编辑）/ 生成 / prompt */}
+        {/* 分镜表格：序号 / 镜头号 / 发言人 / 脚本（可编辑）/ 时长（可编辑）/ 生成 / prompt */}
         {items.length > 0 ? (
           <div className="nodrag nowheel min-h-0 flex-1 overflow-auto rounded-md border">
             <table className="w-full border-collapse text-[11px]">
@@ -666,6 +681,9 @@ export function StoryboardNode({
                 <tr className="text-left text-[10px] text-muted-foreground">
                   <th className="w-9 border-b border-r px-1.5 py-1 text-right font-medium">
                     序号
+                  </th>
+                  <th className="w-20 border-b border-r px-1.5 py-1 font-medium">
+                    镜头号
                   </th>
                   <th className="w-14 border-b border-r px-1.5 py-1 font-medium">
                     发言人

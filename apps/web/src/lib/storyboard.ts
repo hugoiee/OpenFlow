@@ -158,6 +158,14 @@ export function estimateSegmentDuration(
 }
 
 /**
+ * 切割时自动填的镜头号：`seg1`、`seg2`…（剪辑口径常见写法，后续人工可改成 `seg1-特` 之类）。
+ * 刻意**不随行序自动重编号**——镜头号是人工身份标记，挪行/补拍后仍要指向同一个镜头。
+ */
+export function defaultShotNo(index: number): string {
+  return `seg${index + 1}`
+}
+
+/**
  * 用脚本原文重建分镜表格行：拆说话人回合 → 每回合按语速切段 → 每段估算时长；
  * 全部置 idle、清空 prompt/error。text 不含角色名前缀（表格 A 列是说话人、B 列是段文本）。
  * 切割节点与分镜节点的「切分脚本」双入口共用；charsPerSecond=切分语速（省略按默认 6，
@@ -172,6 +180,7 @@ export function buildItems(
   for (const turn of splitScriptTurns(script, roleNames)) {
     for (const segment of splitTurnIntoSegments(turn.text, charsPerSecond)) {
       items.push({
+        shot: defaultShotNo(items.length),
         text: segment,
         roleIndex: turn.roleIndex,
         duration: estimateSegmentDuration(segment, charsPerSecond),
@@ -188,39 +197,37 @@ export function buildItems(
 // ---- Excel（TSV）双向互通 ----
 // 转义/解析的通用原语在 lib/tsv.ts（评估项目表格共用），这里只放分镜表的列语义。
 
-/** 分镜表 → TSV（含表头：序号/发言人/脚本/时长(秒)/prompt），供「复制表格」粘进 Excel。 */
+/** 分镜表 → TSV（含表头：序号/镜头号/发言人/脚本/时长(秒)/prompt），供「复制表格」粘进 Excel。 */
 export function itemsToTsv(items: StoryboardItem[], roleNames: [string, string]): string {
   const roleName = (i: number) => roleNames[i]?.trim() || (i === 0 ? '角色A' : '角色B')
   const rows = items.map((it, i) =>
     [
       String(i + 1),
+      escapeTsvField(it.shot ?? ''),
       roleName(it.roleIndex),
       escapeTsvField(it.text),
       String(it.duration ?? ''),
       escapeTsvField(it.prompt ?? ''),
     ].join('\t'),
   )
-  return ['序号\t发言人\t脚本\t时长(秒)\tprompt', ...rows].join('\n')
+  return ['序号\t镜头号\t发言人\t脚本\t时长(秒)\tprompt', ...rows].join('\n')
 }
 
 /**
- * 从 Excel 粘贴的行导入分镜表。列约定（\t 分隔）：[序号,] 发言人, 脚本 [, 时长]——
- * 首列纯数字视作序号丢弃，表头行（含「发言人/脚本/时长/说话人」字样）自动跳过；
- * 时长缺省按语速估算，超范围夹到 4~15；prompt 列不导入（那是 LLM 的产出）。
- * 发言人去重后最多 2 个：与节点已配角色名对得上则沿用其 A/B 映射，否则按出现序作 A/B。
- */
-/**
  * 表头列名 → 字段的识别词。**别处生成的表列序往往和本节点的导出格式不一样**，
  * 故有表头时一律按列名认列；认不出表头才回退到固定列序。
+ * 镜头号的识别词刻意都带「号/编号/shot」而不用光秃秃的「镜头」——
+ * 「镜头描述」这类 prompt 列名里也有「镜头」两个字，一认就把画面描述当成编号了。
  */
 const HEADER_ALIASES: {
-  key: 'speaker' | 'text' | 'duration' | 'prompt'
+  key: 'speaker' | 'text' | 'duration' | 'prompt' | 'shot'
   words: string[]
 }[] = [
   { key: 'speaker', words: ['发言人', '说话人', '角色'] },
   { key: 'text', words: ['脚本', '台词', '文本', '内容'] },
   { key: 'duration', words: ['时长', '秒数', 'duration'] },
   { key: 'prompt', words: ['prompt', '提示词', '画面描述', '分镜描述'] },
+  { key: 'shot', words: ['镜头号', '镜号', '镜头编号', 'shot'] },
 ]
 
 /** 首行像表头就解析成 字段→列下标 的映射；认不出任何一列则返回 null（按列序走）。 */
@@ -241,12 +248,20 @@ function parseHeaderRow(cells: string[]): Partial<Record<string, number>> | null
   return map.speaker !== undefined && map.text !== undefined ? map : null
 }
 
+/**
+ * 从 Excel 粘贴的行导入分镜表。**有表头时一律按列名认列**（列序随便排、缺列也不影响，
+ * 见 HEADER_ALIASES）；认不出表头才回退固定列序 `[序号,] 发言人, 脚本 [, 时长 [, prompt]]`
+ * ——固定列序里刻意**不含镜头号**（旧导出格式没有这一列，插进去会让老数据整体错位）。
+ * 时长缺省按语速估算、超范围夹到 4~15；带 prompt 的行直接算 done（可跳过「生成」）；
+ * 镜头号缺省按 seg1、seg2… 补齐（同切割入口，落成节点时才总有名字可用）。
+ * 发言人去重后最多 2 个：与节点已配角色名对得上则沿用其 A/B 映射，否则按出现序作 A/B。
+ */
 export function parseItemsTsv(
   text: string,
   currentRoles: [string, string],
 ): { items: StoryboardItem[]; roleAName: string; roleBName: string } {
   let rows = parseTsvTable(text)
-  const headerWords = ['发言人', '说话人', '脚本', '时长', '序号', 'prompt']
+  const headerWords = ['发言人', '说话人', '脚本', '时长', '序号', '镜头号', 'prompt']
   let columns: Partial<Record<string, number>> | null = null
   if (
     rows.length > 0 &&
@@ -255,22 +270,29 @@ export function parseItemsTsv(
     columns = parseHeaderRow(rows[0])
     rows = rows.slice(1)
   }
-  const parsed: { speaker: string; text: string; duration?: number; prompt?: string }[] =
-    []
+  const parsed: {
+    speaker: string
+    text: string
+    duration?: number
+    prompt?: string
+    shot?: string
+  }[] = []
   for (const raw of rows) {
     let cells = raw.map((c) => c.trim())
     let speaker: string | undefined
     let segText: string | undefined
     let durText: string | undefined
     let promptText: string | undefined
+    let shotText: string | undefined
     if (columns) {
       // 有表头：按列名定位，列序随便排、少一列多一列都不影响
       speaker = cells[columns.speaker!]
       segText = cells[columns.text!]
       durText = columns.duration === undefined ? undefined : cells[columns.duration]
       promptText = columns.prompt === undefined ? undefined : cells[columns.prompt]
+      shotText = columns.shot === undefined ? undefined : cells[columns.shot]
     } else {
-      // 无表头：沿用固定列序 [序号,] 发言人, 脚本 [, 时长 [, prompt]]
+      // 无表头：沿用固定列序 [序号,] 发言人, 脚本 [, 时长 [, prompt]]（无镜头号列）
       // 首列纯数字 = Excel 里的序号列，丢弃
       if (cells.length >= 3 && /^\d+$/.test(cells[0])) cells = cells.slice(1)
       ;[speaker, segText, durText, promptText] = cells
@@ -282,6 +304,7 @@ export function parseItemsTsv(
       text: segText.trim(),
       duration: Number.isFinite(dur) && durText ? dur : undefined,
       prompt: promptText?.trim() || undefined,
+      shot: shotText?.trim() || undefined,
     })
   }
   if (parsed.length === 0) {
@@ -308,7 +331,9 @@ export function parseItemsTsv(
       STORYBOARD_SEG_MAX_SECONDS,
       Math.max(STORYBOARD_SEG_MIN_SECONDS, Math.round(n)),
     )
-  const items: StoryboardItem[] = parsed.map((r) => ({
+  const items: StoryboardItem[] = parsed.map((r, i) => ({
+    // 表里没带镜头号（或那一格为空）就补 seg1、seg2…，与切割入口一致
+    shot: r.shot || defaultShotNo(i),
     text: r.text,
     roleIndex: roleIndexOf(r.speaker),
     duration: r.duration != null ? clamp(r.duration) : estimateSegmentDuration(r.text),
