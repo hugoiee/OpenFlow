@@ -466,3 +466,37 @@ export type GenStatRow = {
 export type ProjectStatsResponse = {
   rows: GenStatRow[]
 }
+
+/**
+ * 生成历史的一条记录：一次「点生成」= 一行（tasks 表里的任务，**含播客**）。
+ * 与 GenStatRow 同源不同用——统计那份是为算钱，扁平化的是规格维度且刻意不带结果；
+ * 这份是为**找回产出**：核心字段是 result（结果 URL）与 prompt 摘要，好让人在
+ * 「手滑重新生成把节点上的结果冲掉了」之后，仍能从历史里把那条链接捞回来。
+ * 两者各读各的、互不影响：合成一个类型只会让「算钱」与「找链接」互相将就。
+ */
+export type GenHistoryRow = {
+  /** 任务 id（记录的唯一键）。 */
+  taskId: string
+  /** 发起生成的节点 id（节点可能已删除或改名，前端查得到就显示名字、查不到显示 id）。 */
+  nodeId: string
+  /** 任务类型：图像 / 视频 / 播客音频。 */
+  kind: TaskKind
+  /** 任务终态/中间态（失败的行没有 result，但保留下来能看出「那次失败了」）。 */
+  status: TaskStatus
+  /** AIGC model_name（播客恒为空串——火山 TTS 不走 model_name 那套）。 */
+  model: string
+  /**
+   * 当次请求的文字内容摘要（图像/视频取 prompt，播客取脚本开头），已截断。
+   * 一屏几十条链接，光看 URL 分不清谁是谁，得靠这句认人。
+   */
+  prompt: string
+  /** 结果 URL 列表（succeeded 才非空；播客为 [音频URL, 计费字数] 中的音频 URL）。 */
+  result: string[]
+  /** 提交时刻（tasks.created_at 毫秒时间戳）。 */
+  createdAt: number
+}
+
+/** GET /api/projects/:id/history 响应：该画布项目的全部生成记录（新→旧）。 */
+export type ProjectHistoryResponse = {
+  rows: GenHistoryRow[]
+}
