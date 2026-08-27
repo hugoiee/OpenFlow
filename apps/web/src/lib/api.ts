@@ -14,6 +14,7 @@ import type {
   GenPodcastBody,
   GenVideoBody,
   ProjectDTO,
+  ProjectHistoryResponse,
   ProjectStatsResponse,
   ProjectType,
   PromptPresetDTO,
@@ -83,6 +84,14 @@ export function deleteProjectApi(id: string): Promise<{ ok: true }> {
  */
 export function getProjectStatsApi(id: string): Promise<ProjectStatsResponse> {
   return request<ProjectStatsResponse>(`/projects/${id}/stats`)
+}
+
+/**
+ * 取某画布项目的生成历史（每次「点生成」一行、带结果 URL，新→旧）。
+ * 数据源同为后端 tasks 表：**节点上的结果被下一次生成覆盖后，这里仍留着那条链接**。
+ */
+export function getProjectHistoryApi(id: string): Promise<ProjectHistoryResponse> {
+  return request<ProjectHistoryResponse>(`/projects/${id}/history`)
 }
 
 // ---- 设置 ----

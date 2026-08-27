@@ -1,6 +1,12 @@
 import { Hono } from 'hono'
-import type { ProjectDTO, ProjectStatsResponse, ProjectType } from '@openflow/shared'
+import type {
+  ProjectDTO,
+  ProjectHistoryResponse,
+  ProjectStatsResponse,
+  ProjectType,
+} from '@openflow/shared'
 import { db } from '../db'
+import { listProjectHistory } from '../history-store'
 import { listProjectStats } from '../stats-store'
 
 export const projects = new Hono()
@@ -80,6 +86,17 @@ projects.get('/:id/stats', (c) => {
   const exists = db.prepare('SELECT id FROM projects WHERE id = ?').get(id)
   if (!exists) return c.json({ error: '项目不存在' }, 404)
   const res: ProjectStatsResponse = { rows: listProjectStats(id) }
+  return c.json(res)
+})
+
+// 生成历史（画布项目的产出清单）：读 tasks 表里属于本项目的全部任务（含播客），
+// 每次「点生成」一行、带结果 URL。与上面的 /stats 同源不同用——那份为算钱、这份为找回产出，
+// 手滑重新生成把节点上的结果冲掉之后，链接仍能从这里捞回来。
+projects.get('/:id/history', (c) => {
+  const id = c.req.param('id')
+  const exists = db.prepare('SELECT id FROM projects WHERE id = ?').get(id)
+  if (!exists) return c.json({ error: '项目不存在' }, 404)
+  const res: ProjectHistoryResponse = { rows: listProjectHistory(id) }
   return c.json(res)
 })
 

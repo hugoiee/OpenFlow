@@ -1,10 +1,20 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { BarChart3, ChevronRight, Download, Home, Library, LogOut, Settings } from 'lucide-react'
+import {
+  BarChart3,
+  ChevronRight,
+  Download,
+  History,
+  Home,
+  Library,
+  LogOut,
+  Settings,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { SettingsDialog } from '@/components/settings/SettingsDialog'
 import { PromptPresetsDialog } from '@/components/presets/PromptPresetsDialog'
+import { ProjectHistoryDialog } from '@/components/history/ProjectHistoryDialog'
 import { ProjectStatsDialog } from '@/components/stats/ProjectStatsDialog'
 import { ThemeToggle } from '@/components/theme/ThemeToggle'
 import { AppLogo } from '@/components/workspace/AppLogo'
@@ -134,6 +144,20 @@ export function WorkspaceHeader({ projectId }: { projectId: string }) {
               <LogOut className="size-3.5" />
             </Button>
           </div>
+        )}
+
+        {/* 生成历史与生成统计都只对画布项目有意义（评估项目不产生 AIGC 任务） */}
+        {isCanvas && (
+          <ProjectHistoryDialog projectId={projectId}>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="size-9"
+              title="生成历史（找回被覆盖的结果链接）"
+            >
+              <History className="size-4" />
+            </Button>
+          </ProjectHistoryDialog>
         )}
 
         {isCanvas && (
