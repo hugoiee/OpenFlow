@@ -168,7 +168,10 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
                       src={url}
                       alt="生成结果"
                       // 生成结果是原始尺寸（常 1024² 起），这里只显示到 ~270px 宽。
+                      // loading=lazy：理由同素材节点——结果图都落在同一个网关 origin，HTTP/1.1 每源 ~6 条并发，
+                      // 只让平移到视口附近的结果图发请求，免得远处的图把视口内的挤到队尾。
                       // decoding=async 把解码挪出主线程关键路径，画布上结果图一多时平移不被解码卡住。
+                      loading="lazy"
                       decoding="async"
                       className="max-h-64 w-full bg-muted object-contain"
                     />

@@ -43,7 +43,11 @@ export function AssetNode({ id, data, selected }: NodeProps<AssetNodeType>) {
                 src={url}
                 alt={data.fileName ?? '图像素材'}
                 // 素材是用户拖入的原图（常有几 MB / 数千像素），这里只显示到 ~240px 宽。
+                // loading=lazy：画布上素材节点常有几十个，只让平移到视口附近的发请求——图基本都在
+                // 同一个网关 origin 上，HTTP/1.1 下浏览器每源只并发 ~6 条，全量预取会把视口内的图挤到队尾。
+                // 与 .node-media 的 content-visibility 互补：那个跳渲染，这个省下载。
                 // decoding=async 把解码挪出主线程关键路径，画布上素材一多时平移不被解码卡住。
+                loading="lazy"
                 decoding="async"
                 className="max-h-64 w-full bg-muted object-contain"
               />
