@@ -82,29 +82,65 @@ const INSTRUCTION_TAIL =
   'lighting consistent with the scene. Plausibly reconstruct whatever was hidden or out of frame ' +
   'in the original image. Do not add unrequested objects or text.'
 
-/** 旋转子句：无缝分档（边界=相邻规范角 45/90/135/180 的中点取整），180 特化无方向词。 */
+/**
+ * 旋转子句：无缝分档（边界=相邻规范角 45/90/135/180 的中点取整），180 特化无方向词。
+ * v3 重设计（实测 v2 失败模式=转台式 + 幅度不够）：胜句（wide shot/nadir/high-angle）全都有
+ * 「终态画面内容陈述」而败句全无——旧帧缘锚是「过去时 + 运动」描述，要求模型记忆源图空间
+ * 关系，编辑语料无此监督形态，大概率整句被当噪声丢弃。每档骨架改为：
+ * 命名句 → 可见部件句 → 正面朝向状态锚（现在时）→ newly-revealed 重建许可句 → 防镜像负句；
+ * orbit 主句不带方向词（方向完全由终态承载），全句单一侧向词。
+ *
+ * ⚠️ 侧向词映射：side = 可见侧 = 正面朝向的画面缘（r>0 相机右绕 → 看到主体左侧、正面转向
+ * 画面左缘），与 v2 的 dir（相机运动向）**相反**——写反=全档系统性镜像。
+ * 承重方向信号是帧相对的 front-toward-{side}-edge 状态句（对任意主体无歧义）；
+ * possessive 的「its {side} side」对人像/车辆是 caption 完美措辞，对无左右手性物体最坏被忽略。
+ */
 function rotationClause(r: number): string {
   const n = Math.abs(r)
-  const dir = r > 0 ? 'right' : 'left'
-  const edgeAnchor = `the side of the subject that was nearest the ${dir} edge of the frame`
+  const side = r > 0 ? 'left' : 'right'
+  // newly-revealed 许可句一身三职：具体化 TAIL 的重建许可（点名要新画的部位）、侧向词第 3-4 次
+  // 出现互证词系、正向防镜像（镜像翻转不产生任何 newly revealed 内容）
+  const reveal = (parts: string) =>
+    `Render the newly revealed ${parts} consistent with the subject's appearance in the original image.`
   if (n === 180) {
-    // ±180 等价必须同串；负空间锚防高频失败「又画一张正面」
+    // ±180 等价必须同串；「正面完全不可见」负空间锚防高频失败「又画一张正面」。
+    // 不接 NO_MIRROR：镜像一张正面仍是正面，该守卫在此档无效
     return (
-      'Orbit the camera 180° around the subject to directly behind it — a full back view, ' +
-      'so that the side of the subject that originally faced the camera is turned completely away.'
+      'Orbit the camera 180° around the subject to directly behind it — a full back view. ' +
+      'The subject is seen squarely from behind, its front completely hidden from view. ' +
+      reveal('back')
     )
   }
   let body: string
   if (n >= 158) {
-    body = `Orbit the camera ${n}° to the ${dir} around the subject, to almost directly behind it — a near-back view, so that ${edgeAnchor} turns toward the camera.`
+    body =
+      `Orbit the camera ${n}° around the subject to almost directly behind it — a near-back view. ` +
+      `The subject is seen mostly from behind, with only a narrow sliver of its ${side} side visible. ` +
+      reveal(`back and ${side} side`)
   } else if (n >= 113) {
-    body = `Orbit the camera ${n}° to the ${dir} around the subject into a rear three-quarter view, seen mostly from behind, so that ${edgeAnchor} turns toward the camera.`
+    body =
+      `Orbit the camera ${n}° around the subject into a rear three-quarter view, seen mostly from behind. ` +
+      `Mostly its back and its ${side} side are visible. ` +
+      `Its front is turned away from the camera, angled toward the ${side} edge of the frame. ` +
+      reveal(`back and ${side} side`)
   } else if (n >= 68) {
-    body = `Orbit the camera ${n}° to the ${dir} around the subject into a full side-profile view, so that ${edgeAnchor} now faces the camera.`
+    body =
+      `Orbit the camera ${n}° around the subject into a full profile view of its ${side} side. ` +
+      `Its ${side} side directly faces the camera. ` +
+      `Its front now points at the ${side} edge of the frame. ` +
+      reveal(`${side} side`)
   } else if (n >= 23) {
-    body = `Orbit the camera ${n}° to the ${dir} around the subject into a three-quarter view, so that ${edgeAnchor} turns toward the camera.`
+    body =
+      `Orbit the camera ${n}° around the subject into a three-quarter view, seen from its ${side} side. ` +
+      `Both its front and its ${side} side are now clearly visible. ` +
+      `Its front is angled toward the ${side} edge of the frame. ` +
+      reveal(`${side} side`)
   } else {
-    body = `Orbit the camera ${n}° to the ${dir} around the subject — a subtle shift of viewpoint, so that ${edgeAnchor} turns slightly toward the camera.`
+    // subtle 档风险方向相反：不是欠转而是被 three-quarter 吸引子过转，补「小」的下压锚
+    body =
+      `Orbit the camera ${n}° around the subject — a subtle shift of viewpoint, still close to the original angle. ` +
+      `The subject's front now angles slightly toward the ${side} edge of the frame, ` +
+      `bringing a little more of its ${side} side into view.`
   }
   return `${body} ${NO_MIRROR}`
 }
@@ -123,9 +159,13 @@ function tiltClause(t: number): string {
     )
   }
   if (t === ANGLE_TILT_MIN) {
+    // -90 有物理可实现性天花板（「相机在地下」的照片语料不存在），追加两句对称于俯视 90 的
+    // 胜句锚（underside 即内容 / sky-or-ceiling fills the frame），把模型拉向贴地仰拍体裁
     return (
       "Move the camera directly below the subject, looking straight up at it — a true 90° " +
-      "worm's-eye view from directly underneath, camera axis exactly vertical, with no horizon visible."
+      "worm's-eye view from directly underneath, camera axis exactly vertical, with no horizon visible. " +
+      "The subject's underside faces the camera directly. " +
+      'Nothing but the sky or the ceiling fills the frame behind it.'
     )
   }
   if (t >= 70) {
@@ -134,10 +174,24 @@ function tiltClause(t: number): string {
   if (t > 0) {
     return `Raise the camera, looking down at the subject from ${n}° above the horizontal — a high-angle shot.`
   }
+  // 仰视 v3：v2 各档只有角度数字、没有任何终态画面陈述，实测「几乎没变化」。补环境锚三级
+  // 梯度（more of → mostly → nothing but sky/ceiling，量词本身携带角度信息）+ towering/
+  // foreshortening 先验词（仰拍在影视语料里的定义性描述）；worm's-eye 只留 -90 独占
+  // （用在 -75 会复刻 bird's-eye 把 90 拉到 80 的老 bug）；underside 只出现在 steep 与 -90
+  // （浅角度下底面几乎不露，对人像措辞也别扭）。
   if (t <= -70) {
-    return `Lower the camera far down, looking up at the subject from ${n}° below the horizontal — a steep low-angle view, almost directly underneath.`
+    return (
+      `Lower the camera to ground level, almost directly beneath the subject, looking steeply up at it from ${n}° below the horizontal — an extreme low-angle view. ` +
+      'The subject looms high above the camera, with dramatic foreshortening from below. ' +
+      'Much of its underside comes into view. ' +
+      'Behind it, mostly the sky or the ceiling is visible.'
+    )
   }
-  return `Lower the camera, looking up at the subject from ${n}° below the horizontal — a low-angle shot.`
+  return (
+    `Lower the camera well below the subject, looking up at it from ${n}° below the horizontal — a low-angle shot. ` +
+    'From this low angle the subject appears taller and more imposing, towering over the viewer. ' +
+    'More of the sky or the ceiling above comes into view behind it.'
+  )
 }
 
 /**
