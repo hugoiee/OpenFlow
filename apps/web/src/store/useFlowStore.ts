@@ -23,7 +23,9 @@ import {
   type EvaluationTable,
 } from '@/lib/evaluation'
 import { newId } from '@/lib/id'
+import { ANGLE_ZOOM_DEFAULT } from '@/lib/angle'
 import {
+  ANGLE_NODE_META,
   NANO_ASPECT_DEFAULT,
   NANO_IMAGE_SIZE_DEFAULT,
   NANO_VERSION_DEFAULT,
@@ -189,7 +191,14 @@ type FlowState = {
    */
   addStoryboardShots: (input: {
     storyboardNodeId: string
-    shots: { line: string; roleIndex: number; prompt: string; duration?: number }[]
+    shots: {
+      line: string
+      roleIndex: number
+      prompt: string
+      duration?: number
+      /** 镜头号（如 seg1-特）：非空时即两个新节点的名字，空则退回「分镜N · 台词前缀」。 */
+      shot?: string
+    }[]
     model?: string
   }) => number
   /**
@@ -363,6 +372,30 @@ function createNode(
       },
     }
   }
+  if (type === 'angle') {
+    // 多角度节点：源图经连线输入，三角度参数走默认（正面视角/中景）；
+    // 同 image 一次带上两套模型参数默认值，构造请求时按 model 取舍。
+    return {
+      id: newId('n_'),
+      type: 'angle',
+      position,
+      data: {
+        label: ANGLE_NODE_META.label,
+        model: model || ANGLE_NODE_META.modelDefault,
+        rotation: 0,
+        tilt: 0,
+        zoom: ANGLE_ZOOM_DEFAULT,
+        size: IMAGE_SIZE_DEFAULT,
+        n: 1,
+        quality: 'auto',
+        version: NANO_VERSION_DEFAULT,
+        aspectRatio: NANO_ASPECT_DEFAULT,
+        imageSize: NANO_IMAGE_SIZE_DEFAULT,
+        running: false,
+        result: [],
+      },
+    }
+  }
   // 视频生成节点：变体（首尾帧/参考图）+ 具名模型 + 可调选项默认值；运行/结果初始为空。
   // 默认值取自该模型的能力表——三家的分辨率/比例/时长范围各不相同，写死一套会一建出来就越界。
   const version = videoDefaultVersion(model)
@@ -392,6 +425,7 @@ function createNode(
 const AGENT_PLACE_FALLBACK_HEIGHT: Record<string, number> = {
   prompt: 190,
   image: 380,
+  angle: 380,
   video: 400,
   podcast: 320,
   asset: 220,
@@ -491,6 +525,9 @@ export const useFlowStore = create<FlowState>()((set, get) => {
               delete node.measured
             }
             if (node.type === 'image') {
+              return { ...node, data: { ...node.data, running: false, error: undefined } }
+            }
+            if (node.type === 'angle') {
               return { ...node, data: { ...node.data, running: false, error: undefined } }
             }
             if (node.type === 'video') {
@@ -699,6 +736,8 @@ export const useFlowStore = create<FlowState>()((set, get) => {
         const data = { ...source.data } as Record<string, unknown>
         delete data.taskId
         delete data.error
+        // 颜色标记是对当前节点产出的人工判断，复制内容时不应继承。
+        delete data.mark
         if ('running' in data) data.running = false
         if (Array.isArray(data.result)) data.result = [...data.result]
         const copy = {
@@ -915,8 +954,11 @@ export const useFlowStore = create<FlowState>()((set, get) => {
         const row = Math.floor(i / SHOTS_PER_ROW)
         const x0 = col * SHOT_COL_W
         const y = y0 + row * rowH
-        // 标题带台词前缀便于在 40 组节点里辨认是哪一句
-        const title = `分镜${i + 1} · ${shot.line.replaceAll('\n', ' ').slice(0, 12)}`
+        // 节点名优先用分镜表里的镜头号（seg1-特 之类，剪辑口径的身份，跨表/跨软件对得上）；
+        // 没填镜头号才退回「分镜N · 台词前缀」——总得有个能在 40 组节点里认人的名字
+        const title =
+          shot.shot?.trim() ||
+          `分镜${i + 1} · ${shot.line.replaceAll('\n', ' ').slice(0, 12)}`
         const promptNode: FlowNode = {
           id: newId('n_'),
           type: 'prompt',

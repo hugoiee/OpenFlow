@@ -13,6 +13,7 @@ export const ARRANGE_GAP = 48
 const FALLBACK_SIZE: Record<string, { w: number; h: number }> = {
   prompt: { w: 264, h: 200 },
   image: { w: 288, h: 380 },
+  angle: { w: 288, h: 380 },
   video: { w: 288, h: 400 },
   asset: { w: 220, h: 220 },
   group: { w: 200, h: 200 },

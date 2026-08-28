@@ -2,11 +2,13 @@ import { memo, useMemo, useState } from 'react'
 import { Textarea } from '@/components/ui/textarea'
 import { useResizableWidth } from '@/hooks/useResizableWidth'
 import {
+  buildAngleUpstream,
   buildImageUpstream,
   buildPodcastUpstream,
   buildVideoUpstream,
 } from '@/lib/requestBody'
 import {
+  type AngleNode as AngleNodeT,
   type ImageNode as ImageNodeT,
   type PodcastNode as PodcastNodeT,
   type Project,
@@ -15,6 +17,8 @@ import {
 import { PODCAST_NODE_META } from '@/lib/nodeCatalog'
 import { useActiveProject, useGraphRev } from '@/store/useFlowStore'
 import { useSettingsStore } from '@/store/useSettingsStore'
+import { AngleInput } from './AngleInput'
+import { AngleParams } from './AngleParams'
 import { ImageInput } from './ImageInput'
 import { ImageParams } from './ImageParams'
 import { PodcastParams } from './PodcastParams'
@@ -23,7 +27,7 @@ import { VideoParams } from './VideoParams'
 
 /**
  * 右侧节点参数面板（Inspector）。
- * 仅在「恰好选中一个 image/video/podcast 节点」时出现；节点卡片只显示生成结果，参数都在此编辑。
+ * 仅在「恰好选中一个 image/angle/video/podcast 节点」时出现；节点卡片只显示生成结果，参数都在此编辑。
  * 选中状态来自 React Flow 写在 node.selected 上的标记（store 已通过 applyNodeChanges 维护）。
  */
 export function NodeInspector() {
@@ -32,7 +36,13 @@ export function NodeInspector() {
   const selected = project.nodes.filter((n) => n.selected)
   if (selected.length !== 1) return null
   const node = selected[0]
-  if (node.type !== 'image' && node.type !== 'video' && node.type !== 'podcast') return null
+  if (
+    node.type !== 'image' &&
+    node.type !== 'angle' &&
+    node.type !== 'video' &&
+    node.type !== 'podcast'
+  )
+    return null
   // key={node.id}：切换选中节点时重置内部状态（上传态 / 文件输入），避免串台
   return <NodeInspectorPanel key={node.id} node={node} project={project} />
 }
@@ -80,7 +90,7 @@ function NodeInspectorPanel({
   node,
   project,
 }: {
-  node: ImageNodeT | VideoNodeT | PodcastNodeT
+  node: ImageNodeT | AngleNodeT | VideoNodeT | PodcastNodeT
   project: Project
 }) {
   const id = node.id
@@ -101,9 +111,11 @@ function NodeInspectorPanel({
     () =>
       node.type === 'image'
         ? buildImageUpstream(project, node, reqFrom)
-        : node.type === 'video'
-          ? buildVideoUpstream(project, node, reqFrom)
-          : buildPodcastUpstream(project, node),
+        : node.type === 'angle'
+          ? buildAngleUpstream(project, node, reqFrom)
+          : node.type === 'video'
+            ? buildVideoUpstream(project, node, reqFrom)
+            : buildPodcastUpstream(project, node),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [graphRev, node.id, node.data, reqFrom],
   )
@@ -132,7 +144,7 @@ function NodeInspectorPanel({
         </h2>
       </div>
 
-      {/* 图像 / 视频：输入资源预览（画廊态）+ 模型参数；播客：角色音色与音频参数 */}
+      {/* 图像 / 多角度 / 视频：输入资源预览（画廊态）+ 模型参数；播客：角色音色与音频参数 */}
       {node.type === 'image' ? (
         <>
           <div className="flex flex-col gap-2">
@@ -140,6 +152,14 @@ function NodeInspectorPanel({
             <ImageInput node={node} />
           </div>
           <ImageParams id={id} data={node.data} />
+        </>
+      ) : node.type === 'angle' ? (
+        <>
+          <div className="flex flex-col gap-2">
+            <span className="text-[11px] text-muted-foreground">源图（实发）</span>
+            <AngleInput node={node} />
+          </div>
+          <AngleParams node={node} />
         </>
       ) : node.type === 'video' ? (
         <>

@@ -1,12 +1,14 @@
 import type { Edge, Node } from '@xyflow/react'
 import type { ProjectType, VideoShot } from '@openflow/shared'
+import type { AngleZoom } from './angle'
 import type { EvaluationTable } from './evaluation'
 import type { VideoTask, VideoVariant } from './nodeCatalog'
 
-/** 节点种类：文本 prompt / 图像生成 / 视频生成 / 播客音频 / 桌面拖入的媒体素材 / 脚本切割 / 脚本分镜。 */
+/** 节点种类：文本 prompt / 图像生成 / 多角度生成 / 视频生成 / 播客音频 / 桌面拖入的媒体素材 / 脚本切割 / 脚本分镜。 */
 export type FlowNodeType =
   | 'prompt'
   | 'image'
+  | 'angle'
   | 'video'
   | 'podcast'
   | 'asset'
@@ -184,15 +186,24 @@ export type PodcastNodeData = {
 /** 脚本分镜单行的运行状态（pending/running 为纯前端请求瞬时态，载入时复位为 idle）。 */
 export type StoryboardItemStatus = 'idle' | 'pending' | 'running' | 'done' | 'error'
 
-/** 脚本分镜表格的一行：A 说话人(roleIndex) / B 分割后脚本(text) / C 时长(duration) / D LLM 产出(prompt)。 */
+/**
+ * 脚本分镜表格的一行：镜头号(shot) / 说话人(roleIndex) / 分割后脚本(text) /
+ * 时长(duration) / LLM 产出(prompt)。
+ */
 export type StoryboardItem = {
-  /** B 列：分割后的台词段文本（**不含**角色名前缀；可在表格里编辑）。 */
+  /**
+   * 镜头号：剪辑口径的人工编号，常见形如 `seg1` / `seg1-特` / `seg2-近`。
+   * 切割时自动填 `seg{序号}`，可在表格里改，也可从 Excel 粘贴带入；
+   * **落成节点时用作两个节点的名字**（为空才退回「分镜N · 台词前缀」）。
+   */
+  shot?: string
+  /** 分割后的台词段文本（**不含**角色名前缀；可在表格里编辑）。 */
   text: string
-  /** A 列：说话人下标 0=角色A / 1=角色B（落成节点时按它连对应角色的参考图/音色）。 */
+  /** 说话人下标 0=角色A / 1=角色B（落成节点时按它连对应角色的参考图/音色）。 */
   roleIndex: number
-  /** C 列：估算视频时长（秒，= 念出字数/语速，夹到 4~15，可在表格里改）；落成时写进该段 Seedance 节点。 */
+  /** 估算视频时长（秒，= 念出字数/语速，夹到 4~15，可在表格里改）；落成时写进该段 Seedance 节点。 */
   duration?: number
-  /** D 列：LLM 生成的完整视频 prompt（done 时非空）。 */
+  /** LLM 生成的完整视频 prompt（done 时非空）。 */
   prompt?: string
   status: StoryboardItemStatus
   /** 该段生成失败的错误信息（status=error 时展示，可单段重试）。 */
@@ -283,6 +294,48 @@ export type ImageNodeData = {
 }
 
 /**
+ * 多角度节点：输入一张图（res 端点，多连只用第一张，可在上游 Prompt 里 @ 指定），
+ * 在 Inspector 用摄像头轨道控件调 旋转/倾斜/缩放，运行时把角度合成为相机指令 prompt
+ * （lib/angle.ts composeAngleInstruction），连同源图走现有图像生成链路（/api/aigc，kind='image'）。
+ * 图像参数字段与 ImageNodeData 同名（供 ImageParams 复用）；刻意不带 imagesText（无旧手填兼容负担）。
+ */
+export type AngleNodeData = {
+  label: string
+  /** 具名模型展示名（默认 Nano Banana，可切 Image 2）。 */
+  model: string
+  /** 旋转（方位角，°）：负=向左、正=向右；缺省 0（见 lib/angle.ts clampRotation）。 */
+  rotation?: number
+  /** 倾斜（俯仰角，°）：正=相机升高俯视、负=降低仰视；缺省 0。 */
+  tilt?: number
+  /** 缩放（相机距离）三档；缺省中景。 */
+  zoom?: AngleZoom
+  /** 出图尺寸（Image 2 用）。 */
+  size?: string
+  /** 出图张数（Image 2 用）。 */
+  n?: number
+  /** 出图质量（Image 2 用）。 */
+  quality?: string
+  /** version：gemini-3-pro-image-preview 等（Nano Banana 用）。 */
+  version?: string
+  /** config.aspect_ratio，如 16:9（Nano Banana 用）。 */
+  aspectRatio?: string
+  /** config.image_size，1K / 2K / 4K（Nano Banana 用）。 */
+  imageSize?: string
+  /** 是否正在生成。 */
+  running?: boolean
+  /** 生成结果的图片 URL 列表，未运行时为空。 */
+  result?: string[]
+  /** 上次运行的错误信息（成功则清空）。 */
+  error?: string
+  /** 上次失败是否值得去 AIGC 历史里重拉（上游 2xx 没带 URL / 请求被掐断时为 true）。 */
+  errorRecoverable?: boolean
+  /** 进行中的异步任务 id：随节点存库，刷新后凭它重连轮询（关页面不丢结果）。 */
+  taskId?: string
+  /** 人工颜色标记（可用/待定/废弃），缺省为无标记。 */
+  mark?: NodeMark
+}
+
+/**
  * 分组容器节点：包住若干子节点（子节点 parentId 指向它），拖动容器时子节点跟随。
  * 由「选中多个节点 → 右键分组」创建，不走侧栏/createNode（同 asset 例外）。
  */
@@ -295,6 +348,7 @@ export type GroupNodeData = {
 /** React Flow 节点类型（带上各自的 data）。 */
 export type PromptNode = Node<PromptNodeData, 'prompt'>
 export type ImageNode = Node<ImageNodeData, 'image'>
+export type AngleNode = Node<AngleNodeData, 'angle'>
 export type VideoNode = Node<GenerationNodeData, 'video'>
 export type PodcastNode = Node<PodcastNodeData, 'podcast'>
 export type AssetNode = Node<AssetNodeData, 'asset'>
@@ -304,6 +358,7 @@ export type StoryboardNode = Node<StoryboardNodeData, 'storyboard'>
 export type FlowNode =
   | PromptNode
   | ImageNode
+  | AngleNode
   | VideoNode
   | PodcastNode
   | AssetNode

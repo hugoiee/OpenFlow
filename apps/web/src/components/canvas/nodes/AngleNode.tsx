@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { type NodeProps } from '@xyflow/react'
-import { Banana, Download, Image as ImageIcon } from 'lucide-react'
+import { Download, Orbit } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -11,24 +11,25 @@ import { TaskFailurePanel } from './TaskFailurePanel'
 import { createImageTaskApi } from '@/lib/api'
 import { pollTask } from '@/lib/taskPolling'
 import { RES_INPUT_HANDLE } from '@/lib/graph'
-import { buildImageRequest } from '@/lib/requestBody'
-import { type ImageNode as ImageNodeType } from '@/lib/types'
+import { buildAngleRequest } from '@/lib/requestBody'
+import { type AngleNode as AngleNodeType } from '@/lib/types'
 import { useFlowStore } from '@/store/useFlowStore'
 import { markCardClass } from '@/lib/nodeMark'
 import { NodeActions } from './NodeActions'
 
 /**
- * 图像生成节点：卡片只展示生成结果（运行态 / 结果图 / 空占位）。
- * 输入图、尺寸/质量/张数等参数都在右侧 Inspector（NodeInspector）里编辑。
+ * 多角度节点：输入一张图，生成调整相机视角后的新图（走图像生成链路，kind='image'）。
+ * 卡片只展示生成结果；旋转/倾斜/缩放与模型参数都在右侧 Inspector（摄像头轨道控件）里编辑。
+ * 结构照 ImageNode：运行/轮询/重连/失败自救完全同构，差异只在请求构造与前置校验（要源图、不要求 Prompt）。
  */
-export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
+export function AngleNode({ id, data, selected }: NodeProps<AngleNodeType>) {
   const updateNodeData = useFlowStore((s) => s.updateNodeData)
 
   // 下载重命名对话框：downloadTarget 记录当前要下载的结果图
   const [dialogOpen, setDialogOpen] = useState(false)
   const [downloadTarget, setDownloadTarget] = useState<DownloadTarget | null>(null)
   const openDownload = (url: string, index?: number) => {
-    const base = data.label || '图像'
+    const base = data.label || '多角度'
     setDownloadTarget({ url, kind: 'image', defaultName: index ? `${base}-${index}` : base })
     setDialogOpen(true)
   }
@@ -37,7 +38,7 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
   const running = data.running ?? false
 
   // 生成失败：节点底部内联显示；silent=false 时再弹窗提示。
-  // 重连路径（刷新重开 / Agent 触发）走 silent——非点击场景连环 alert 会阻塞整个应用。
+  // 重连路径（刷新重开）走 silent——非点击场景连环 alert 会阻塞整个应用。
   // keepTaskId=true 用于「任务跑到失败终态」：taskId 留着，底部面板才能凭它去历史重拉结果。
   const fail = (
     message: string,
@@ -49,7 +50,7 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
       errorRecoverable: opts?.recoverable ?? false,
       ...(opts?.keepTaskId ? {} : { taskId: undefined }),
     })
-    if (!opts?.silent) window.alert(`图像生成失败：${message}`)
+    if (!opts?.silent) window.alert(`多角度生成失败：${message}`)
   }
 
   // 应用任务终态：成功填结果清 taskId；失败留下 taskId 与「可否重拉」供底部面板自救。
@@ -101,14 +102,15 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
       return
     }
     const node = project.nodes.find((n) => n.id === id)
-    if (node?.type !== 'image') {
+    if (node?.type !== 'angle') {
       fail('未找到当前节点')
       return
     }
-    // 请求体与 Inspector 的「请求 JSON 预览」同源（buildImageRequest），保证预览=实发
-    const body = buildImageRequest(project, node)
-    if (!body.prompt.trim()) {
-      fail('请先连接一个有内容的 Prompt 节点')
+    // 请求体与 Inspector 的「请求 JSON 预览」同源（buildAngleRequest），保证预览=实发
+    const body = buildAngleRequest(project, node)
+    // 相机指令由角度合成、恒非空，前置校验只看源图（Prompt 是可选的附加描述）
+    if (body.images.length === 0) {
+      fail('请先连接一张图像作源图（图像素材或上游生成结果）')
       return
     }
     updateNodeData(id, {
@@ -136,24 +138,18 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
     <Card
       className={`group/node w-72 gap-2 py-3 shadow-sm transition-shadow ${markCardClass(data.mark, selected)}`}
     >
-      {/* 左侧输入端点：Prompt（粉，index 0）+ 统一资源端点（绿，接任意数量输入图；
-          用哪张由上游 Prompt 里 @ 引用指定，没 @ 则全发） */}
-      <NodeHandle type="target" index={0} tone="prompt" label="Prompt" required title="Prompt 输入" />
+      {/* 左侧输入端点：Prompt（粉，可选的附加描述）+ 统一资源端点（绿，源图；多连只用第一张） */}
+      <NodeHandle type="target" index={0} tone="prompt" label="Prompt" title="附加描述（可选）" />
       <NodeHandle
         type="target"
         id={RES_INPUT_HANDLE}
         index={1}
         tone="image"
         label="Assets"
-        title="输入图（可连多张，Prompt 里 @ 指定用哪张）"
+        required
+        title="源图（可连多张但只用第一张，上游 Prompt 里可 @ 指定用哪张）"
       />
-      <NodeHeader
-        id={id}
-        icon={data.model === 'Nano Banana' ? Banana : ImageIcon}
-        title={data.label}
-        selected={selected}
-        mark={data.mark}
-      />
+      <NodeHeader id={id} icon={Orbit} title={data.label} selected={selected} mark={data.mark} />
       <CardContent className="flex flex-col gap-2 px-3">
         {/* 结果展示区（node-media：滑出视口时跳过渲染，见 index.css） */}
         <div className="node-media nodrag overflow-hidden rounded-md border">
@@ -167,11 +163,6 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
                     <img
                       src={url}
                       alt="生成结果"
-                      // 生成结果是原始尺寸（常 1024² 起），这里只显示到 ~270px 宽。
-                      // loading=lazy：理由同素材节点——结果图都落在同一个网关 origin，HTTP/1.1 每源 ~6 条并发，
-                      // 只让平移到视口附近的结果图发请求，免得远处的图把视口内的挤到队尾。
-                      // decoding=async 把解码挪出主线程关键路径，画布上结果图一多时平移不被解码卡住。
-                      loading="lazy"
                       decoding="async"
                       className="max-h-64 w-full bg-muted object-contain"
                     />
@@ -201,7 +192,7 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
           )}
         </div>
 
-        {/* 底部动作行：模型名 + 复制 / 删除 + 生成（都挪到这里，头部只留可改名的节点名） */}
+        {/* 底部动作行：模型名 + 复制 / 删除 + 生成（头部只留可改名的节点名） */}
         <div className="flex items-center gap-2">
           <NodeActions id={id} subtitle={data.model} selected={selected} />
           <Button size="sm" onClick={handleRun} disabled={running} className="nodrag h-8">
@@ -227,7 +218,7 @@ export function ImageNode({ id, data, selected }: NodeProps<ImageNodeType>) {
         )}
       </CardContent>
       <DownloadDialog open={dialogOpen} onOpenChange={setDialogOpen} target={downloadTarget} />
-      {/* 输出：Image（绿） */}
+      {/* 输出：Image（绿），新视角图可继续连下游图像/视频/多角度节点 */}
       <NodeHandle type="source" index={0} tone="image" label="Image" title="图像输出" />
     </Card>
   )

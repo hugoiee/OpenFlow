@@ -427,3 +427,76 @@ export type UpdateCheckResponse = {
   /** 检查失败的原因（前端仅作诊断，不弹窗）。 */
   error?: string
 }
+
+/**
+ * 生成统计的一条明细行：一次「点生成」= 一行（tasks 表里 kind 为 image/video 的任务）。
+ * 由后端读 tasks.params（即当初发出的请求体）扁平化而来，**不新建表也不埋点**——
+ * 任务行本就是每次生成的权威记录，节点删了行还在（钱已经花了，该算）。
+ * 分组聚合刻意留给前端：汇总视图只是明细的 group by，同源才不会对不上账。
+ * 只覆盖图像 / 视频模型；播客 TTS 与 Agent LLM 调用不计入（费用另算）。
+ */
+export type GenStatRow = {
+  /** 任务 id（明细行的唯一键）。 */
+  taskId: string
+  /** 发起生成的节点 id（供回溯是画布上哪个节点）。 */
+  nodeId: string
+  /** 'image' | 'video'（TaskKind 的子集，podcast 不入统计）。 */
+  kind: 'image' | 'video'
+  /** 任务终态/中间态，用于区分「总提交次数」与「成功次数」。 */
+  status: TaskStatus
+  /** AIGC model_name，如 gpt-image-2 / nano-banana / seedance / kling / MiniMax-H3。 */
+  model: string
+  /** 模型版本（Nano Banana 的 version / 视频各家 version）；该模型无此概念则空串。 */
+  version: string
+  /** 出图/出片规格：图像 = size 或 imageSize；视频 = resolution，可灵改用质量档 std/pro。空串=未下发。 */
+  resolution: string
+  /** 宽高比（视频 ratio / Nano Banana aspectRatio）；无则空串。 */
+  ratio: string
+  /** 图像质量档（Image 2 的 quality）；视频恒空串。 */
+  quality: string
+  /** 本次出图张数（Image 2 的 n；无此字段的模型按 1 算）；视频恒 1。 */
+  images: number
+  /** 视频单次时长（秒）；**-1 = 自动时长**（实际秒数上游才知道，不计入总秒数）；图像恒 0。 */
+  duration: number
+  /** 提交时刻（tasks.created_at 毫秒时间戳）。 */
+  createdAt: number
+}
+
+/** GET /api/projects/:id/stats 响应：该画布项目的全部生成明细（新→旧）。 */
+export type ProjectStatsResponse = {
+  rows: GenStatRow[]
+}
+
+/**
+ * 生成历史的一条记录：一次「点生成」= 一行（tasks 表里的任务，**含播客**）。
+ * 与 GenStatRow 同源不同用——统计那份是为算钱，扁平化的是规格维度且刻意不带结果；
+ * 这份是为**找回产出**：核心字段是 result（结果 URL）与 prompt 摘要，好让人在
+ * 「手滑重新生成把节点上的结果冲掉了」之后，仍能从历史里把那条链接捞回来。
+ * 两者各读各的、互不影响：合成一个类型只会让「算钱」与「找链接」互相将就。
+ */
+export type GenHistoryRow = {
+  /** 任务 id（记录的唯一键）。 */
+  taskId: string
+  /** 发起生成的节点 id（节点可能已删除或改名，前端查得到就显示名字、查不到显示 id）。 */
+  nodeId: string
+  /** 任务类型：图像 / 视频 / 播客音频。 */
+  kind: TaskKind
+  /** 任务终态/中间态（失败的行没有 result，但保留下来能看出「那次失败了」）。 */
+  status: TaskStatus
+  /** AIGC model_name（播客恒为空串——火山 TTS 不走 model_name 那套）。 */
+  model: string
+  /**
+   * 当次请求的文字内容摘要（图像/视频取 prompt，播客取脚本开头），已截断。
+   * 一屏几十条链接，光看 URL 分不清谁是谁，得靠这句认人。
+   */
+  prompt: string
+  /** 结果 URL 列表（succeeded 才非空；播客为 [音频URL, 计费字数] 中的音频 URL）。 */
+  result: string[]
+  /** 提交时刻（tasks.created_at 毫秒时间戳）。 */
+  createdAt: number
+}
+
+/** GET /api/projects/:id/history 响应：该画布项目的全部生成记录（新→旧）。 */
+export type ProjectHistoryResponse = {
+  rows: GenHistoryRow[]
+}
